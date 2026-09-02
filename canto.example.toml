@@ -1,0 +1,37 @@
+[canto]
+work_dir = "./run"
+log_level = "info"
+
+[singbox]
+binary = "sing-box"
+config_path = "./run/config.json"
+api_listen = "127.0.0.1:9090"
+
+[network]
+enabled = true
+mode = "tproxy"
+tproxy_port = 7893
+dns_port = 1053
+mixed_port = 7890
+routing_mark = 424080
+table_id = 100
+tun_interface = "tun0"
+bypass_cn_ips = true
+bypass_reserved_ips = true
+
+[template]
+enabled = false
+template_dir = "./templates"
+files = [
+    "log.json",
+    "experimental.json",
+    "dns.json",
+    "inbounds.json",
+    "outbounds.json",
+    "route.json",
+]
+direct_domains = [
+    "sensorsdata.cn",
+    "courier.push.apple.com",
+    "opencode.ai",
+]
