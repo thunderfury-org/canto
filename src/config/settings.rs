@@ -56,7 +56,6 @@ pub enum ProxyMode {
     None,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkSettings {
     pub enabled: bool,
