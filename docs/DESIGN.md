@@ -18,7 +18,7 @@ canto 采用 Rust 开发，定位为专注于 **sing-box（1.12 / 1.13+）** 的
 * **单静态二进制交付**：全静态链接（musl libc），无任何 glibc 或系统脚本解释器依赖，极小内存占用，适配低配嵌入式设备。
 * **数据面与控制面彻底分离**：数据面复用成熟的 sing-box 内核；canto 专注作为控制面，负责网络编排、配置流水线和进程监督。
 * **原子化网络编排与 RAII 安全兜底**：全面拥抱 Linux 原生 `nftables` 与策略路由；基于 Rust 的 RAII 机制（Drop Guard）确保进程退出时无论正常还是异常均能原子撤销规则，实现不留残留的断网保护。
-* **原生模板深度合并流水线**：内置类似 Python 模板生成的 JSON 深度合并引擎，支持规则复用与直连域名等锚点注入。
+* **源配置加载与启动覆盖**：启动必须提供完整 sing-box 配置（本地文件或 HTTP(S) URL）；canto 在写出运行时配置时整段替换 `inbounds`，并写入 `route.default_mark`，保证入站与 nftables 端口/防环标记对齐。
 
 ---
 
@@ -33,10 +33,9 @@ canto
 ├── src/cli/             # 基于 clap 的命令行参数与子命令模型
 │   ├── mod.rs
 │   └── args.rs
-├── src/config/          # 配置管理与模板引擎
+├── src/config/          # 配置管理与运行时覆盖
 │   ├── mod.rs
-│   ├── settings.rs      # canto.toml 序列化与反序列化
-│   └── template.rs      # JSON 模板递归深度合并与锚点转换引擎
+│   └── settings.rs      # canto.toml 序列化与反序列化
 ├── src/network/         # 透明代理网络编排
 │   ├── mod.rs
 │   ├── nftables.rs      # nftables ruleset 模板生成与执行
@@ -50,7 +49,7 @@ canto
 
 ### 2.1 职责边界与协作流程
 1. **启动阶段**：CLI 读取 `canto.toml`，确定运行模式（Tproxy / Tun / None）。
-2. **配置准备**：若开启了模板引擎或配置未生成，`TemplateEngine` 读取基础模板组件并递归深度合并，调用 `sing-box check` 确保生成内容合法。
+2. **配置准备**：读取必填的 `[singbox].source`（本地文件或 HTTP(S) URL），整段替换 `inbounds` 并写入 `route.default_mark`，再写出 `config_path`，最后调用 `sing-box check` 校验。
 3. **网络接管**：`NetworkGuard` 依次配置策略路由表项和 `table inet canto` 防火墙规则。
 4. **进程托管**：`ProcessSupervisor` 异步拉起 sing-box 进程，异步管道消费 stdout/stderr 输出并分级接入统一日志。
 5. **退出与恢复**：当收到退出信号（SIGINT/SIGTERM）或子进程异常退出时，`NetworkGuard` 触发 Drop 析构函数，原子删除 `inet canto` 表和策略路由，瞬间恢复网络至默认直连状态。
@@ -116,26 +115,102 @@ impl Drop for NetworkGuard {
 
 ---
 
-## 4. 配置流水线与模板引擎设计
+## 4. 配置流水线与启动覆盖
 
-### 4.1 设计理念
-借鉴模板化分模块管理的优秀工程实践，sing-box 的最终配置文件并非手写单一大文件，而是由细粒度模板按顺序深度合并生成：
-1. `log.json`：日志等级与格式输出。
-2. `experimental.json`：Clash API 端口与缓存参数。
-3. `dns.json`：上游 DNS 解析器与分流规则。
-4. `inbounds.json`：入站定义（mixed, tproxy, tun）。
-5. `outbounds.json`：出口策略组与代理节点。
-6. `route.json`：分流路由与远程规则集配置。
+用户必须提供一份完整的 sing-box 配置；canto 只负责加载、覆盖入站/防环标记，再交给 `sing-box check` 与进程监督。
 
-### 4.2 深度合并算法（Deep Merge）
-在 [src/config/template.rs](/Users/wzy/dev/canto/src/config/template.rs:1) 中实现了无损合并机制：
-* 当新旧两个节点均为 JSON Object（字典）时，递归向下合并每个键值，新键覆盖或追加到旧键。
-* 当节点为非 Object 类型（Array、String、Number、Bool）时，后续模板的值完整替换前序模板。
+### 4.1 源配置
 
-### 4.3 动态锚点注入机制
-为了消除在 `dns.json` 与 `route.json` 间重复维护直连域名列表的问题，引入统一锚点注入：
-* 开发者在模板中将直连路由规则和直连 DNS 规则的 `domain_suffix` 预留为空数组 `[]`。
-* 模板引擎在合并完成后，自动将 `canto.toml` 中的 `direct_domains` 统一注入至这些空规则中，确保规则源头唯一。
+`[singbox].source` 为必填项，取值只能是：
+* 本地文件路径：指向一份完整的 sing-box JSON。
+* `http://` 或 `https://` URL：响应体必须是 sing-box JSON，不是订阅链接、Clash YAML 或其它转换格式。
+
+`config_path` 仍是运行时输出路径。每次 `canto run` 与 `canto config generate` 都重新加载 `source`，完成覆盖后再写入 `config_path`。
+
+加载失败直接拒绝启动，包括：
+* 未配置 `source`
+* 本地文件不存在或不可读
+* URL 拉取失败
+* 响应/文件内容不是合法 JSON
+
+用户提供的源文件只读。即使 `source` 与 `config_path` 指向同一路径，也必须先完整读入内存，覆盖后再写回，避免半写入损坏源配置。URL 每次启动现拉，失败不回退本地缓存。
+
+用户继续提供 `outbounds`、`dns`、`route` 规则及其它非 inbound 字段。`experimental.clash_api` 本阶段不覆盖。
+
+### 4.2 启动覆盖规则
+
+覆盖发生在内存中的 JSON 对象上，顺序固定：
+
+1. 整段替换 `inbounds`（用户原 inbound 全部丢弃）。
+2. 写入 `route.default_mark = network.routing_mark`；源配置没有 `route` 对象时先创建，已有字段全部保留。
+3. 仅在 `network.mode = "tproxy"` 时，若 `route.rules` 中还没有针对 `dns-in` 的 `hijack-dns` 规则，则插入到规则数组头部；没有 `rules` 数组时先创建。
+
+Inbound tag 固定为 `mixed-in`、`tproxy-in`、`dns-in`、`tun-in`。用户 route 规则不得再引用源配置里的旧 inbound tag。
+
+按 `network.mode` 生成 inbound：
+
+**tproxy**
+* `mixed`：`tag = mixed-in`，`listen = 0.0.0.0`，`listen_port = mixed_port`（供 LAN 显式代理）。
+* `tproxy`：`tag = tproxy-in`，`listen = ::`，`listen_port = tproxy_port`；不设置 `network`，同时接收 TCP/UDP。
+* `direct`：`tag = dns-in`，`listen = 0.0.0.0`，`listen_port = dns_port`，承接 nftables 重定向的 53 端口流量。
+
+**tun**
+* `mixed-in`：同上。
+* `tun`：`tag = tun-in`，`interface_name = tun_interface`，`auto_route = false`，`stack = system`，地址为 `172.19.0.1/30` 与 `fdfe:dcba:9876::1/126`。
+
+**none**
+* 仅 `mixed-in`。
+
+tproxy 模式下补齐的 DNS 劫持规则：
+
+```json
+{
+  "inbound": ["dns-in"],
+  "action": "hijack-dns"
+}
+```
+
+判定“已存在”的条件：某条 `route.rules` 同时满足 `action == "hijack-dns"`，且 `inbound` 包含 `"dns-in"`。已存在则不重复插入。
+
+`canto config generate` 的语义为：加载 `source` → 覆盖 inbound / `default_mark`（及必要时的 `hijack-dns`）→ 写出 `config_path`。
+
+### 4.3 tproxy 覆盖示例
+
+源配置只保留出站与分流；运行时配置的入站由 canto 生成，并与第 3 节 nftables 使用同一组端口与标记（默认 `tproxy_port = 7893`、`dns_port = 1053`、`routing_mark = 424080` / `0x67890`）：
+
+```json
+{
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "0.0.0.0",
+      "listen_port": 7890
+    },
+    {
+      "type": "tproxy",
+      "tag": "tproxy-in",
+      "listen": "::",
+      "listen_port": 7893
+    },
+    {
+      "type": "direct",
+      "tag": "dns-in",
+      "listen": "0.0.0.0",
+      "listen_port": 1053
+    }
+  ],
+  "route": {
+    "default_mark": 424080,
+    "rules": [
+      {
+        "inbound": ["dns-in"],
+        "action": "hijack-dns"
+      }
+    ]
+  }
+}
+```
 
 ### 4.4 语法预检（Pre-flight Check）
 在拉起 sing-box 之前，`ProcessSupervisor::check_config()` 会显式调用：
@@ -173,8 +248,9 @@ log_level = "info"               # trace / debug / info / warn / error
 
 [singbox]
 binary = "sing-box"              # sing-box 执行文件路径（默认在 PATH 中查找）
-config_path = "./run/config.json"# 最终生成的 sing-box 配置文件输出路径
-api_listen = "127.0.0.1:9090"    # sing-box 内部 Clash API 监听地址
+source = "./upstream.json"       # 必填：完整 sing-box JSON 的本地路径或 http(s) URL
+config_path = "./run/config.json"# 覆盖 inbound / default_mark 后的运行时输出路径
+api_listen = "127.0.0.1:9090"    # sing-box 内部 Clash API 监听地址（本阶段不覆盖进运行时配置）
 
 [network]
 enabled = true                   # 是否接管网络防火墙与策略路由
@@ -187,23 +263,6 @@ table_id = 100                   # 专属策略路由表 ID
 tun_interface = "tun0"           # Tun 模式下的虚拟网卡名
 bypass_cn_ips = true             # 是否绕过大陆 IP
 bypass_reserved_ips = true       # 是否绕过保留局域网私网网段
-
-[template]
-enabled = false                  # 是否在启动前自动从 templates 目录重新编译配置
-template_dir = "./templates"     # 存放各 JSON 片段的目录
-files = [
-    "log.json",
-    "experimental.json",
-    "dns.json",
-    "inbounds.json",
-    "outbounds.json",
-    "route.json"
-]
-direct_domains = [               # 集中维护的直连域名列表
-    "sensorsdata.cn",
-    "courier.push.apple.com",
-    "opencode.ai"
-]
 ```
 
 ---
@@ -259,10 +318,11 @@ WantedBy=multi-user.target
 * **Phase 1（当前）**：
   * 完成 single-crate 分包骨架搭建。
   * 实现基于 nftables + 策略路由的透明代理编排与 RAII 安全释放。
-  * 实现多 JSON 模板深度合并与锚点规则注入引擎。
+  * 从本地文件或 HTTP(S) URL 加载完整 sing-box 配置，启动时整段替换 `inbounds` 并写入 `route.default_mark`。
   * 实现 sing-box 子进程异步托管与语法预检机制。
 * **Phase 2**：
   * 集成 Clash REST API 客户端模块，支持从终端或本地 IPC 查询代理节点延迟、实时带宽与流量统计。
+  * 按需覆盖 `experimental.clash_api`。
 * **Phase 3**：
   * 引入 `ratatui` + `crossterm` 构建现代终端控制台（TUI），提供可视化出站切换与连接观察仪表盘。
 * **Phase 4**：
