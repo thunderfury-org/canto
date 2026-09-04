@@ -4,8 +4,10 @@ use tracing::debug;
 #[cfg(target_os = "linux")]
 use tracing::{info, warn};
 
-use crate::config::{NetworkSettings, ProxyMode};
-use crate::error::{CantoError, Result};
+use crate::config::NetworkSettings;
+#[cfg(target_os = "linux")]
+use crate::error::CantoError;
+use crate::error::Result;
 
 /// Policy routing table. Avoid 100 (clash/ShellCrash) and 253-255 (kernel).
 const ROUTING_TABLE_ID: u32 = 167;
@@ -21,17 +23,6 @@ impl<'a> RouteManager<'a> {
 
     /// Sets up policy routing rules and route tables
     pub fn setup(&self) -> Result<()> {
-        match self.settings.mode {
-            ProxyMode::None => return Ok(()),
-            ProxyMode::Tun => {
-                return Err(CantoError::Config(
-                    "v1 only supports tproxy; network.mode = \"tun\" is not implemented"
-                        .to_string(),
-                ));
-            }
-            ProxyMode::Tproxy => {}
-        }
-
         let mark_hex = format!("{:#x}", self.settings.fwmark);
         let table = ROUTING_TABLE_ID.to_string();
 

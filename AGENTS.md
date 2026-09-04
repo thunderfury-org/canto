@@ -10,7 +10,7 @@ canto 是基于 Rust (Edition 2024) 构建的 sing-box 透明代理与配置编�
 - `src/network/`：透明代理网络编排，包括 nftables 规则生成（`nftables.rs`）、策略路由（`route.rs`）及 RAII 网络安全回滚守卫（`guard.rs`）。
 - `src/supervisor/`：sing-box 子进程管理、异步流式日志分流与配置语法预检（`process.rs`）。
 - `src/error.rs`：基于 `thiserror` 的统一强类型错误枚举 `CantoError` 与 `Result<T>`。
-- `docs/`：系统架构设计文档（如 `docs/DESIGN.md`）。
+- `docs/`：架构文档。[DESIGN.md](docs/DESIGN.md) 是 v1 行为；[INBOUND.md](docs/INBOUND.md) 是 TUN / tproxy / auto_redirect / bypass 选型。改劫持路径、`network.mode` 或大陆 IP 绕过时先读 INBOUND。
 
 ## Build, Test, and Development Commands
 

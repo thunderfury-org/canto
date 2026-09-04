@@ -109,6 +109,7 @@ docker run --rm --privileged -e CARGO_TARGET_DIR=/tmp/canto-target \
 
 Detailed technical documentation is available under `docs/`:
 - [System Architecture & Design Document (docs/DESIGN.md)](docs/DESIGN.md)
+- [Transparent inbound selection (docs/INBOUND.md)](docs/INBOUND.md)
 
 ## License
 

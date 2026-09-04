@@ -12,7 +12,6 @@ use crate::network::route::RouteManager;
 
 pub struct NetworkGuard {
     settings: NetworkSettings,
-    active: bool,
 }
 
 impl NetworkGuard {
@@ -28,15 +27,7 @@ impl NetworkGuard {
         route.setup()?;
         nft.apply()?;
 
-        Ok(Self {
-            settings,
-            active: true,
-        })
-    }
-
-    /// Disarms the guard so it does not tear down network rules upon drop
-    pub fn disarm(&mut self) {
-        self.active = false;
+        Ok(Self { settings })
     }
 
     /// Manually triggers teardown of all network rules
@@ -113,13 +104,11 @@ fn load_tproxy_module() {
 
 impl Drop for NetworkGuard {
     fn drop(&mut self) {
-        if self.active {
-            info!("NetworkGuard dropped: Restoring default system routing and firewall");
-            let nft = NftablesManager::new(&self.settings);
-            let route = RouteManager::new(&self.settings);
+        info!("NetworkGuard dropped: Restoring default system routing and firewall");
+        let nft = NftablesManager::new(&self.settings);
+        let route = RouteManager::new(&self.settings);
 
-            let _ = nft.flush();
-            let _ = route.teardown();
-        }
+        let _ = nft.flush();
+        let _ = route.teardown();
     }
 }

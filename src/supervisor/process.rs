@@ -75,18 +75,17 @@ impl ProcessSupervisor {
         }
     }
 
-    /// Spawns sing-box and supervises its lifecycle until interrupt or exit
+    /// Spawns sing-box and supervises its lifecycle until interrupt or exit.
+    ///
+    /// Callers must verify the binary and check the config before applying
+    /// network rules and invoking this method.
     pub async fn run_supervised(&self) -> Result<()> {
-        self.verify_binary()?;
-
         if !self.config_path.exists() {
             return Err(CantoError::Config(format!(
                 "Config file '{}' does not exist. Did you generate it first?",
                 self.config_path.display()
             )));
         }
-
-        self.check_config(None)?;
 
         tokio::fs::create_dir_all(&self.work_dir).await?;
 

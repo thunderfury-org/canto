@@ -210,23 +210,19 @@ JSON
     cat >"$WORKDIR/canto.toml" <<EOF
 [canto]
 work_dir = "$WORKDIR/run"
-log_level = "debug"
 
 [singbox]
 binary = "$sing_box"
 source = "$WORKDIR/source.json"
 config_path = "$WORKDIR/run/config.json"
-api_listen = "127.0.0.1:9090"
 
 [network]
 enabled = true
-mode = "tproxy"
 tproxy_port = 7893
 dns_port = 1053
 mixed_port = 7890
 fwmark = 424081
 routing_mark = 424080
-tun_interface = "tun0"
 lan_cidrs = ["$LAN_NET"]
 EOF
 }

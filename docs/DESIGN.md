@@ -2,6 +2,8 @@
 
 本文档描述 canto v1 的系统设计目标、模块划分、透明代理网络编排、配置覆盖流水线以及故障容错设计。
 
+透明入站（redirect / tproxy / TUN / auto_redirect）和内核 `bypass` 的选型见 [INBOUND.md](INBOUND.md)。本文只写 v1 实际落地的 tproxy 行为。
+
 ---
 
 ## 1. 背景与设计目标
@@ -14,7 +16,7 @@
 * **进程管理与状态观测困难**：通过 PID 文件或轮询 `pidof` 进行进程监督的方式脆弱。
 
 ### 1.2 canto 设计目标
-canto 采用 Rust 开发，定位为专注于 **sing-box（1.12 / 1.13+）** 的无依赖单二进制透明网关编排工具：
+canto 采用 Rust 开发，定位为专注于 **sing-box（1.13+）** 的无依赖单二进制透明网关编排工具：
 * **单静态二进制交付**：全静态链接（musl libc），无 glibc 或系统脚本解释器依赖。
 * **数据面与控制面分离**：数据面复用 sing-box；canto 作为控制面，负责网络编排、运行时覆盖和进程监督。
 * **原子化网络编排与 RAII 兜底**：使用 Linux 原生 `nftables` 与策略路由；`NetworkGuard` 在 SIGINT/SIGTERM 或进程退出时撤销规则。SIGKILL / OOM 无法走 Drop，需配合 systemd `ExecStop=canto clean-network`。
@@ -51,7 +53,7 @@ canto
 ```
 
 ### 2.1 职责边界与协作流程
-1. **启动阶段**：CLI 读取 `canto.toml`。`network.mode = "tun"` 直接拒绝；`--no-network` / `network.enabled = false` / `mode = "none"` 跳过网络接管。
+1. **启动阶段**：CLI 读取 `canto.toml`。`--no-network` / `network.enabled = false` 跳过网络接管；抓包固定为 tproxy。
 2. **配置准备**：读取必填的 `[singbox].source` 本地文件，覆盖 inbound / `default_mark` / `hijack-dns` / `auto_detect_interface`，写出 `config_path`，再调用 `sing-box check`。
 3. **网络接管**：check 通过后，`NetworkGuard` 配置策略路由和 `table inet canto`。
 4. **进程托管**：`ProcessSupervisor` 异步拉起 sing-box，消费 stdout/stderr。
@@ -62,6 +64,8 @@ canto
 ## 3. 透明代理与网络编排设计
 
 v1 固定为 **tproxy + 局域网 + 本机**。IPv6 流量在链首 `return`，不劫持。
+
+不是因为 TUN 更慢才不用：Linux / OpenWrt 上官方更快的路径是 TUN + `auto_redirect`。v1 用手搓 tproxy，是为了按 LAN 来源劫持、挡住 WAN 进站，并且让 `NetworkGuard` 回滚 canto 自己的表。桌面源 JSON 里的 `tun-in` + `auto_route` 会抢网关默认路由，必须整段替换。升级方向见 [INBOUND.md](INBOUND.md)。
 
 ### 3.1 核心数据链路
 
@@ -108,7 +112,7 @@ DNS：
 * 所有规则集中在 `table inet canto`。
 * 生效时 `nft -f -` 一次提交；清理时 `nft delete table inet canto`。
 * 保留地址放在 `set reserved_ipv4`，用于**目的地址**绕过。
-* 局域网来源放在 `set lan_ipv4`。`bypass_cn_ips` 本阶段忽略。
+* 局域网来源放在 `set lan_ipv4`。
 * 启动时若 `ip_forward=0` 则写成 `1`；尝试 `modprobe nft_tproxy`，内建内核允许失败。
 
 ### 3.3 策略路由与防回环
@@ -179,7 +183,7 @@ canto 用 `tokio::process::Command` 启动 sing-box：
 * stderr → `tracing::warn!(target: "sing_box", ...)`
 
 ### 5.2 信号处理与优雅停机
-主循环同时等待子进程退出、SIGINT 与 SIGTERM。收到信号后先向 sing-box 发送 SIGTERM，超时再 SIGKILL，随后 `NetworkGuard` Drop。v1 不实现 daemon，`canto start` 仅提示使用 systemd 托管 `canto run`。
+主循环同时等待子进程退出、SIGINT 与 SIGTERM。收到信号后先向 sing-box 发送 SIGTERM，超时再 SIGKILL，随后 `NetworkGuard` Drop。v1 不实现 daemon，用 systemd 托管 `canto run`。
 
 ---
 
@@ -188,25 +192,19 @@ canto 用 `tokio::process::Command` 启动 sing-box：
 ```toml
 [canto]
 work_dir = "./run"
-log_level = "info"
 
 [singbox]
 binary = "sing-box"
 source = ".data/config-with-tailscale.json"
 config_path = "./run/config.json"
-api_listen = "127.0.0.1:9090"
 
 [network]
 enabled = true
-mode = "tproxy"          # v1 仅支持 tproxy；tun 报错；none 等同不接管网络
 tproxy_port = 7893
 dns_port = 1053
 mixed_port = 7890
 fwmark = 424081          # 0x67891，tproxy / ip rule，避免用 1 这类常见值
 routing_mark = 424080    # 0x67890，sing-box default_mark，须与 fwmark 不同
-tun_interface = "tun0"   # v1 未使用
-bypass_cn_ips = true     # v1 忽略
-bypass_reserved_ips = true
 lan_cidrs = []           # 空则自动探测；可写成 ["192.168.1.0/24"]
 ```
 
@@ -257,7 +255,7 @@ Phase 1 已完成：本地完整 JSON、inbound 覆盖、tproxy 劫持局域网+
 
 ### 8.2 网关语义补齐
 
-* **`bypass_cn_ips`**：配置项已有，nft 层未实现。
+* **大陆 IP 绕过**：优先用 sing-box `action: bypass`（预匹配、需 `auto_redirect`）或 TUN `route_exclude_address_set`，不要再造一张 cnip nft 表。exclude set 会跳过后续规则和 Clash Global。详见 [INBOUND.md](INBOUND.md)。
 * **常用端口**：ShellCrash 默认只劫持 22/80/443/8080/8443。canto 劫持全部 TCP/UDP。
 * **IPv6 劫持**：现在链首 return。要做就需要 IPv6 策略路由和来源网段。
 * **设备过滤**：MAC/IP 黑白名单。
@@ -267,12 +265,12 @@ Phase 1 已完成：本地完整 JSON、inbound 覆盖、tproxy 劫持局域网+
 
 * **HTTP(S) 拉源配置**：v1 只读本地 `source`。失败是否回退缓存要单独定。
 * **订阅/provider**：`{My-}` 这类过滤不处理。节点必须预先写进完整 JSON。
-* **覆盖 `experimental.clash_api`**：源配置里有就保留；canto 还不按 `api_listen` 改写，也不查延迟/流量。
-* **`mode=tun`**：现在直接报错。
+* **覆盖 `experimental.clash_api`**：源配置里有就保留；以后做改写时再加监听地址配置。当前不查延迟/流量。
+* **tun 模式**：以后做 `network.mode` 时切到 TUN + `auto_redirect`，缩小 canto 自己的 nftables，而不是优化现行 tproxy。源里的桌面 TUN 仍要 overlay，不能原样 `auto_route`。当前固定 tproxy，legacy `mode` / `bypass_cn_ips` 键忽略。详见 [INBOUND.md](INBOUND.md)。
 
 ### 8.4 运行与交付
 
 * **安装与自启**：现在只有文档里的 systemd 示例，没有安装脚本、procd/OpenRC、交叉编译发布。
 * **内核与面板**：不下载 sing-box，不安装 Dashboard。
 * **TUI / 交互菜单**：不替代 `crash` 选单。
-* **daemon**：`canto start` 仍是提示用 systemd 托管 `canto run`。
+* **daemon**：v1 不实现；用 systemd 托管 `canto run`。
