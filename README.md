@@ -2,16 +2,16 @@
 
 canto is a lightweight transparent proxy and configuration orchestrator designed specifically for sing-box.
 
-Built in Rust as a single static binary, canto coordinates network routing policies, nftables transparent proxy rules, JSON configuration templates, and sing-box process lifecycles without external scripting dependencies.
+Built in Rust as a single static binary, canto loads a complete sing-box JSON, overlays gateway inbounds, applies nftables tproxy rules for LAN and local traffic, and supervises the sing-box process.
 
 For the in-depth architectural breakdown and design principles, see [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Key Features
 
+- **Source overlay**: Loads a complete sing-box JSON, replaces `inbounds` with mixed/tproxy/dns listeners, writes `route.default_mark`, and disables `auto_detect_interface`.
 - **Process Supervision**: Manages sing-box lifecycle with asynchronous streaming logs, configuration pre-flight validation, and graceful termination handling.
-- **Atomic Network Orchestration**: Employs `nftables` tables and Linux policy routing (`ip rule` / `ip route`) for transparent redirection.
-- **Fail-safe Network Guard**: Implements RAII-based cleanup ensuring firewall rules and routing policies are automatically rolled back upon program exit or crash, preventing network outages.
-- **JSON Template Engine**: Deep-merges modular sing-box template fragments (log, dns, inbounds, outbounds, route) and injects direct domain anchors.
+- **Atomic Network Orchestration**: Employs `nftables` tables and Linux policy routing (`ip rule` / `ip route`) for LAN and local tproxy.
+- **Fail-safe Network Guard**: Implements RAII-based cleanup ensuring firewall rules and routing policies are rolled back on SIGINT/SIGTERM or process exit.
 - **Zero Shell Dependencies**: Standalone Rust application without dependencies on bash, awk, sed, or busybox idiosyncrasies.
 
 ## Architecture
@@ -26,7 +26,7 @@ src/
 ├── config/            # Configuration management
 │   ├── mod.rs
 │   ├── settings.rs    # canto settings (canto.toml)
-│   └── template.rs    # Deep merge engine for sing-box JSON templates
+│   └── overlay.rs     # Runtime inbound / default_mark overlay
 ├── network/           # Transparent proxy network orchestration
 │   ├── mod.rs
 │   ├── nftables.rs    # nftables ruleset generator and manager
@@ -54,6 +54,8 @@ Generate a default `canto.toml`:
 cargo run -- config init
 ```
 
+Point `[singbox].source` at a complete sing-box JSON (for example `.data/config-with-tailscale.json`).
+
 ### 3. Check Status
 
 Verify your local sing-box environment and configuration:
@@ -78,12 +80,30 @@ cargo run -- run --no-network
 
 ## Subcommands
 
-- `canto run`: Run in foreground, managing transparent proxy rules and sing-box process.
-- `canto status`: Inspect sing-box binary availability, config validity, and proxy parameters.
-- `canto config generate`: Deep-merge template fragments into a unified `config.json`.
+- `canto run`: Overlay the source JSON, validate it, apply tproxy rules, and supervise sing-box.
+- `canto status`: Inspect sing-box binary availability, source/runtime config, and proxy parameters.
+- `canto config generate`: Load `source`, overlay inbounds / `default_mark`, and write `config_path`.
 - `canto config check`: Validate sing-box configuration syntax using `sing-box check`.
 - `canto config init`: Initialize a default `canto.toml`.
+- `canto config dump-nft`: Print the generated nftables ruleset with resolved LAN CIDRs.
 - `canto clean-network`: Emergency manual teardown of canto nftables table and policy routes.
+
+## Gateway check without a router
+
+Unit tests and `canto config dump-nft` do not send packets. `scripts/netns-check.sh` builds a LAN/gateway/WAN topology with network namespaces and checks tproxy hijack, local hijack, WAN port reject, and rule rollback.
+
+On Linux as root:
+
+```bash
+sudo ./scripts/netns-check.sh
+```
+
+From macOS with OrbStack:
+
+```bash
+docker run --rm --privileged -e CARGO_TARGET_DIR=/tmp/canto-target \
+  -v "$PWD":/src -w /src rust:bookworm bash scripts/netns-check.sh
+```
 
 ## Documentation
 

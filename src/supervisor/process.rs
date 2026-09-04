@@ -3,7 +3,6 @@ use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::select;
-use tokio::signal;
 use tracing::{error, info, warn};
 
 use crate::error::{CantoError, Result};
@@ -49,13 +48,17 @@ impl ProcessSupervisor {
     /// Runs `sing-box check -c <config_path>` to validate configuration syntax
     pub fn check_config(&self, config: Option<&Path>) -> Result<()> {
         let target_config = config.unwrap_or(&self.config_path);
-        info!(
-            "Validating sing-box configuration syntax: {}",
-            target_config.display()
-        );
+        let config_arg = target_config.to_str().ok_or_else(|| {
+            CantoError::Config(format!(
+                "Config path is not valid UTF-8: {}",
+                target_config.display()
+            ))
+        })?;
+
+        info!("Validating sing-box configuration syntax: {config_arg}");
 
         let output = std::process::Command::new(&self.binary)
-            .args(["check", "-c", target_config.to_str().unwrap_or("")])
+            .args(["check", "-c", config_arg])
             .output()
             .map_err(|e| CantoError::Process(format!("Failed to invoke sing-box check: {e}")))?;
 
@@ -87,14 +90,21 @@ impl ProcessSupervisor {
 
         tokio::fs::create_dir_all(&self.work_dir).await?;
 
+        let config_arg = self.config_path.to_str().ok_or_else(|| {
+            CantoError::Config(format!(
+                "Config path is not valid UTF-8: {}",
+                self.config_path.display()
+            ))
+        })?;
+
         info!(
             "Starting sing-box child process: {} run -c {}",
             self.binary.display(),
-            self.config_path.display()
+            config_arg
         );
 
         let mut child = Command::new(&self.binary)
-            .args(["run", "-c", self.config_path.to_str().unwrap_or("")])
+            .args(["run", "-c", config_arg])
             .current_dir(&self.work_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -104,7 +114,6 @@ impl ProcessSupervisor {
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
 
-        // Stream stdout asynchronously
         if let Some(stdout) = stdout {
             tokio::spawn(async move {
                 let mut reader = BufReader::new(stdout).lines();
@@ -114,7 +123,6 @@ impl ProcessSupervisor {
             });
         }
 
-        // Stream stderr asynchronously
         if let Some(stderr) = stderr {
             tokio::spawn(async move {
                 let mut reader = BufReader::new(stderr).lines();
@@ -124,36 +132,84 @@ impl ProcessSupervisor {
             });
         }
 
-        // Wait for process exit or shutdown signal
-        select! {
-            status = child.wait() => {
-                match status {
-                    Ok(exit_status) => {
-                        if exit_status.success() {
-                            info!("sing-box process exited normally");
-                            Ok(())
-                        } else {
-                            let code = exit_status.code().unwrap_or(-1);
-                            error!("sing-box process crashed or exited with code {code}");
-                            Err(CantoError::Process(format!("sing-box exited with code {code}")))
-                        }
-                    }
-                    Err(e) => {
-                        error!("Error waiting for sing-box: {e}");
-                        Err(CantoError::Process(e.to_string()))
-                    }
+        Self::wait_for_exit_or_signal(&mut child).await
+    }
+
+    async fn wait_for_exit_or_signal(child: &mut Child) -> Result<()> {
+        #[cfg(unix)]
+        {
+            let mut sigterm = tokio::signal::unix::signal(
+                tokio::signal::unix::SignalKind::terminate(),
+            )
+            .map_err(|e| CantoError::Process(format!("Failed to listen for SIGTERM: {e}")))?;
+
+            select! {
+                status = child.wait() => Self::map_exit_status(status),
+                _ = tokio::signal::ctrl_c() => {
+                    info!("Received SIGINT (Ctrl+C). Terminating sing-box gracefully...");
+                    Self::terminate_child(child).await;
+                    Ok(())
+                }
+                _ = sigterm.recv() => {
+                    info!("Received SIGTERM. Terminating sing-box gracefully...");
+                    Self::terminate_child(child).await;
+                    Ok(())
                 }
             }
-            _ = signal::ctrl_c() => {
-                info!("Received SIGINT (Ctrl+C). Terminating sing-box gracefully...");
-                Self::terminate_child(&mut child).await;
-                Ok(())
+        }
+
+        #[cfg(not(unix))]
+        {
+            select! {
+                status = child.wait() => Self::map_exit_status(status),
+                _ = tokio::signal::ctrl_c() => {
+                    info!("Received SIGINT (Ctrl+C). Terminating sing-box gracefully...");
+                    Self::terminate_child(child).await;
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    fn map_exit_status(status: std::io::Result<std::process::ExitStatus>) -> Result<()> {
+        match status {
+            Ok(exit_status) => {
+                if exit_status.success() {
+                    info!("sing-box process exited normally");
+                    Ok(())
+                } else {
+                    let code = exit_status.code().unwrap_or(-1);
+                    error!("sing-box process crashed or exited with code {code}");
+                    Err(CantoError::Process(format!(
+                        "sing-box exited with code {code}"
+                    )))
+                }
+            }
+            Err(e) => {
+                error!("Error waiting for sing-box: {e}");
+                Err(CantoError::Process(e.to_string()))
             }
         }
     }
 
     async fn terminate_child(child: &mut Child) {
-        // Attempt SIGTERM or kill
+        #[cfg(unix)]
+        {
+            if let Some(pid) = child.id() {
+                let _ = Command::new("kill")
+                    .args(["-TERM", &pid.to_string()])
+                    .status()
+                    .await;
+                if tokio::time::timeout(std::time::Duration::from_secs(5), child.wait())
+                    .await
+                    .is_ok()
+                {
+                    info!("sing-box process terminated");
+                    return;
+                }
+            }
+        }
+
         if let Err(e) = child.kill().await {
             warn!("Failed to kill sing-box child process: {e}");
         }

@@ -1,7 +1,7 @@
+pub mod overlay;
 pub mod settings;
-pub mod template;
 
-pub use settings::{
-    CantoSettings, NetworkSettings, ProxyMode, Settings, SingBoxSettings, TemplateSettings,
+pub use overlay::{
+    apply_runtime_overlay, load_source, prepare_runtime_config, write_runtime_config,
 };
-pub use template::TemplateEngine;
+pub use settings::{CantoSettings, NetworkSettings, ProxyMode, Settings, SingBoxSettings};

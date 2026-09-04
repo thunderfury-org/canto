@@ -28,3 +28,6 @@ target
 # Canto runtime artifacts
 /run/
 *.local.toml
+
+# Local test data
+/.data/

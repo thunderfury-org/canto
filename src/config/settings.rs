@@ -11,10 +11,10 @@ pub struct Settings {
     pub canto: CantoSettings,
     pub singbox: SingBoxSettings,
     pub network: NetworkSettings,
-    pub template: TemplateSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CantoSettings {
     pub work_dir: PathBuf,
     pub log_level: String,
@@ -30,8 +30,10 @@ impl Default for CantoSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SingBoxSettings {
     pub binary: PathBuf,
+    pub source: PathBuf,
     pub config_path: PathBuf,
     pub api_listen: String,
 }
@@ -40,6 +42,7 @@ impl Default for SingBoxSettings {
     fn default() -> Self {
         Self {
             binary: PathBuf::from("sing-box"),
+            source: PathBuf::from(".data/config-with-tailscale.json"),
             config_path: PathBuf::from("./run/config.json"),
             api_listen: "127.0.0.1:9090".to_string(),
         }
@@ -58,16 +61,28 @@ pub enum ProxyMode {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkSettings {
+    #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(default)]
     pub mode: ProxyMode,
+    #[serde(default = "default_tproxy_port")]
     pub tproxy_port: u16,
+    #[serde(default = "default_dns_port")]
     pub dns_port: u16,
+    #[serde(default = "default_mixed_port")]
     pub mixed_port: u16,
+    #[serde(default = "default_fwmark")]
+    pub fwmark: u32,
+    #[serde(default = "default_routing_mark")]
     pub routing_mark: u32,
-    pub table_id: u32,
+    #[serde(default = "default_tun_interface")]
     pub tun_interface: String,
+    #[serde(default = "default_true")]
     pub bypass_cn_ips: bool,
+    #[serde(default = "default_true")]
     pub bypass_reserved_ips: bool,
+    #[serde(default)]
+    pub lan_cidrs: Vec<String>,
 }
 
 impl Default for NetworkSettings {
@@ -78,42 +93,63 @@ impl Default for NetworkSettings {
             tproxy_port: 7893,
             dns_port: 1053,
             mixed_port: 7890,
+            fwmark: default_fwmark(),
             routing_mark: 0x67890,
-            table_id: 100,
             tun_interface: "tun0".to_string(),
             bypass_cn_ips: true,
             bypass_reserved_ips: true,
+            lan_cidrs: Vec::new(),
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TemplateSettings {
-    pub enabled: bool,
-    pub template_dir: PathBuf,
-    pub files: Vec<String>,
-    pub direct_domains: Vec<String>,
+fn default_fwmark() -> u32 {
+    0x67891
 }
 
-impl Default for TemplateSettings {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            template_dir: PathBuf::from("./templates"),
-            files: vec![
-                "log.json".to_string(),
-                "experimental.json".to_string(),
-                "dns.json".to_string(),
-                "inbounds.json".to_string(),
-                "outbounds.json".to_string(),
-                "route.json".to_string(),
-            ],
-            direct_domains: vec![
-                "sensorsdata.cn".to_string(),
-                "courier.push.apple.com".to_string(),
-                "opencode.ai".to_string(),
-            ],
+fn default_true() -> bool {
+    true
+}
+
+fn default_tproxy_port() -> u16 {
+    7893
+}
+
+fn default_dns_port() -> u16 {
+    1053
+}
+
+fn default_mixed_port() -> u16 {
+    7890
+}
+
+fn default_routing_mark() -> u32 {
+    0x67890
+}
+
+fn default_tun_interface() -> String {
+    "tun0".to_string()
+}
+
+impl NetworkSettings {
+    /// Returns whether nftables and policy routing should be applied.
+    ///
+    /// `mode = "tun"` is rejected. `--no-network`, `enabled = false`, and `mode = "none"` skip capture.
+    pub fn should_apply_capture(&self, no_network: bool) -> Result<bool> {
+        if no_network || !self.enabled || self.mode == ProxyMode::None {
+            return Ok(false);
         }
+        if self.mode == ProxyMode::Tun {
+            return Err(CantoError::Config(
+                "v1 only supports tproxy; network.mode = \"tun\" is not implemented".to_string(),
+            ));
+        }
+        if self.fwmark == self.routing_mark {
+            return Err(CantoError::Config(
+                "network.fwmark and network.routing_mark must be different".to_string(),
+            ));
+        }
+        Ok(true)
     }
 }
 
@@ -171,5 +207,69 @@ impl Settings {
     pub fn to_toml_string(&self) -> Result<String> {
         toml::to_string_pretty(self)
             .map_err(|e| CantoError::Config(format!("Failed to serialize settings to TOML: {e}")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_should_apply_capture_modes() {
+        let mut network = NetworkSettings::default();
+        assert!(network.should_apply_capture(false).unwrap());
+        assert!(!network.should_apply_capture(true).unwrap());
+
+        network.enabled = false;
+        assert!(!network.should_apply_capture(false).unwrap());
+
+        network.enabled = true;
+        network.mode = ProxyMode::None;
+        assert!(!network.should_apply_capture(false).unwrap());
+
+        network.mode = ProxyMode::Tun;
+        let err = network.should_apply_capture(false).unwrap_err().to_string();
+        assert!(err.contains("tproxy"));
+
+        network.mode = ProxyMode::Tproxy;
+        network.fwmark = network.routing_mark;
+        let err = network.should_apply_capture(false).unwrap_err().to_string();
+        assert!(err.contains("must be different"));
+    }
+
+    #[test]
+    fn test_singbox_settings_fill_missing_api_listen() {
+        let settings: Settings = toml::from_str(
+            r#"
+[singbox]
+binary = "sing-box"
+source = "./upstream.json"
+config_path = "./run/config.json"
+"#,
+        )
+        .unwrap();
+        assert_eq!(settings.singbox.api_listen, "127.0.0.1:9090");
+    }
+
+    #[test]
+    fn test_network_settings_fill_missing_unused_fields() {
+        let settings: Settings = toml::from_str(
+            r#"
+[network]
+enabled = true
+mode = "tproxy"
+tproxy_port = 7893
+dns_port = 1053
+mixed_port = 7890
+fwmark = 424081
+routing_mark = 424080
+lan_cidrs = ["192.168.100.0/24"]
+"#,
+        )
+        .unwrap();
+        assert_eq!(settings.network.tun_interface, "tun0");
+        assert!(settings.network.bypass_cn_ips);
+        assert!(settings.network.enabled);
+        assert_eq!(settings.network.tproxy_port, 7893);
     }
 }
