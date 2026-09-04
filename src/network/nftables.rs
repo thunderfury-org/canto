@@ -21,11 +21,14 @@ impl<'a> NftablesManager<'a> {
         Self { settings }
     }
 
-    /// Generates the complete nftables configuration for transparent proxying
+    /// Generates the complete nftables configuration for LAN + local tproxy.
     pub fn generate_ruleset(&self) -> String {
         let tproxy_port = self.settings.tproxy_port;
         let dns_port = self.settings.dns_port;
-        let mark = self.settings.routing_mark;
+        let mixed_port = self.settings.mixed_port;
+        let fwmark = self.settings.fwmark;
+        let routing_mark = self.settings.routing_mark;
+        let lan_cidrs = self.lan_cidrs().join(",\n            ");
 
         format!(
             r#"table inet {TABLE_NAME} {{
@@ -46,76 +49,80 @@ impl<'a> NftablesManager<'a> {
             198.51.100.0/24,
             203.0.113.0/24,
             224.0.0.0/4,
-            240.0.0.0/4,
-            255.255.255.255/32
+            240.0.0.0/4
         }}
     }}
 
-    set reserved_ipv6 {{
-        type ipv6_addr
+    set lan_ipv4 {{
+        type ipv4_addr
         flags interval
         elements = {{
-            ::/128,
-            ::1/128,
-            ::ffff:0:0/96,
-            64:ff9b::/96,
-            100::/64,
-            2001::/32,
-            2001:20::/28,
-            2001:db8::/32,
-            2002::/16,
-            fc00::/7,
-            fe80::/10,
-            ff00::/8
+            {lan_cidrs}
         }}
     }}
 
     chain dns_prerouting {{
-        type nat hook prerouting priority dstnat - 10; policy accept;
-        # Exclude loop prevention mark
-        meta mark {mark} return
+        type nat hook prerouting priority -110; policy accept;
+        meta nfproto ipv6 return
+        meta mark {routing_mark} return
+        meta mark {fwmark} return
+        ip saddr != @lan_ipv4 return
+        meta l4proto {{ tcp, udp }} th dport 53 redirect to :{dns_port}
+    }}
 
-        # Redirect DNS requests (UDP/TCP 53) to local sing-box DNS listener
+    chain dns_output {{
+        type nat hook output priority -110; policy accept;
+        meta nfproto ipv6 return
+        meta mark {routing_mark} return
+        meta mark {fwmark} return
         meta l4proto {{ tcp, udp }} th dport 53 redirect to :{dns_port}
     }}
 
     chain tproxy_prerouting {{
         type filter hook prerouting priority mangle - 10; policy accept;
-        # Exclude loopback interface
-        iif "lo" return
-
-        # Exclude loop prevention mark from sing-box
-        meta mark {mark} return
-
-        # Bypass reserved private addresses
+        meta nfproto ipv6 return
+        meta mark {routing_mark} return
+        meta mark {fwmark} return
+        ip saddr != @lan_ipv4 return
         ip daddr @reserved_ipv4 return
-        ip6 daddr @reserved_ipv6 return
-
-        # Exclude DNS (already handled in nat dstnat)
         meta l4proto {{ tcp, udp }} th dport 53 return
-
-        # Tproxy matching TCP and UDP traffic to sing-box
-        meta l4proto {{ tcp, udp }} tproxy to :{tproxy_port} meta mark set {mark} accept
+        meta l4proto {{ tcp, udp }} tproxy to :{tproxy_port} meta mark set {fwmark} accept
     }}
 
     chain tproxy_output {{
         type route hook output priority mangle - 10; policy accept;
-        # Exclude loop prevention mark
-        meta mark {mark} return
-
-        # Bypass reserved addresses
+        meta nfproto ipv6 return
+        meta mark {routing_mark} return
+        meta mark {fwmark} return
         ip daddr @reserved_ipv4 return
-        ip6 daddr @reserved_ipv6 return
-
-        # Exclude DNS queries
         meta l4proto {{ tcp, udp }} th dport 53 return
+        meta l4proto {{ tcp, udp }} meta mark set {fwmark}
+    }}
 
-        # Mark locally generated outbound traffic for policy routing
-        meta l4proto {{ tcp, udp }} meta mark set {mark}
+    chain tproxy_mark_out {{
+        type filter hook prerouting priority mangle; policy accept;
+        meta nfproto ipv6 return
+        meta mark {fwmark} meta l4proto {{ tcp, udp }} tproxy to :{tproxy_port} accept
+    }}
+
+    chain input_protect {{
+        type filter hook input priority filter; policy accept;
+        iif "lo" accept
+        ip saddr @lan_ipv4 accept
+        tcp dport {{ {mixed_port}, {tproxy_port}, {dns_port} }} reject
+        udp dport {{ {mixed_port}, {tproxy_port}, {dns_port} }} reject
     }}
 }}
 "#
         )
+    }
+
+    fn lan_cidrs(&self) -> Vec<String> {
+        if self.settings.lan_cidrs.is_empty() {
+            crate::network::lan::fallback_lan_cidrs()
+        } else {
+            self.settings.lan_cidrs.clone()
+        }
     }
 
     /// Applies the transparent proxy ruleset
@@ -125,7 +132,7 @@ impl<'a> NftablesManager<'a> {
         #[cfg(target_os = "linux")]
         {
             info!("Applying nftables ruleset for table 'inet {TABLE_NAME}'");
-            self.flush()?; // Clean up any pre-existing table first
+            self.flush()?;
 
             let mut child = Command::new("nft")
                 .arg("-f")
@@ -190,5 +197,93 @@ impl<'a> NftablesManager<'a> {
             debug!("Skipping nftables cleanup on non-Linux OS");
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::NetworkSettings;
+
+    fn ruleset() -> String {
+        NftablesManager::new(&NetworkSettings::default()).generate_ruleset()
+    }
+
+    #[test]
+    fn test_generates_lan_and_local_tproxy_rules() {
+        let rules = ruleset();
+        let defaults = NetworkSettings::default();
+        let fwmark = defaults.fwmark;
+        let routing_mark = defaults.routing_mark;
+
+        assert_ne!(fwmark, routing_mark);
+        assert!(rules.contains("set reserved_ipv4"));
+        assert!(rules.contains("chain tproxy_prerouting"));
+        assert!(rules.contains("chain tproxy_output"));
+        assert!(rules.contains("chain tproxy_mark_out"));
+        assert!(rules.contains("set lan_ipv4"));
+        assert!(rules.contains("ip saddr != @lan_ipv4 return"));
+        assert!(rules.contains("ip daddr @reserved_ipv4 return"));
+        assert!(rules.contains(&format!("meta mark {routing_mark} return")));
+        assert!(rules.contains(&format!("meta mark {fwmark} return")));
+        assert!(rules.contains(&format!(
+            "meta l4proto {{ tcp, udp }} tproxy to :7893 meta mark set {fwmark} accept"
+        )));
+        assert!(rules.contains(&format!(
+            "meta l4proto {{ tcp, udp }} meta mark set {fwmark}"
+        )));
+        assert!(rules.contains(&format!(
+            "meta mark {fwmark} meta l4proto {{ tcp, udp }} tproxy to :7893 accept"
+        )));
+        assert!(!rules.contains(&format!(
+            "meta mark {routing_mark} meta l4proto {{ tcp, udp }} tproxy to :7893 accept"
+        )));
+        assert!(!rules.contains(&format!("meta mark set {routing_mark}")));
+    }
+
+    #[test]
+    fn test_generates_private_and_local_dns_redirect() {
+        let rules = ruleset();
+        let defaults = NetworkSettings::default();
+
+        assert!(rules.contains("chain dns_prerouting"));
+        assert!(rules.contains("chain dns_output"));
+        assert!(rules.contains("type nat hook prerouting priority -110"));
+        assert!(rules.contains("type nat hook output priority -110"));
+        assert!(!rules.contains("priority dstnat"));
+        assert!(!rules.contains("255.255.255.255/32"));
+        assert!(rules.contains("redirect to :1053"));
+        assert!(rules.contains(&format!("meta mark {} return", defaults.routing_mark)));
+        assert!(rules.contains(&format!("meta mark {} return", defaults.fwmark)));
+    }
+
+    #[test]
+    fn test_rejects_wan_access_to_proxy_ports() {
+        let rules = ruleset();
+        assert!(rules.contains("chain input_protect"));
+        assert!(rules.contains("ip saddr @lan_ipv4 accept"));
+        assert!(rules.contains("tcp dport { 7890, 7893, 1053 } reject"));
+        assert!(rules.contains("udp dport { 7890, 7893, 1053 } reject"));
+    }
+
+    #[test]
+    fn test_uses_configured_lan_cidrs_as_source_allowlist() {
+        let settings = NetworkSettings {
+            lan_cidrs: vec!["192.168.5.0/24".to_string()],
+            ..NetworkSettings::default()
+        };
+        let rules = NftablesManager::new(&settings).generate_ruleset();
+        assert!(rules.contains("192.168.5.0/24"));
+        assert!(rules.contains("ip saddr != @lan_ipv4 return"));
+        assert!(!rules.contains("ip saddr != @reserved_ipv4 return"));
+    }
+
+    #[test]
+    fn test_skips_ipv6_and_does_not_bypass_loopback() {
+        let rules = ruleset();
+        assert!(rules.contains("meta nfproto ipv6 return"));
+        assert!(!rules.contains("iif \"lo\" return"));
+        assert!(!rules.contains("iif 'lo' return"));
+        assert!(rules.contains("iif \"lo\" accept"));
     }
 }

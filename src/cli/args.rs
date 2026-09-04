@@ -36,7 +36,7 @@ pub enum Commands {
     /// Query the current status of sing-box and network rules
     Status,
 
-    /// Configuration and template management utilities
+    /// Configuration management utilities
     #[command(subcommand)]
     Config(ConfigCommands),
 
@@ -49,21 +49,13 @@ pub struct RunArgs {
     /// Skip applying network routing and firewall rules (run in pure proxy mode)
     #[arg(long)]
     pub no_network: bool,
-
-    /// Force re-generating sing-box config before launch
-    #[arg(long)]
-    pub recompile_config: bool,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum ConfigCommands {
-    /// Generate sing-box config.json from template fragments
+    /// Load source JSON, overlay inbounds, and write the runtime config
     Generate {
-        /// Optional path to templates directory
-        #[arg(short, long)]
-        template_dir: Option<PathBuf>,
-
-        /// Output path for the merged config.json
+        /// Output path for the runtime config.json
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
@@ -81,4 +73,7 @@ pub enum ConfigCommands {
         #[arg(short, long, default_value = "canto.toml")]
         path: PathBuf,
     },
+
+    /// Print the generated nftables ruleset, including resolved LAN CIDRs
+    DumpNft,
 }

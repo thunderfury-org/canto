@@ -4,12 +4,11 @@ use tracing::debug;
 #[cfg(target_os = "linux")]
 use tracing::{info, warn};
 
-use crate::config::NetworkSettings;
-#[cfg(target_os = "linux")]
-use crate::config::ProxyMode;
-#[cfg(target_os = "linux")]
-use crate::error::CantoError;
-use crate::error::Result;
+use crate::config::{NetworkSettings, ProxyMode};
+use crate::error::{CantoError, Result};
+
+/// Policy routing table. Avoid 100 (clash/ShellCrash) and 253-255 (kernel).
+const ROUTING_TABLE_ID: u32 = 167;
 
 pub struct RouteManager<'a> {
     settings: &'a NetworkSettings,
@@ -22,22 +21,28 @@ impl<'a> RouteManager<'a> {
 
     /// Sets up policy routing rules and route tables
     pub fn setup(&self) -> Result<()> {
-        let _mark_hex = format!("{:#x}", self.settings.routing_mark);
-        let _table = self.settings.table_id.to_string();
+        match self.settings.mode {
+            ProxyMode::None => return Ok(()),
+            ProxyMode::Tun => {
+                return Err(CantoError::Config(
+                    "v1 only supports tproxy; network.mode = \"tun\" is not implemented"
+                        .to_string(),
+                ));
+            }
+            ProxyMode::Tproxy => {}
+        }
+
+        let mark_hex = format!("{:#x}", self.settings.fwmark);
+        let table = ROUTING_TABLE_ID.to_string();
 
         #[cfg(target_os = "linux")]
         {
-            info!(
-                "Configuring policy routing: mark {} -> table {}",
-                _mark_hex, _table
-            );
+            info!("Configuring policy routing: fwmark {mark_hex} -> table {table}");
 
-            // Clean previous rules first
             let _ = self.teardown();
 
-            // 1. Add ip rule for fwmark
             let rule_status = Command::new("ip")
-                .args(["rule", "add", "fwmark", &_mark_hex, "table", &_table])
+                .args(["rule", "add", "fwmark", &mark_hex, "table", &table])
                 .status()
                 .map_err(|e| CantoError::Network(format!("Failed to execute 'ip rule': {e}")))?;
 
@@ -45,27 +50,12 @@ impl<'a> RouteManager<'a> {
                 warn!("'ip rule add' returned non-zero exit status");
             }
 
-            // 2. Add default route in the dedicated table
-            let route_status = match self.settings.mode {
-                ProxyMode::Tproxy => Command::new("ip")
-                    .args([
-                        "route", "add", "local", "default", "dev", "lo", "table", &_table,
-                    ])
-                    .status(),
-                ProxyMode::Tun => Command::new("ip")
-                    .args([
-                        "route",
-                        "add",
-                        "default",
-                        "dev",
-                        &self.settings.tun_interface,
-                        "table",
-                        &_table,
-                    ])
-                    .status(),
-                ProxyMode::None => return Ok(()),
-            }
-            .map_err(|e| CantoError::Network(format!("Failed to execute 'ip route': {e}")))?;
+            let route_status = Command::new("ip")
+                .args([
+                    "route", "add", "local", "default", "dev", "lo", "table", &table,
+                ])
+                .status()
+                .map_err(|e| CantoError::Network(format!("Failed to execute 'ip route': {e}")))?;
 
             if !route_status.success() {
                 warn!("'ip route add' returned non-zero exit status");
@@ -78,7 +68,7 @@ impl<'a> RouteManager<'a> {
         #[cfg(not(target_os = "linux"))]
         {
             debug!(
-                "Skipping policy routing configuration (mark {_mark_hex}, table {_table}) on non-Linux OS"
+                "Skipping policy routing configuration (mark {mark_hex}, table {table}) on non-Linux OS"
             );
             Ok(())
         }
@@ -86,21 +76,19 @@ impl<'a> RouteManager<'a> {
 
     /// Removes policy routing rules and route entries
     pub fn teardown(&self) -> Result<()> {
-        let _mark_hex = format!("{:#x}", self.settings.routing_mark);
-        let _table = self.settings.table_id.to_string();
+        let mark_hex = format!("{:#x}", self.settings.fwmark);
+        let table = ROUTING_TABLE_ID.to_string();
 
         #[cfg(target_os = "linux")]
         {
-            debug!("Removing policy routing rules for table {_table}");
+            debug!("Removing policy routing rules for table {table}");
 
-            // Flush route in custom table
             let _ = Command::new("ip")
-                .args(["route", "flush", "table", &_table])
+                .args(["route", "flush", "table", &table])
                 .output();
 
-            // Delete ip rule
             let _ = Command::new("ip")
-                .args(["rule", "del", "fwmark", &_mark_hex, "table", &_table])
+                .args(["rule", "del", "fwmark", &mark_hex, "table", &table])
                 .output();
 
             Ok(())
@@ -108,7 +96,9 @@ impl<'a> RouteManager<'a> {
 
         #[cfg(not(target_os = "linux"))]
         {
-            debug!("Skipping policy routing teardown on non-Linux OS");
+            debug!(
+                "Skipping policy routing teardown (mark {mark_hex}, table {table}) on non-Linux OS"
+            );
             Ok(())
         }
     }

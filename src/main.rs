@@ -1,13 +1,13 @@
 use clap::Parser;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tracing::{Level, error, info};
 use tracing_subscriber::FmtSubscriber;
 
 use canto::cli::{Cli, Commands, ConfigCommands, RunArgs};
-use canto::config::{Settings, TemplateEngine};
-use canto::error::{CantoError, Result};
-use canto::network::NetworkGuard;
+use canto::config::{Settings, prepare_runtime_config, write_runtime_config};
+use canto::error::Result;
+use canto::network::{NetworkGuard, NftablesManager, resolve_lan_cidrs};
 use canto::supervisor::ProcessSupervisor;
 
 #[tokio::main]
@@ -53,22 +53,19 @@ async fn run_app(cli: Cli) -> Result<()> {
 async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
     info!("Starting canto orchestrator");
 
-    // Optional config generation from templates
-    if args.recompile_config
-        || (settings.template.enabled && !settings.singbox.config_path.exists())
-    {
-        info!("Compiling sing-box configuration from templates...");
-        compile_templates(&settings, None, None)?;
-    }
+    let apply_network = settings.network.should_apply_capture(args.no_network)?;
+    let runtime_path = write_overlay(&settings, None)?;
 
     let supervisor = ProcessSupervisor::new(
         settings.singbox.binary.clone(),
-        settings.singbox.config_path.clone(),
+        runtime_path,
         settings.canto.work_dir.clone(),
     );
 
-    // Apply network rules (RAII guard will tear them down upon drop)
-    let _network_guard = if settings.network.enabled && !args.no_network {
+    supervisor.verify_binary()?;
+    supervisor.check_config(None)?;
+
+    let _network_guard = if apply_network {
         Some(NetworkGuard::setup(settings.network.clone())?)
     } else {
         info!("Network rules disabled (pure proxy mode)");
@@ -97,6 +94,16 @@ async fn handle_stop(settings: Settings) -> Result<()> {
 async fn handle_status(settings: Settings) -> Result<()> {
     info!("Checking canto environment status...");
 
+    info!("sing-box source: {}", settings.singbox.source.display());
+    if settings.singbox.source.exists() {
+        info!("sing-box source: Found");
+    } else {
+        error!(
+            "sing-box source: Missing ({})",
+            settings.singbox.source.display()
+        );
+    }
+
     let supervisor = ProcessSupervisor::new(
         settings.singbox.binary.clone(),
         settings.singbox.config_path.clone(),
@@ -113,31 +120,36 @@ async fn handle_status(settings: Settings) -> Result<()> {
 
     if settings.singbox.config_path.exists() {
         info!(
-            "sing-box config: Found ({})",
+            "runtime config: Found ({})",
             settings.singbox.config_path.display()
         );
         let _ = supervisor.check_config(None);
     } else {
         info!(
-            "sing-box config: Not generated yet ({})",
+            "runtime config: Not generated yet ({})",
             settings.singbox.config_path.display()
         );
     }
 
     info!("Proxy mode: {:?}", settings.network.mode);
+    info!("tproxy fwmark: {:#x}", settings.network.fwmark);
     info!(
-        "Transparent routing mark: {:#x}",
+        "sing-box routing mark: {:#x}",
         settings.network.routing_mark
     );
+    match resolve_lan_cidrs(&settings.network.lan_cidrs) {
+        Ok(cidrs) => info!("LAN CIDRs: {}", cidrs.join(", ")),
+        Err(e) => error!("LAN CIDRs: {e}"),
+    }
     Ok(())
 }
 
 async fn handle_config(cmd: ConfigCommands, settings: Settings) -> Result<()> {
     match cmd {
-        ConfigCommands::Generate {
-            template_dir,
-            output,
-        } => compile_templates(&settings, template_dir.as_deref(), output.as_deref()),
+        ConfigCommands::Generate { output } => {
+            write_overlay(&settings, output.as_deref())?;
+            Ok(())
+        }
         ConfigCommands::Check { config } => {
             let supervisor = ProcessSupervisor::new(
                 settings.singbox.binary.clone(),
@@ -155,6 +167,13 @@ async fn handle_config(cmd: ConfigCommands, settings: Settings) -> Result<()> {
             );
             Ok(())
         }
+        ConfigCommands::DumpNft => {
+            let mut network = settings.network;
+            network.lan_cidrs = resolve_lan_cidrs(&network.lan_cidrs)?;
+            info!("LAN CIDRs: {}", network.lan_cidrs.join(", "));
+            print!("{}", NftablesManager::new(&network).generate_ruleset());
+            Ok(())
+        }
     }
 }
 
@@ -162,32 +181,13 @@ fn handle_clean_network(settings: Settings) -> Result<()> {
     NetworkGuard::teardown_manual(&settings.network)
 }
 
-fn compile_templates(
-    settings: &Settings,
-    override_dir: Option<&Path>,
-    override_output: Option<&Path>,
-) -> Result<()> {
-    let t_dir = override_dir.unwrap_or(&settings.template.template_dir);
-    let out_path = override_output.unwrap_or(&settings.singbox.config_path);
-
-    let template_paths: Vec<PathBuf> = settings
-        .template
-        .files
-        .iter()
-        .map(|f| t_dir.join(f))
-        .collect();
-
-    for p in &template_paths {
-        if !p.exists() {
-            return Err(CantoError::Config(format!(
-                "Required template file does not exist: {}",
-                p.display()
-            )));
-        }
-    }
-
-    let engine = TemplateEngine::new(settings.template.direct_domains.clone());
-    let merged = engine.merge_files(&template_paths)?;
-    TemplateEngine::write_to_file(&merged, out_path)?;
-    Ok(())
+fn write_overlay(settings: &Settings, output: Option<&Path>) -> Result<std::path::PathBuf> {
+    let out_path = output.unwrap_or(&settings.singbox.config_path);
+    info!(
+        "Loading source config from {}",
+        settings.singbox.source.display()
+    );
+    let runtime = prepare_runtime_config(settings)?;
+    write_runtime_config(&runtime, out_path)?;
+    Ok(out_path.to_path_buf())
 }
