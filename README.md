@@ -90,7 +90,7 @@ cargo run -- run --no-network
 
 ## Gateway check without a router
 
-Unit tests and `canto config dump-nft` do not send packets. `scripts/netns-check.sh` builds a LAN/gateway/WAN topology with network namespaces and checks tproxy hijack, local hijack, WAN port reject, and rule rollback.
+Unit tests and `canto config dump-nft` do not send packets. `scripts/netns-check.sh` builds a LAN/gateway/WAN topology with network namespaces and checks tproxy hijack, local hijack, WAN port reject, rule rollback, HTTP(S) source fetch, last-good cache, and refresh that restarts sing-box without tearing nftables. CI runs this on every pull request.
 
 On Linux as root:
 
