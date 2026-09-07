@@ -27,3 +27,4 @@ thiserror = "2.0"
 
 # Filesystem & directories
 dirs = "6.0"
+ureq = { version = "2", features = ["native-certs"] }

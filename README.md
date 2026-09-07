@@ -8,7 +8,7 @@ For the in-depth architectural breakdown and design principles, see [docs/DESIGN
 
 ## Key Features
 
-- **Source overlay**: Loads a complete sing-box JSON, replaces `inbounds` with mixed/tproxy/dns listeners, writes `route.default_mark`, and disables `auto_detect_interface`.
+- **Source overlay**: Loads a complete sing-box JSON from a local file or HTTP(S) URL, replaces `inbounds` with mixed/tproxy/dns listeners, writes `route.default_mark`, and disables `auto_detect_interface`. URL sources refresh on an interval; a failed refresh keeps the current process and nftables rules.
 - **Process Supervision**: Manages sing-box lifecycle with asynchronous streaming logs, configuration pre-flight validation, and graceful termination handling.
 - **Atomic Network Orchestration**: Employs `nftables` tables and Linux policy routing (`ip rule` / `ip route`) for LAN and local tproxy.
 - **Fail-safe Network Guard**: Implements RAII-based cleanup ensuring firewall rules and routing policies are rolled back on SIGINT/SIGTERM or process exit.
@@ -54,7 +54,7 @@ Generate a default `canto.toml`:
 cargo run -- config init
 ```
 
-Point `[singbox].source` at a complete sing-box JSON (for example `.data/config-with-tailscale.json`).
+Point `[singbox].source` at a complete sing-box JSON file or an HTTP(S) URL that serves one.
 
 ### 3. Check Status
 
@@ -110,6 +110,7 @@ docker run --rm --privileged -e CARGO_TARGET_DIR=/tmp/canto-target \
 Detailed technical documentation is available under `docs/`:
 - [System Architecture & Design Document (docs/DESIGN.md)](docs/DESIGN.md)
 - [Transparent inbound selection (docs/INBOUND.md)](docs/INBOUND.md)
+- [Replace ShellCrash on a test Linux gateway (docs/linux-test-gateway.md)](docs/linux-test-gateway.md)
 
 ## License
 

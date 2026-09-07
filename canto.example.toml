@@ -4,7 +4,9 @@ work_dir = "./run"
 [singbox]
 binary = "sing-box"
 source = ".data/config-with-tailscale.json"
+# source = "https://config.example/source.json"
 config_path = "./run/config.json"
+refresh_interval_secs = 86400
 
 [network]
 enabled = true

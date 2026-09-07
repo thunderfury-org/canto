@@ -20,9 +20,9 @@ canto 采用 Rust 开发，定位为专注于 **sing-box（1.13+）** 的无依�
 * **单静态二进制交付**：全静态链接（musl libc），无 glibc 或系统脚本解释器依赖。
 * **数据面与控制面分离**：数据面复用 sing-box；canto 作为控制面，负责网络编排、运行时覆盖和进程监督。
 * **原子化网络编排与 RAII 兜底**：使用 Linux 原生 `nftables` 与策略路由；`NetworkGuard` 在 SIGINT/SIGTERM 或进程退出时撤销规则。SIGKILL / OOM 无法走 Drop，需配合 systemd `ExecStop=canto clean-network`。
-* **源配置加载与启动覆盖**：启动必须提供完整 sing-box JSON 本地文件；canto 整段替换 `inbounds`，写入 `route.default_mark`，并关闭 `auto_detect_interface`，保证入站与 nftables 端口/防环标记对齐。
+* **源配置加载与启动覆盖**：启动必须提供完整 sing-box JSON（本地文件或 HTTP(S) URL）；canto 整段替换 `inbounds`，写入 `route.default_mark`，并关闭 `auto_detect_interface`，保证入站与 nftables 端口/防环标记对齐。URL 在运行中定时刷新：失败则保持当前进程与 nftables，成功则覆盖、check 并重启 sing-box。
 
-v1 不做订阅转换、模板合并、TUI、设备过滤、大陆 IP 绕过、IPv6 劫持或 HTTP 拉配置。
+v1 不做订阅转换、模板合并、TUI、设备过滤、大陆 IP 绕过或 IPv6 劫持。源配置可以是本地文件或 HTTP(S) URL。
 
 ---
 
@@ -54,7 +54,7 @@ canto
 
 ### 2.1 职责边界与协作流程
 1. **启动阶段**：CLI 读取 `canto.toml`。`--no-network` / `network.enabled = false` 跳过网络接管；抓包固定为 tproxy。
-2. **配置准备**：读取必填的 `[singbox].source` 本地文件，覆盖 inbound / `default_mark` / `hijack-dns` / `auto_detect_interface`，写出 `config_path`，再调用 `sing-box check`。
+2. **配置准备**：读取必填的 `[singbox].source`（本地文件或 HTTP(S) URL），覆盖 inbound / `default_mark` / `hijack-dns` / `auto_detect_interface`，写出 `config_path`，再调用 `sing-box check`。
 3. **网络接管**：check 通过后，`NetworkGuard` 配置策略路由和 `table inet canto`。
 4. **进程托管**：`ProcessSupervisor` 异步拉起 sing-box，消费 stdout/stderr。
 5. **退出与恢复**：SIGINT/SIGTERM 或子进程退出时，先停止 sing-box，再由 `NetworkGuard` Drop 删除 `inet canto` 表和策略路由。
@@ -131,13 +131,14 @@ DNS：
 
 ### 4.1 源配置
 
-`[singbox].source` 为必填本地文件路径。v1 不支持 HTTP(S) URL。
+`[singbox].source` 为必填源地址：本地文件路径或 `http://` / `https://` URL。URL 使用系统 CA，不配自定义 Header。上次成功的源配置缓存在 `work_dir/source-cache.json`；启动时拉不到且没有缓存则拒绝接管网络。
 
 `config_path` 是运行时输出路径。每次 `canto run` 与 `canto config generate` 都重新加载 `source`，覆盖后再写入。
 
 加载失败直接拒绝启动：
 * 未配置 `source`
 * 本地文件不存在、不可读或不是 JSON object
+* URL 拉不到且没有上次成功的源配置缓存
 
 即使 `source` 与 `config_path` 指向同一路径，也必须先完整读入内存，覆盖后再写回。
 
@@ -197,6 +198,7 @@ work_dir = "./run"
 binary = "sing-box"
 source = ".data/config-with-tailscale.json"
 config_path = "./run/config.json"
+refresh_interval_secs = 86400
 
 [network]
 enabled = true
@@ -263,7 +265,7 @@ Phase 1 已完成：本地完整 JSON、inbound 覆盖、tproxy 劫持局域网+
 
 ### 8.3 配置与节点
 
-* **HTTP(S) 拉源配置**：v1 只读本地 `source`。失败是否回退缓存要单独定。
+* **HTTP(S) 拉源配置**：已支持。自定义 Header、自签证书和订阅转换仍不做。
 * **订阅/provider**：`{My-}` 这类过滤不处理。节点必须预先写进完整 JSON。
 * **覆盖 `experimental.clash_api`**：源配置里有就保留；以后做改写时再加监听地址配置。当前不查延迟/流量。
 * **tun 模式**：以后做 `network.mode` 时切到 TUN + `auto_redirect`，缩小 canto 自己的 nftables，而不是优化现行 tproxy。源里的桌面 TUN 仍要 overlay，不能原样 `auto_route`。当前固定 tproxy，legacy `mode` / `bypass_cn_ips` 键忽略。详见 [INBOUND.md](INBOUND.md)。

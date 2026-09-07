@@ -31,16 +31,19 @@ impl Default for CantoSettings {
 #[serde(default)]
 pub struct SingBoxSettings {
     pub binary: PathBuf,
-    pub source: PathBuf,
+    pub source: String,
     pub config_path: PathBuf,
+    #[serde(default = "default_refresh_interval_secs")]
+    pub refresh_interval_secs: u64,
 }
 
 impl Default for SingBoxSettings {
     fn default() -> Self {
         Self {
             binary: PathBuf::from("sing-box"),
-            source: PathBuf::from(".data/config-with-tailscale.json"),
+            source: String::from(".data/config-with-tailscale.json"),
             config_path: PathBuf::from("./run/config.json"),
+            refresh_interval_secs: default_refresh_interval_secs(),
         }
     }
 }
@@ -99,6 +102,10 @@ fn default_mixed_port() -> u16 {
 
 fn default_routing_mark() -> u32 {
     0x67890
+}
+
+fn default_refresh_interval_secs() -> u64 {
+    24 * 60 * 60
 }
 
 impl NetworkSettings {
@@ -225,7 +232,8 @@ lan_cidrs = ["192.168.100.0/24"]
         .unwrap();
 
         assert_eq!(settings.canto.work_dir, PathBuf::from("./run"));
-        assert_eq!(settings.singbox.source, PathBuf::from("./upstream.json"));
+        assert_eq!(settings.singbox.source, "./upstream.json");
+        assert_eq!(settings.singbox.refresh_interval_secs, 24 * 60 * 60);
         assert!(settings.network.enabled);
         assert_eq!(settings.network.tproxy_port, 7893);
         assert_eq!(
@@ -233,5 +241,22 @@ lan_cidrs = ["192.168.100.0/24"]
             vec!["192.168.100.0/24".to_string()]
         );
         assert!(settings.network.should_apply_capture(false).unwrap());
+    }
+
+    #[test]
+    fn test_parses_url_source_and_refresh_interval() {
+        let settings: Settings = toml::from_str(
+            r#"
+[singbox]
+source = "https://config.example/source.json"
+refresh_interval_secs = 3600
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            settings.singbox.source,
+            "https://config.example/source.json"
+        );
+        assert_eq!(settings.singbox.refresh_interval_secs, 3600);
     }
 }
