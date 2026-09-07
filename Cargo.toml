@@ -11,7 +11,7 @@ license = "MIT"
 tokio = { version = "1", features = ["full"] }
 
 # CLI parsing
-clap = { version = "4", features = ["derive", "env"] }
+clap = { version = "4", features = ["derive"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -20,10 +20,9 @@ toml = "0.8"
 
 # Logging & tracing
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
 
 # Error handling
-anyhow = "1.0"
 thiserror = "2.0"
 
 # Filesystem & directories

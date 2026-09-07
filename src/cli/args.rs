@@ -27,12 +27,6 @@ pub enum Commands {
     /// Run canto in foreground, managing sing-box and transparent proxy rules
     Run(RunArgs),
 
-    /// Start canto background daemon
-    Start,
-
-    /// Stop canto service and flush transparent proxy rules
-    Stop,
-
     /// Query the current status of sing-box and network rules
     Status,
 

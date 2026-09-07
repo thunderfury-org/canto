@@ -42,8 +42,6 @@ async fn run_app(cli: Cli) -> Result<()> {
 
     match cli.command {
         Commands::Run(args) => handle_run(args, settings).await,
-        Commands::Start => handle_start(settings).await,
-        Commands::Stop => handle_stop(settings).await,
         Commands::Status => handle_status(settings).await,
         Commands::Config(cmd) => handle_config(cmd, settings).await,
         Commands::CleanNetwork => handle_clean_network(settings),
@@ -74,20 +72,6 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
 
     supervisor.run_supervised().await?;
     info!("canto shutdown complete");
-    Ok(())
-}
-
-async fn handle_start(_settings: Settings) -> Result<()> {
-    info!(
-        "canto is designed to run in foreground under system supervisors (systemd, OpenRC, Docker)."
-    );
-    info!("Tip: To run as a background service, register 'canto run' in your systemd service.");
-    Ok(())
-}
-
-async fn handle_stop(settings: Settings) -> Result<()> {
-    info!("Stopping canto service and flushing rules");
-    NetworkGuard::teardown_manual(&settings.network)?;
     Ok(())
 }
 
@@ -131,7 +115,6 @@ async fn handle_status(settings: Settings) -> Result<()> {
         );
     }
 
-    info!("Proxy mode: {:?}", settings.network.mode);
     info!("tproxy fwmark: {:#x}", settings.network.fwmark);
     info!(
         "sing-box routing mark: {:#x}",
