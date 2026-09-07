@@ -247,20 +247,22 @@ macOS 开发机只生成并校验规则，不执行 `nft` / `ip`。
 
 ## 8. 未来演进路线（Roadmap）
 
-Phase 1 已完成：本地完整 JSON、inbound 覆盖、tproxy 劫持局域网+本机、预检后再接管网络、SIGINT/SIGTERM 清规则。下面只列还没做的。
+已完成：本地或 HTTP(S) 源配置、inbound 覆盖、tproxy 劫持局域网+本机、预检后再接管网络、URL 刷新保活、SIGINT/SIGTERM 清规则。`scripts/netns-check.sh` 在 CI 里覆盖劫持、回滚、URL 源、缓存和刷新。
+
+下面只列还没做的。愿景仍在 GitHub #3；下一刀开工前单独开 issue，不要在 #3 里续写。
 
 ### 8.1 上路由器前
 
-这些不补的话，真实网关和 ShellCrash 仍会有可见偏差。
-
-* **Linux 真机验收**：用 `scripts/netns-check.sh`（OrbStack/Docker 也可）验证 LAN/本机劫持、WAN 端口拒绝和退出回滚。`dump-nft` 只核对文本。`nft_tproxy` 现在只尝试 modprobe，内建失败不阻断，真正缺能力时仍在 `nft -f` 时报错。
+* **OpenWrt 真机交付**（[#7](https://github.com/thunderfury-org/canto/issues/7)）：netns/CI 不能代替路由器。要 musl 包、procd/自启、fw4 协同，以及在一台长期跑的 OpenWrt 上先停 ShellCrash 再接管。canto 仍不自动卸载 ShellCrash。见 [linux-test-gateway.md](linux-test-gateway.md)。
+* **nft_tproxy**：现在只尝试 modprobe，内建失败不阻断，真正缺能力时仍在 `nft -f` 时报错。
+* **集成测试**：网关回归目前是 `scripts/netns-check.sh`。再加第二、第三类网关场景时，把断言迁到 `tests/netns_gateway.rs`，脚本只留搭拓扑。
 
 ### 8.2 网关语义补齐
 
-* **大陆 IP 绕过**：优先用 sing-box `action: bypass`（预匹配、需 `auto_redirect`）或 TUN `route_exclude_address_set`，不要再造一张 cnip nft 表。exclude set 会跳过后续规则和 Clash Global。详见 [INBOUND.md](INBOUND.md)。
-* **常用端口**：ShellCrash 默认只劫持 22/80/443/8080/8443。canto 劫持全部 TCP/UDP。
-* **IPv6 劫持**：现在链首 return。要做就需要 IPv6 策略路由和来源网段。
-* **设备过滤**：MAC/IP 黑白名单。
+* **大陆 IP 绕过**：跟 TUN + `auto_redirect` 一起做（[#6](https://github.com/thunderfury-org/canto/issues/6)）。用 sing-box `action: bypass` 或 TUN `route_exclude_address_set`，不要再造一张 cnip nft 表。exclude set 会跳过后续规则和 Clash Global。详见 [INBOUND.md](INBOUND.md)。
+* **常用端口**：ShellCrash 默认只劫持 22/80/443/8080/8443。canto 劫持全部 TCP/UDP。另开 issue。
+* **IPv6 劫持**：现在链首 return。要做就需要 IPv6 策略路由和来源网段。另开 issue。
+* **设备过滤**：MAC/IP 黑白名单。另开 issue。
 * **WAN 防护**：`input_protect` 已挡 mixed/tproxy/dns；仍缺 Clash API、自定义放行端口、fw4 协同。
 
 ### 8.3 配置与节点
@@ -268,11 +270,11 @@ Phase 1 已完成：本地完整 JSON、inbound 覆盖、tproxy 劫持局域网+
 * **HTTP(S) 拉源配置**：已支持。自定义 Header、自签证书和订阅转换仍不做。
 * **订阅/provider**：`{My-}` 这类过滤不处理。节点必须预先写进完整 JSON。
 * **覆盖 `experimental.clash_api`**：源配置里有就保留；以后做改写时再加监听地址配置。当前不查延迟/流量。
-* **tun 模式**：以后做 `network.mode` 时切到 TUN + `auto_redirect`，缩小 canto 自己的 nftables，而不是优化现行 tproxy。源里的桌面 TUN 仍要 overlay，不能原样 `auto_route`。当前固定 tproxy，legacy `mode` / `bypass_cn_ips` 键忽略。详见 [INBOUND.md](INBOUND.md)。
+* **tun 模式**（[#6](https://github.com/thunderfury-org/canto/issues/6)）：`network.mode` 切到 TUN + `auto_redirect`，缩小 canto 自己的 nftables，而不是优化现行 tproxy。源里的桌面 TUN 仍要 overlay，不能原样 `auto_route`。当前固定 tproxy，legacy `mode` / `bypass_cn_ips` 键忽略。详见 [INBOUND.md](INBOUND.md)。
 
 ### 8.4 运行与交付
 
-* **安装与自启**：现在只有文档里的 systemd 示例，没有安装脚本、procd/OpenRC、交叉编译发布。
+* **安装与自启**：现在只有文档里的 systemd 示例和 OpenWrt 交付 issue（[#7](https://github.com/thunderfury-org/canto/issues/7)）。没有安装脚本、procd/OpenRC、交叉编译发布。
 * **内核与面板**：不下载 sing-box，不安装 Dashboard。
-* **TUI / 交互菜单**：不替代 `crash` 选单。
-* **daemon**：v1 不实现；用 systemd 托管 `canto run`。
+* **TUI / 交互菜单**：不替代 `crash` 选单。可视化编辑器和 SSH 舰队仍是 #3 里的远期，不进当前产品线。
+* **daemon**：v1 不实现；用 systemd 或 procd 托管 `canto run`。
