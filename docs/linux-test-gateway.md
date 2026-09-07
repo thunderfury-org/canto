@@ -1,6 +1,6 @@
 # 在测试 Linux 上替换 ShellCrash
 
-本轮第一台网关是 Linux 虚拟机或云服务器，不是生产 OpenWrt。canto 只创建和销毁 `table inet canto` 与策略路由表 167，不卸载 ShellCrash。
+本轮第一台网关是 Linux 虚拟机或云服务器，不是生产 OpenWrt。家里路由器上的 ShellCrash 还带大陆 IP 绕过、docker、常用端口、仅 TCP；这些没稳之前不上 OpenWrt（ADR 0007）。canto 只创建和销毁 `table inet canto` 与策略路由表 167，不卸载 ShellCrash。
 
 ## 1. 停掉 ShellCrash
 

@@ -251,17 +251,19 @@ macOS 开发机只生成并校验规则，不执行 `nft` / `ip`。
 
 下面只列还没做的。愿景仍在 GitHub #3；下一刀开工前单独开 issue，不要在 #3 里续写。
 
-### 8.1 上路由器前
+上家里的 OpenWrt 之前，必须先对齐现网 ShellCrash 用法（ADR 0007）：绕过大陆 IP，劫持局域网 / 本机 / docker，常用端口，只劫持 TCP。不要求劫持 UDP，不要求代理 IPv6。因此 OpenWrt 真机交付不是下一步。
 
-* **OpenWrt 真机交付**（[#7](https://github.com/thunderfury-org/canto/issues/7)）：netns/CI 不能代替路由器。要 musl 包、procd/自启、fw4 协同，以及在一台长期跑的 OpenWrt 上先停 ShellCrash 再接管。canto 仍不自动卸载 ShellCrash。见 [linux-test-gateway.md](linux-test-gateway.md)。
+### 8.1 上路由器前（阻塞生产）
+
+* **大陆 IP 绕过**（[#6](https://github.com/thunderfury-org/canto/issues/6)）：跟 TUN + `auto_redirect` 一起做。用 sing-box `action: bypass` 或 TUN `route_exclude_address_set`，不要再造一张 cnip nft 表。详见 [INBOUND.md](INBOUND.md)。
+* **劫持范围与端口**（[#8](https://github.com/thunderfury-org/canto/issues/8)）：局域网、本机、docker 可独立开关；端口可选常用 / 全部 / 自定义；可只劫持 TCP。现网 ShellCrash 是 redirect 仅 TCP，canto 对外语义对齐「只劫持 TCP」，inbound 实现按 INBOUND.md 选。
 * **nft_tproxy**：现在只尝试 modprobe，内建失败不阻断，真正缺能力时仍在 `nft -f` 时报错。
 * **集成测试**：网关回归目前是 `scripts/netns-check.sh`。再加第二、第三类网关场景时，把断言迁到 `tests/netns_gateway.rs`，脚本只留搭拓扑。
 
-### 8.2 网关语义补齐
+### 8.2 网关语义（不挡当前路由器）
 
-* **大陆 IP 绕过**：跟 TUN + `auto_redirect` 一起做（[#6](https://github.com/thunderfury-org/canto/issues/6)）。用 sing-box `action: bypass` 或 TUN `route_exclude_address_set`，不要再造一张 cnip nft 表。exclude set 会跳过后续规则和 Clash Global。详见 [INBOUND.md](INBOUND.md)。
-* **常用端口**：ShellCrash 默认只劫持 22/80/443/8080/8443。canto 劫持全部 TCP/UDP。另开 issue。
-* **IPv6 劫持**：现在链首 return。要做就需要 IPv6 策略路由和来源网段。另开 issue。
+* **IPv6 劫持**：现网不代理 IPv6；canto 链首 return。要做另开 issue。
+* **UDP 劫持**：现网不劫持 UDP。#8 要求能关掉；默认打开全部 UDP 不是生产目标。
 * **设备过滤**：MAC/IP 黑白名单。另开 issue。
 * **WAN 防护**：`input_protect` 已挡 mixed/tproxy/dns；仍缺 Clash API、自定义放行端口、fw4 协同。
 
@@ -274,7 +276,8 @@ macOS 开发机只生成并校验规则，不执行 `nft` / `ip`。
 
 ### 8.4 运行与交付
 
-* **安装与自启**：现在只有文档里的 systemd 示例和 OpenWrt 交付 issue（[#7](https://github.com/thunderfury-org/canto/issues/7)）。没有安装脚本、procd/OpenRC、交叉编译发布。
+* **OpenWrt 真机交付**（[#7](https://github.com/thunderfury-org/canto/issues/7)）：排在 #6 和 #8 之后。netns/CI 不能代替路由器。要 musl 包、procd/自启、fw4 协同；先停 ShellCrash 再接管。canto 仍不自动卸载 ShellCrash。见 [linux-test-gateway.md](linux-test-gateway.md)。
+* **安装与自启**：现在只有文档里的 systemd 示例。没有安装脚本、procd/OpenRC、交叉编译发布。
 * **内核与面板**：不下载 sing-box，不安装 Dashboard。
 * **TUI / 交互菜单**：不替代 `crash` 选单。可视化编辑器和 SSH 舰队仍是 #3 里的远期，不进当前产品线。
 * **daemon**：v1 不实现；用 systemd 或 procd 托管 `canto run`。
