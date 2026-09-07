@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -89,19 +90,20 @@ impl ProcessSupervisor {
     ///
     /// Network rules are owned by the caller and must stay installed across
     /// restarts. A false return keeps the current child running.
-    pub async fn run_supervised_with_refresh<F>(
+    pub async fn run_supervised_with_refresh<F, Fut>(
         &self,
         interval: Duration,
         mut on_refresh: F,
     ) -> Result<()>
     where
-        F: FnMut() -> bool,
+        F: FnMut() -> Fut,
+        Fut: Future<Output = bool>,
     {
         loop {
             let mut child = self.spawn_child().await?;
             loop {
                 if Self::wait_or_refresh(&mut child, interval).await? {
-                    if tokio::task::block_in_place(&mut on_refresh) {
+                    if on_refresh().await {
                         info!("Source refresh applied; restarting sing-box");
                         Self::terminate_child(&mut child).await;
                         break;

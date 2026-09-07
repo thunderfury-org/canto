@@ -1,6 +1,6 @@
 use serde_json::Value;
 use std::fmt;
-use std::io::Read;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing::info;
@@ -48,45 +48,53 @@ impl fmt::Display for SourceLocator {
 }
 
 pub trait SourceFetcher {
-    fn fetch(&self, url: &str) -> Result<String>;
+    fn fetch(&self, url: &str) -> impl Future<Output = Result<String>> + Send;
 }
 
 #[derive(Debug, Clone)]
 pub struct HttpFetcher {
+    client: reqwest::Client,
     timeout: Duration,
 }
 
 impl Default for HttpFetcher {
     fn default() -> Self {
         Self {
+            client: reqwest::Client::new(),
             timeout: Duration::from_secs(30),
         }
     }
 }
 
 impl SourceFetcher for HttpFetcher {
-    fn fetch(&self, url: &str) -> Result<String> {
-        let response = ureq::builder()
-            .timeout(self.timeout)
-            .build()
+    async fn fetch(&self, url: &str) -> Result<String> {
+        let response = self
+            .client
             .get(url)
-            .call()
+            .timeout(self.timeout)
+            .send()
+            .await
             .map_err(|e| CantoError::Config(format!("Failed to fetch source from '{url}': {e}")))?;
 
-        let mut body = String::new();
-        response
-            .into_reader()
-            .take(MAX_SOURCE_BYTES + 1)
-            .read_to_string(&mut body)
-            .map_err(|e| CantoError::Config(format!("Failed to read source from '{url}': {e}")))?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(CantoError::Config(format!(
+                "Failed to fetch source from '{url}': HTTP {status}"
+            )));
+        }
 
-        if body.len() as u64 > MAX_SOURCE_BYTES {
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| CantoError::Config(format!("Failed to read source from '{url}': {e}")))?;
+        if bytes.len() as u64 > MAX_SOURCE_BYTES {
             return Err(CantoError::Config(format!(
                 "Source from '{url}' exceeds {MAX_SOURCE_BYTES} bytes"
             )));
         }
 
-        Ok(body)
+        String::from_utf8(bytes.to_vec())
+            .map_err(|e| CantoError::Config(format!("Source from '{url}' is not valid UTF-8: {e}")))
     }
 }
 
@@ -110,16 +118,17 @@ pub fn write_source_cache(cache_path: &Path, source: &Value) -> Result<()> {
     Ok(())
 }
 
-pub fn obtain_source(
+pub async fn obtain_source(
     locator: &SourceLocator,
     cache_path: &Path,
     fetcher: &impl SourceFetcher,
 ) -> Result<Value> {
     match locator {
         SourceLocator::Url(url) => {
-            let live = fetcher
-                .fetch(url)
-                .and_then(|body| parse_source_object(&body, url));
+            let live = match fetcher.fetch(url).await {
+                Ok(body) => parse_source_object(&body, url),
+                Err(err) => Err(err),
+            };
             match live {
                 Ok(value) => Ok(value),
                 Err(err) => read_source_cache(cache_path).ok_or(err),
@@ -129,10 +138,13 @@ pub fn obtain_source(
     }
 }
 
-pub fn prepare_runtime_config(settings: &Settings, fetcher: &impl SourceFetcher) -> Result<Value> {
+pub async fn prepare_runtime_config(
+    settings: &Settings,
+    fetcher: &impl SourceFetcher,
+) -> Result<Value> {
     let locator = SourceLocator::parse(&settings.singbox.source)?;
     let cache = source_cache_path(&settings.canto.work_dir);
-    let source = obtain_source(&locator, &cache, fetcher)?;
+    let source = obtain_source(&locator, &cache, fetcher).await?;
     apply_runtime_overlay(source, &settings.network)
 }
 
@@ -141,13 +153,13 @@ pub enum RefreshOutcome {
     Apply { raw: Value, overlayed: Value },
 }
 
-pub fn refresh_source(
+pub async fn refresh_source(
     locator: &SourceLocator,
     fetcher: &impl SourceFetcher,
     network: &NetworkSettings,
     check: impl Fn(&Value) -> Result<()>,
 ) -> RefreshOutcome {
-    let live = match live_source(locator, fetcher) {
+    let live = match live_source(locator, fetcher).await {
         Ok(value) => value,
         Err(_) => return RefreshOutcome::KeepCurrent,
     };
@@ -164,9 +176,9 @@ pub fn refresh_source(
     }
 }
 
-fn live_source(locator: &SourceLocator, fetcher: &impl SourceFetcher) -> Result<Value> {
+async fn live_source(locator: &SourceLocator, fetcher: &impl SourceFetcher) -> Result<Value> {
     match locator {
-        SourceLocator::Url(url) => parse_source_object(&fetcher.fetch(url)?, url),
+        SourceLocator::Url(url) => parse_source_object(&fetcher.fetch(url).await?, url),
         SourceLocator::File(path) => load_source(path),
     }
 }
@@ -201,7 +213,7 @@ mod tests {
     }
 
     impl SourceFetcher for FakeFetcher {
-        fn fetch(&self, url: &str) -> Result<String> {
+        async fn fetch(&self, url: &str) -> Result<String> {
             match self.responses.get(url) {
                 Some(Ok(body)) => Ok(body.clone()),
                 Some(Err(message)) => Err(CantoError::Config(message.clone())),
@@ -221,8 +233,8 @@ mod tests {
         ))
     }
 
-    #[test]
-    fn test_obtains_json_object_from_url() {
+    #[tokio::test]
+    async fn test_obtains_json_object_from_url() {
         let url = "https://config.example/source.json";
         let fetcher = FakeFetcher {
             responses: HashMap::from([(
@@ -232,7 +244,7 @@ mod tests {
         };
         let cache = temp_cache("url_ok");
         let locator = SourceLocator::parse(url).unwrap();
-        let source = obtain_source(&locator, &cache, &fetcher).unwrap();
+        let source = obtain_source(&locator, &cache, &fetcher).await.unwrap();
         fs::remove_file(&cache).ok();
 
         assert_eq!(
@@ -241,8 +253,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_url_fetch_failure_uses_cache() {
+    #[tokio::test]
+    async fn test_url_fetch_failure_uses_cache() {
         let url = "https://config.example/source.json";
         let fetcher = FakeFetcher {
             responses: HashMap::from([(url.to_string(), Err("connection refused".to_string()))]),
@@ -254,7 +266,7 @@ mod tests {
         )
         .unwrap();
         let locator = SourceLocator::parse(url).unwrap();
-        let source = obtain_source(&locator, &cache, &fetcher).unwrap();
+        let source = obtain_source(&locator, &cache, &fetcher).await.unwrap();
         fs::remove_file(&cache).ok();
 
         assert_eq!(
@@ -263,8 +275,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_url_fetch_failure_without_cache_errors() {
+    #[tokio::test]
+    async fn test_url_fetch_failure_without_cache_errors() {
         let url = "https://config.example/source.json";
         let fetcher = FakeFetcher {
             responses: HashMap::from([(url.to_string(), Err("connection refused".to_string()))]),
@@ -272,14 +284,15 @@ mod tests {
         let cache = temp_cache("url_nocache");
         let locator = SourceLocator::parse(url).unwrap();
         let err = obtain_source(&locator, &cache, &fetcher)
+            .await
             .unwrap_err()
             .to_string();
         fs::remove_file(&cache).ok();
         assert!(err.contains("connection refused"), "{err}");
     }
 
-    #[test]
-    fn test_file_source_loads_local_json() {
+    #[tokio::test]
+    async fn test_file_source_loads_local_json() {
         let path = temp_cache("file_source");
         fs::write(
             &path,
@@ -290,7 +303,9 @@ mod tests {
             responses: HashMap::new(),
         };
         let locator = SourceLocator::parse(path.to_str().unwrap()).unwrap();
-        let source = obtain_source(&locator, &temp_cache("unused"), &fetcher).unwrap();
+        let source = obtain_source(&locator, &temp_cache("unused"), &fetcher)
+            .await
+            .unwrap();
         fs::remove_file(&path).ok();
         assert_eq!(
             source,
@@ -298,8 +313,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_refresh_keeps_current_when_fetch_fails() {
+    #[tokio::test]
+    async fn test_refresh_keeps_current_when_fetch_fails() {
         let url = "https://config.example/source.json";
         let fetcher = FakeFetcher {
             responses: HashMap::from([(url.to_string(), Err("timeout".to_string()))]),
@@ -307,12 +322,13 @@ mod tests {
         let locator = SourceLocator::parse(url).unwrap();
         let outcome = refresh_source(&locator, &fetcher, &NetworkSettings::default(), |_| {
             panic!("check should not run when fetch fails")
-        });
+        })
+        .await;
         assert!(matches!(outcome, RefreshOutcome::KeepCurrent));
     }
 
-    #[test]
-    fn test_refresh_keeps_current_when_check_fails() {
+    #[tokio::test]
+    async fn test_refresh_keeps_current_when_check_fails() {
         let url = "https://config.example/source.json";
         let fetcher = FakeFetcher {
             responses: HashMap::from([(
@@ -323,12 +339,13 @@ mod tests {
         let locator = SourceLocator::parse(url).unwrap();
         let outcome = refresh_source(&locator, &fetcher, &NetworkSettings::default(), |_| {
             Err(CantoError::Config("sing-box check failed".to_string()))
-        });
+        })
+        .await;
         assert!(matches!(outcome, RefreshOutcome::KeepCurrent));
     }
 
-    #[test]
-    fn test_refresh_applies_overlayed_config_when_check_passes() {
+    #[tokio::test]
+    async fn test_refresh_applies_overlayed_config_when_check_passes() {
         let url = "https://config.example/source.json";
         let fetcher = FakeFetcher {
             responses: HashMap::from([(
@@ -337,7 +354,8 @@ mod tests {
             )]),
         };
         let locator = SourceLocator::parse(url).unwrap();
-        let outcome = refresh_source(&locator, &fetcher, &NetworkSettings::default(), |_| Ok(()));
+        let outcome =
+            refresh_source(&locator, &fetcher, &NetworkSettings::default(), |_| Ok(())).await;
         let RefreshOutcome::Apply { raw, overlayed } = outcome else {
             panic!("expected Apply, got KeepCurrent");
         };
@@ -347,8 +365,8 @@ mod tests {
         assert_eq!(overlayed["route"]["default_mark"], 0x67890);
     }
 
-    #[test]
-    fn test_write_source_cache_roundtrips_for_fetch_fallback() {
+    #[tokio::test]
+    async fn test_write_source_cache_roundtrips_for_fetch_fallback() {
         let url = "https://config.example/source.json";
         let fetcher = FakeFetcher {
             responses: HashMap::from([(url.to_string(), Err("offline".to_string()))]),
@@ -360,7 +378,7 @@ mod tests {
         )
         .unwrap();
         let locator = SourceLocator::parse(url).unwrap();
-        let source = obtain_source(&locator, &cache, &fetcher).unwrap();
+        let source = obtain_source(&locator, &cache, &fetcher).await.unwrap();
         fs::remove_file(&cache).ok();
         assert_eq!(
             source,
@@ -368,8 +386,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_url_invalid_json_uses_cache() {
+    #[tokio::test]
+    async fn test_url_invalid_json_uses_cache() {
         let url = "https://config.example/source.json";
         let fetcher = FakeFetcher {
             responses: HashMap::from([(url.to_string(), Ok("not-json".to_string()))]),
@@ -381,7 +399,7 @@ mod tests {
         )
         .unwrap();
         let locator = SourceLocator::parse(url).unwrap();
-        let source = obtain_source(&locator, &cache, &fetcher).unwrap();
+        let source = obtain_source(&locator, &cache, &fetcher).await.unwrap();
         fs::remove_file(&cache).ok();
         assert_eq!(
             source,
