@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Simulate a LAN gateway with network namespaces and verify canto tproxy.
+# Simulate a LAN gateway with network namespaces and verify canto tproxy,
+# URL source fetch, last-good cache, and refresh-without-tearing-nft.
 #
 # Requires Linux + root, nft, ip, python3, curl, and a sing-box binary.
 #
@@ -21,9 +22,14 @@ WAN_GW="1.2.3.1"
 WAN_HOST="1.2.3.2"
 WAN_NET="1.2.3.0/24"
 SING_BOX_VERSION="${SING_BOX_VERSION:-1.13.3}"
+SOURCE_HTTP_PORT="18080"
+REFRESH_SECS="2"
 
 CANTO_PID=""
 HTTP_PID=""
+SOURCE_HTTP_PID=""
+CANTO_BIN=""
+SING_BOX=""
 
 log() { printf '==> %s\n' "$*" >&2; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -88,7 +94,8 @@ download_sing_box_tar() {
     rm -f "$file"
     for url in "${mirrors[@]}"; do
         log "downloading sing-box from ${url}"
-        if curl -fL --retry 4 --retry-delay 2 --retry-all-errors --connect-timeout 20             -o "$file" "$url"; then
+        if curl -fL --retry 4 --retry-delay 2 --retry-all-errors --connect-timeout 20 \
+            -o "$file" "$url"; then
             [[ -s "$file" ]] && return 0
         fi
     done
@@ -145,23 +152,36 @@ ensure_canto() {
     fail "canto binary not found; set CANTO_BIN or run on a rust image"
 }
 
+stop_pid() {
+    local pid="${1:-}"
+    [[ -n "$pid" ]] || return 0
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -TERM "$pid" 2>/dev/null || true
+        local i
+        for i in $(seq 1 20); do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 0.2
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+            kill -KILL "$pid" 2>/dev/null || true
+        fi
+        wait "$pid" 2>/dev/null || true
+    fi
+}
+
 cleanup() {
-    if [[ -n "${CANTO_PID:-}" ]] && kill -0 "$CANTO_PID" 2>/dev/null; then
-        kill -TERM "$CANTO_PID" 2>/dev/null || true
-        sleep 1
-        kill -KILL "$CANTO_PID" 2>/dev/null || true
-        wait "$CANTO_PID" 2>/dev/null || true
-    fi
-    if [[ -n "${HTTP_PID:-}" ]] && kill -0 "$HTTP_PID" 2>/dev/null; then
-        kill -TERM "$HTTP_PID" 2>/dev/null || true
-    fi
+    stop_pid "${CANTO_PID:-}"
+    CANTO_PID=""
+    stop_pid "${HTTP_PID:-}"
+    HTTP_PID=""
+    stop_pid "${SOURCE_HTTP_PID:-}"
+    SOURCE_HTTP_PID=""
     for ns in "$NS_LAN" "$NS_GW" "$NS_WAN"; do
         ip netns del "$ns" 2>/dev/null || true
     done
     ip link del veth-lan 2>/dev/null || true
     ip link del veth-wan 2>/dev/null || true
 }
-trap cleanup EXIT
 
 setup_netns() {
     ip netns add "$NS_LAN"
@@ -197,24 +217,52 @@ setup_netns() {
     "
 }
 
-write_configs() {
-    local sing_box="$1"
-    mkdir -p "$WORKDIR/run"
-    cat >"$WORKDIR/source.json" <<'JSON'
+source_json() {
+    local level="$1"
+    cat <<JSON
 {
-  "log": { "level": "info", "timestamp": true },
+  "log": { "level": "${level}", "timestamp": true },
   "outbounds": [{ "type": "direct", "tag": "direct" }],
   "route": { "final": "direct" }
 }
 JSON
+}
+
+write_file_source_config() {
+    mkdir -p "$WORKDIR/run"
+    source_json info >"$WORKDIR/source.json"
     cat >"$WORKDIR/canto.toml" <<EOF
 [canto]
 work_dir = "$WORKDIR/run"
 
 [singbox]
-binary = "$sing_box"
+binary = "$SING_BOX"
 source = "$WORKDIR/source.json"
 config_path = "$WORKDIR/run/config.json"
+
+[network]
+enabled = true
+tproxy_port = 7893
+dns_port = 1053
+mixed_port = 7890
+fwmark = 424081
+routing_mark = 424080
+lan_cidrs = ["$LAN_NET"]
+EOF
+}
+
+write_url_source_config() {
+    mkdir -p "$WORKDIR/http" "$WORKDIR/run"
+    source_json info >"$WORKDIR/http/source.json"
+    cat >"$WORKDIR/canto.toml" <<EOF
+[canto]
+work_dir = "$WORKDIR/run"
+
+[singbox]
+binary = "$SING_BOX"
+source = "http://127.0.0.1:${SOURCE_HTTP_PORT}/source.json"
+config_path = "$WORKDIR/run/config.json"
+refresh_interval_secs = ${REFRESH_SECS}
 
 [network]
 enabled = true
@@ -238,6 +286,63 @@ wait_for_listen() {
     return 1
 }
 
+wait_for_log() {
+    local needle="$1"
+    local i
+    for i in $(seq 1 40); do
+        if grep -F -q "$needle" "$WORKDIR/canto.log"; then
+            return 0
+        fi
+        sleep 0.5
+    done
+    return 1
+}
+
+nft_present() {
+    ip netns exec "$NS_GW" nft list table inet canto >/dev/null 2>&1
+}
+
+start_canto() {
+    : >"$WORKDIR/canto.log"
+    ip netns exec "$NS_GW" "$CANTO_BIN" --config "$WORKDIR/canto.toml" run \
+        >"$WORKDIR/canto.log" 2>&1 &
+    CANTO_PID=$!
+    if ! wait_for_listen; then
+        sed -n '1,120p' "$WORKDIR/canto.log" >&2 || true
+        fail "canto/sing-box did not listen on :7893"
+    fi
+}
+
+stop_canto() {
+    stop_pid "${CANTO_PID:-}"
+    CANTO_PID=""
+    sleep 0.2
+}
+
+start_source_http() {
+    stop_pid "${SOURCE_HTTP_PID:-}"
+    SOURCE_HTTP_PID=""
+    ip netns exec "$NS_GW" python3 -m http.server "$SOURCE_HTTP_PORT" \
+        --bind 127.0.0.1 --directory "$WORKDIR/http" \
+        >"$WORKDIR/source-http.log" 2>&1 &
+    SOURCE_HTTP_PID=$!
+    local i
+    for i in $(seq 1 20); do
+        if ip netns exec "$NS_GW" curl -fsS -m 1 \
+            "http://127.0.0.1:${SOURCE_HTTP_PORT}/source.json" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.1
+    done
+    sed -n '1,80p' "$WORKDIR/source-http.log" >&2 || true
+    fail "source HTTP server did not start on :${SOURCE_HTTP_PORT}"
+}
+
+stop_source_http() {
+    stop_pid "${SOURCE_HTTP_PID:-}"
+    SOURCE_HTTP_PID=""
+}
+
 need_linux
 install_deps
 mkdir -p "$WORKDIR"
@@ -254,7 +359,7 @@ log "canto=$CANTO_BIN"
 log "sing-box=$SING_BOX"
 
 setup_netns
-write_configs "$SING_BOX"
+write_file_source_config
 
 ip netns exec "$NS_WAN" python3 -m http.server 80 --bind "$WAN_HOST" >/tmp/canto-wan-http.log 2>&1 &
 HTTP_PID=$!
@@ -267,15 +372,10 @@ fi
 pass "LAN cannot reach WAN before canto"
 
 log "starting canto in gateway netns"
-ip netns exec "$NS_GW" "$CANTO_BIN" --config "$WORKDIR/canto.toml" run >"$WORKDIR/canto.log" 2>&1 &
-CANTO_PID=$!
-if ! wait_for_listen; then
-    sed -n '1,80p' "$WORKDIR/canto.log" >&2 || true
-    fail "canto/sing-box did not listen on :7893"
-fi
+start_canto
 pass "canto listening in gw netns"
 
-if ! ip netns exec "$NS_GW" nft list table inet canto >/dev/null; then
+if ! nft_present; then
     sed -n '1,80p' "$WORKDIR/canto.log" >&2 || true
     fail "nft table inet canto not installed"
 fi
@@ -298,21 +398,58 @@ if ip netns exec "$NS_WAN" curl -fsS -m 3 "http://${WAN_GW}:7890/" >/dev/null 2>
 fi
 pass "WAN cannot open mixed port"
 
-kill -TERM "$CANTO_PID"
-for i in $(seq 1 20); do
-    kill -0 "$CANTO_PID" 2>/dev/null || break
-    sleep 0.2
-done
-if kill -0 "$CANTO_PID" 2>/dev/null; then
-    kill -KILL "$CANTO_PID" 2>/dev/null || true
-fi
-wait "$CANTO_PID" 2>/dev/null || true
-CANTO_PID=""
-sleep 0.2
-
-if ip netns exec "$NS_GW" nft list table inet canto >/dev/null 2>&1; then
+stop_canto
+if nft_present; then
     fail "nft table inet canto still present after stop"
 fi
 pass "nft table removed after SIGTERM"
+
+log "checking URL source, refresh, and last-good cache"
+write_url_source_config
+start_source_http
+start_canto
+pass "canto listening from URL source"
+
+if [[ ! -f "$WORKDIR/run/source-cache.json" ]]; then
+    sed -n '1,120p' "$WORKDIR/canto.log" >&2 || true
+    fail "last-good source cache was not written"
+fi
+pass "last-good source cache written"
+
+source_json warn >"$WORKDIR/http/source.json"
+if ! wait_for_log "Source refresh applied; restarting sing-box"; then
+    sed -n '1,160p' "$WORKDIR/canto.log" >&2 || true
+    fail "URL refresh did not restart sing-box"
+fi
+if ! nft_present; then
+    fail "nft table inet canto was torn down during refresh"
+fi
+if ! wait_for_listen; then
+    fail "sing-box did not listen after refresh restart"
+fi
+pass "refresh restarts sing-box and keeps nftables"
+
+stop_source_http
+if ! wait_for_log "Source refresh kept the current configuration"; then
+    sed -n '1,160p' "$WORKDIR/canto.log" >&2 || true
+    fail "failed URL refresh did not keep the current process"
+fi
+if ! nft_present; then
+    fail "nft table inet canto missing after failed refresh"
+fi
+if ! wait_for_listen; then
+    fail "sing-box stopped after failed refresh"
+fi
+pass "failed refresh keeps sing-box and nftables"
+
+stop_canto
+if nft_present; then
+    fail "nft table inet canto still present after URL-run stop"
+fi
+
+start_canto
+pass "canto started from last-good cache while URL was down"
+
+stop_canto
 
 log "all netns checks passed"

@@ -1,5 +1,7 @@
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::select;
@@ -80,6 +82,86 @@ impl ProcessSupervisor {
     /// Callers must verify the binary and check the config before applying
     /// network rules and invoking this method.
     pub async fn run_supervised(&self) -> Result<()> {
+        let mut child = self.spawn_child().await?;
+        Self::wait_for_exit_or_signal(&mut child).await
+    }
+
+    /// Supervises sing-box and restarts it when `on_refresh` returns true.
+    ///
+    /// Network rules are owned by the caller and must stay installed across
+    /// restarts. A false return keeps the current child running.
+    pub async fn run_supervised_with_refresh<F, Fut>(
+        &self,
+        interval: Duration,
+        mut on_refresh: F,
+    ) -> Result<()>
+    where
+        F: FnMut() -> Fut,
+        Fut: Future<Output = bool>,
+    {
+        loop {
+            let mut child = self.spawn_child().await?;
+            loop {
+                if Self::wait_or_refresh(&mut child, interval).await? {
+                    if on_refresh().await {
+                        info!("Source refresh applied; restarting sing-box");
+                        Self::terminate_child(&mut child).await;
+                        break;
+                    }
+                    continue;
+                }
+                return Ok(());
+            }
+        }
+    }
+
+    /// Returns `true` when the refresh timer fired, `false` on signal after
+    /// the child was terminated. Child crash is returned as an error.
+    async fn wait_or_refresh(child: &mut Child, interval: Duration) -> Result<bool> {
+        #[cfg(unix)]
+        {
+            let mut sigterm = tokio::signal::unix::signal(
+                tokio::signal::unix::SignalKind::terminate(),
+            )
+            .map_err(|e| CantoError::Process(format!("Failed to listen for SIGTERM: {e}")))?;
+
+            select! {
+                status = child.wait() => {
+                    Self::map_exit_status(status)?;
+                    Ok(false)
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    info!("Received SIGINT (Ctrl+C). Terminating sing-box gracefully...");
+                    Self::terminate_child(child).await;
+                    Ok(false)
+                }
+                _ = sigterm.recv() => {
+                    info!("Received SIGTERM. Terminating sing-box gracefully...");
+                    Self::terminate_child(child).await;
+                    Ok(false)
+                }
+                _ = tokio::time::sleep(interval) => Ok(true)
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            select! {
+                status = child.wait() => {
+                    Self::map_exit_status(status)?;
+                    Ok(false)
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    info!("Received SIGINT (Ctrl+C). Terminating sing-box gracefully...");
+                    Self::terminate_child(child).await;
+                    Ok(false)
+                }
+                _ = tokio::time::sleep(interval) => Ok(true)
+            }
+        }
+    }
+
+    async fn spawn_child(&self) -> Result<Child> {
         if !self.config_path.exists() {
             return Err(CantoError::Config(format!(
                 "Config file '{}' does not exist. Did you generate it first?",
@@ -131,7 +213,7 @@ impl ProcessSupervisor {
             });
         }
 
-        Self::wait_for_exit_or_signal(&mut child).await
+        Ok(child)
     }
 
     async fn wait_for_exit_or_signal(child: &mut Child) -> Result<()> {

@@ -49,3 +49,27 @@ jobs:
 
       - name: Build release binary
         run: cargo build --release
+
+  netns:
+    name: Gateway netns
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Build debug binary
+        run: cargo build
+
+      - name: Install nftables and iproute
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nftables iproute2 python3 curl procps
+
+      - name: Run netns gateway checks
+        run: |
+          sudo env CANTO_BIN="${{ github.workspace }}/target/debug/canto" \
+            ./scripts/netns-check.sh
+

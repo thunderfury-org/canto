@@ -4,7 +4,6 @@ use std::path::Path;
 use tracing::info;
 
 use crate::config::NetworkSettings;
-use crate::config::Settings;
 use crate::error::{CantoError, Result};
 
 const MIXED_IN: &str = "mixed-in";
@@ -41,12 +40,6 @@ pub fn load_source(path: &Path) -> Result<Value> {
     }
 
     Ok(value)
-}
-
-/// Reads `[singbox].source`, applies the runtime overlay, and returns the result.
-pub fn prepare_runtime_config(settings: &Settings) -> Result<Value> {
-    let source = load_source(&settings.singbox.source)?;
-    apply_runtime_overlay(source, &settings.network)
 }
 
 /// Writes pretty-printed JSON to `output_path`, creating parent directories as needed.
