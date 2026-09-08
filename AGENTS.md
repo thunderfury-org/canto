@@ -53,3 +53,17 @@ canto 是基于 Rust (Edition 2024) 构建的 sing-box 透明代理与配置编�
   - 附带清晰的变更背景、改动点与自测验证说明。
   - 若涉及网络防火墙或进程监督改动，须提供异常退出场景下的网络状态恢复验证。
   - CI 检查项（`cargo check`、`cargo test`、`cargo clippy`）必须全绿。
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues (`thunderfury-org/canto`) via `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout (`CONTEXT.md` and `docs/adr/` at the repo root). See `docs/agents/domain.md`.
