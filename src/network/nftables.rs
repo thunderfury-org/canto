@@ -11,6 +11,8 @@ use crate::error::Result;
 
 pub const TABLE_NAME: &str = "canto";
 pub const TABLE_FAMILY: &str = "inet";
+/// Default docker bridge only. Do not glob `br-*`; OpenWrt LAN is `br-lan`.
+const DOCKER_IIFNAME: &str = "docker0";
 
 pub struct NftablesManager<'a> {
     settings: &'a NetworkSettings,
@@ -29,6 +31,7 @@ impl<'a> NftablesManager<'a> {
         let fwmark = self.settings.fwmark;
         let routing_mark = self.settings.routing_mark;
         let lan_cidrs = self.lan_cidrs().join(",\n            ");
+        let docker_iif = DOCKER_IIFNAME;
 
         let proxy_ports_set = match self.settings.ports.ports() {
             Some(ports) => {
@@ -96,7 +99,7 @@ impl<'a> NftablesManager<'a> {
                         r#"        meta nfproto ipv6 return
         meta mark {routing_mark} return
         meta mark {fwmark} return
-        iifname {{ "docker0", "br-*" }} goto dns_prerouting_redirect
+        iifname "{docker_iif}" goto dns_prerouting_redirect
         ip saddr @lan_ipv4 goto dns_prerouting_redirect
         return"#
                     ),
@@ -107,7 +110,6 @@ impl<'a> NftablesManager<'a> {
                         r#"        meta nfproto ipv6 return
         meta mark {routing_mark} return
         meta mark {fwmark} return
-        iifname {{ "docker0", "br-*" }} return
         ip saddr != @lan_ipv4 return
         meta l4proto {{ tcp, udp }} th dport 53 redirect to :{dns_port}"#
                     ),
@@ -118,7 +120,7 @@ impl<'a> NftablesManager<'a> {
                         r#"        meta nfproto ipv6 return
         meta mark {routing_mark} return
         meta mark {fwmark} return
-        iifname != {{ "docker0", "br-*" }} return
+        iifname != "{docker_iif}" return
         meta l4proto {{ tcp, udp }} th dport 53 redirect to :{dns_port}"#
                     ),
                 ),
@@ -141,7 +143,7 @@ impl<'a> NftablesManager<'a> {
                         r#"        meta nfproto ipv6 return
         meta mark {routing_mark} return
         meta mark {fwmark} return
-        iifname {{ "docker0", "br-*" }} goto tproxy_prerouting_capture
+        iifname "{docker_iif}" goto tproxy_prerouting_capture
         ip saddr @lan_ipv4 goto tproxy_prerouting_capture
         return"#
                     ),
@@ -152,7 +154,6 @@ impl<'a> NftablesManager<'a> {
                         r#"        meta nfproto ipv6 return
         meta mark {routing_mark} return
         meta mark {fwmark} return
-        iifname {{ "docker0", "br-*" }} return
         ip saddr != @lan_ipv4 return
         ip daddr @reserved_ipv4 return
         meta l4proto {{ tcp, udp }} th dport 53 return
@@ -165,7 +166,7 @@ impl<'a> NftablesManager<'a> {
                         r#"        meta nfproto ipv6 return
         meta mark {routing_mark} return
         meta mark {fwmark} return
-        iifname != {{ "docker0", "br-*" }} return
+        iifname != "{docker_iif}" return
         ip daddr @reserved_ipv4 return
         meta l4proto {{ tcp, udp }} th dport 53 return
         {capture_prerouting_rule}"#
@@ -205,9 +206,9 @@ impl<'a> NftablesManager<'a> {
         };
 
         let docker_protect_rule = if self.settings.docker {
-            "        iifname { \"docker0\", \"br-*\" } accept\n"
+            format!("        iifname \"{docker_iif}\" accept\n")
         } else {
-            ""
+            String::new()
         };
 
         format!(
@@ -370,6 +371,10 @@ mod tests {
         NftablesManager::new(&NetworkSettings::default()).generate_ruleset()
     }
 
+    fn assert_no_bridge_glob(rules: &str) {
+        assert!(!rules.contains("br-*"));
+    }
+
     #[test]
     fn test_generates_default_intent_rules() {
         let rules = ruleset();
@@ -381,8 +386,8 @@ mod tests {
         assert!(rules.contains("set reserved_ipv4"));
         assert!(rules.contains("set lan_ipv4"));
         assert!(rules.contains("set proxy_ports"));
-        assert!(rules.contains("chain dns_prerouting_redirect"));
-        assert!(rules.contains("chain tproxy_prerouting_capture"));
+        assert!(!rules.contains("chain dns_prerouting_redirect"));
+        assert!(!rules.contains("chain tproxy_prerouting_capture"));
         assert!(rules.contains("chain dns_prerouting"));
         assert!(rules.contains("chain dns_output"));
         assert!(rules.contains("chain tproxy_prerouting"));
@@ -390,11 +395,10 @@ mod tests {
         assert!(rules.contains("chain tproxy_mark_out"));
         assert!(rules.contains("chain input_protect"));
 
-        // Scope routing: LAN + Docker by default
-        assert!(rules.contains(r#"iifname { "docker0", "br-*" } goto tproxy_prerouting_capture"#));
-        assert!(rules.contains(r#"ip saddr @lan_ipv4 goto tproxy_prerouting_capture"#));
-        assert!(rules.contains(r#"iifname { "docker0", "br-*" } goto dns_prerouting_redirect"#));
-        assert!(rules.contains(r#"ip saddr @lan_ipv4 goto dns_prerouting_redirect"#));
+        // Default scope is LAN only; docker0 is not hijacked.
+        assert!(rules.contains("ip saddr != @lan_ipv4 return"));
+        assert!(!rules.contains(r#"iifname "docker0""#));
+        assert_no_bridge_glob(&rules);
 
         // TCP only by default (udp = false)
         assert!(rules.contains(&format!(
@@ -411,9 +415,9 @@ mod tests {
         assert!(rules.contains("meta l4proto { tcp, udp } th dport 53 redirect to :1053"));
         assert!(rules.contains("meta l4proto { tcp, udp } th dport 53 return"));
 
-        // Protection allows both LAN and Docker
+        // Protection allows LAN, not docker
         assert!(rules.contains("ip saddr @lan_ipv4 accept"));
-        assert!(rules.contains(r#"iifname { "docker0", "br-*" } accept"#));
+        assert!(!rules.contains(r#"iifname "docker0" accept"#));
     }
 
     #[test]
@@ -465,9 +469,27 @@ mod tests {
         let rules = NftablesManager::new(&settings).generate_ruleset();
 
         assert!(!rules.contains("chain tproxy_prerouting_capture"));
-        assert!(rules.contains(r#"iifname { "docker0", "br-*" } return"#));
+        assert!(!rules.contains(r#"iifname "docker0""#));
         assert!(rules.contains("ip saddr != @lan_ipv4 return"));
-        assert!(!rules.contains(r#"iifname { "docker0", "br-*" } accept"#));
+        assert!(!rules.contains(r#"iifname "docker0" accept"#));
+        assert_no_bridge_glob(&rules);
+    }
+
+    #[test]
+    fn test_enables_docker0_when_configured_true() {
+        let settings = NetworkSettings {
+            docker: true,
+            lan: true,
+            ..NetworkSettings::default()
+        };
+        let rules = NftablesManager::new(&settings).generate_ruleset();
+
+        assert!(rules.contains("chain tproxy_prerouting_capture"));
+        assert!(rules.contains(r#"iifname "docker0" goto tproxy_prerouting_capture"#));
+        assert!(rules.contains(r#"ip saddr @lan_ipv4 goto tproxy_prerouting_capture"#));
+        assert!(rules.contains(r#"iifname "docker0" goto dns_prerouting_redirect"#));
+        assert!(rules.contains(r#"iifname "docker0" accept"#));
+        assert_no_bridge_glob(&rules);
     }
 
     #[test]
@@ -480,8 +502,9 @@ mod tests {
         let rules = NftablesManager::new(&settings).generate_ruleset();
 
         assert!(!rules.contains("chain tproxy_prerouting_capture"));
-        assert!(rules.contains(r#"iifname != { "docker0", "br-*" } return"#));
+        assert!(rules.contains(r#"iifname != "docker0" return"#));
         assert!(!rules.contains("ip saddr @lan_ipv4 accept"));
+        assert_no_bridge_glob(&rules);
     }
 
     #[test]

@@ -158,7 +158,7 @@ pub struct NetworkSettings {
     pub lan: bool,
     #[serde(default = "default_true")]
     pub local: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_false")]
     pub docker: bool,
 
     // Traffic controls
@@ -182,7 +182,7 @@ impl Default for NetworkSettings {
             lan_cidrs: Vec::new(),
             lan: true,
             local: true,
-            docker: true,
+            docker: false,
             tcp: true,
             udp: false,
             ports: PortsFilter::Common,
@@ -384,7 +384,7 @@ lan_cidrs = ["192.168.100.0/24"]
         );
         assert!(settings.network.lan);
         assert!(settings.network.local);
-        assert!(settings.network.docker);
+        assert!(!settings.network.docker);
         assert!(settings.network.tcp);
         assert!(!settings.network.udp);
         assert_eq!(settings.network.ports, PortsFilter::Common);
