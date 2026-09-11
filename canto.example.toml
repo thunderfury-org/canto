@@ -10,10 +10,18 @@ refresh_interval_secs = 86400
 
 [network]
 enabled = true
-tproxy_port = 7893
-dns_port = 1053
+lan = true
+local = true
+docker = false
+tcp = true
+udp = false
+ports = "common"
+bypass_cn = true
 mixed_port = 7890
-fwmark = 424081
-routing_mark = 424080
-# empty = auto-detect on Linux, RFC1918 fallback otherwise
+# empty = auto-detect LAN interfaces on Linux
 lan_cidrs = []
+# mode = "tproxy"          # TUN 默认；tproxy 是逃生口
+# tproxy_port = 7893       # 仅 tproxy
+# dns_port = 1053          # 仅 tproxy
+# fwmark = 424081          # 仅 tproxy
+# routing_mark = 424080    # 仅 tproxy
