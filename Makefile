@@ -32,7 +32,7 @@ lint: fmt-check clippy ## 综合代码风格与静态质量检查
 
 verify: lint test ## 运行提交前综合验证 (lint + test)
 
-netns-check: ## 网关 netns 全量检查（Linux root：tproxy、URL 源、刷新、缓存）
+netns-check: ## 网关 netns 全量检查（Linux root：TUN、bypass、tproxy 回归、URL 源、刷新、缓存）
 	./scripts/netns-check.sh
 
 clean: ## 清理构建产物与缓存

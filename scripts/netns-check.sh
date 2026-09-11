@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Simulate a LAN gateway with network namespaces and verify canto tproxy,
-# URL source fetch, last-good cache, and refresh-without-tearing-nft.
+# Simulate a LAN gateway with network namespaces and verify canto TUN
+# auto_redirect, CN/port bypass, tproxy escape hatch, URL source fetch,
+# last-good cache, and refresh.
 #
 # Requires Linux + root, nft, ip, python3, curl, and a sing-box binary.
 #
@@ -17,9 +18,10 @@ NS_WAN="canto-check-wan"
 LAN_GW="192.168.100.1"
 LAN_HOST="192.168.100.2"
 LAN_NET="192.168.100.0/24"
-# Must NOT be in reserved_ipv4, otherwise tproxy bypasses it as "LAN dest".
 WAN_GW="1.2.3.1"
 WAN_HOST="1.2.3.2"
+WAN_CN="9.9.9.10"
+WAN_PROXY="9.9.9.9"
 WAN_NET="1.2.3.0/24"
 SING_BOX_VERSION="${SING_BOX_VERSION:-1.13.3}"
 SOURCE_HTTP_PORT="18080"
@@ -28,9 +30,11 @@ REFRESH_SECS="2"
 CANTO_PID=""
 HTTP_PID=""
 HTTP_8000_PID=""
+HTTP_CN_PID=""
 SOURCE_HTTP_PID=""
 CANTO_BIN=""
 SING_BOX=""
+WAIT_MODE="tun"
 
 log() { printf '==> %s\n' "$*" >&2; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -92,7 +96,6 @@ download_sing_box_tar() {
         "https://mirror.ghproxy.com/${rel}"
     )
     local url
-    rm -f "$file"
     for url in "${mirrors[@]}"; do
         log "downloading sing-box from ${url}"
         if curl -fL --retry 4 --retry-delay 2 --retry-all-errors --connect-timeout 20 \
@@ -177,8 +180,11 @@ cleanup() {
     HTTP_PID=""
     stop_pid "${HTTP_8000_PID:-}"
     HTTP_8000_PID=""
+    stop_pid "${HTTP_CN_PID:-}"
+    HTTP_CN_PID=""
     stop_pid "${SOURCE_HTTP_PID:-}"
     SOURCE_HTTP_PID=""
+    ip netns exec "$NS_GW" nft delete table inet masq 2>/dev/null || true
     for ns in "$NS_LAN" "$NS_GW" "$NS_WAN"; do
         ip netns del "$ns" 2>/dev/null || true
     done
@@ -216,8 +222,22 @@ setup_netns() {
     ip netns exec "$NS_WAN" bash -c "
         ip link set lo up
         ip addr add ${WAN_HOST}/24 dev veth-wan
+        ip addr add ${WAN_PROXY}/32 dev veth-wan
+        ip addr add ${WAN_CN}/32 dev veth-wan
         ip link set veth-wan up
     "
+}
+
+setup_masquerade() {
+    ip netns exec "$NS_GW" nft -f - <<'NFT'
+table inet masq {
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        ip saddr 192.168.100.0/24 tcp dport 8000 oifname "veth-wan-gw" masquerade
+        ip saddr 192.168.100.0/24 ip daddr 9.9.9.10 oifname "veth-wan-gw" masquerade
+    }
+}
+NFT
 }
 
 source_json() {
@@ -226,14 +246,27 @@ source_json() {
 {
   "log": { "level": "${level}", "timestamp": true },
   "outbounds": [{ "type": "direct", "tag": "direct" }],
-  "route": { "final": "direct" }
+  "route": {
+    "final": "direct",
+    "rule_set": [{
+      "tag": "cnip",
+      "type": "inline",
+      "rules": [{ "ip_cidr": ["${WAN_CN}/32"] }]
+    }],
+    "rules": [
+      { "action": "sniff" },
+      { "ip_cidr": ["${WAN_CN}/32"], "action": "reject" },
+      { "port": 8000, "action": "reject" },
+      { "rule_set": ["cnip"], "outbound": "direct" }
+    ]
+  }
 }
 JSON
 }
 
-write_file_source_config() {
+write_canto_toml() {
+    local extra="$1"
     mkdir -p "$WORKDIR/run"
-    source_json info >"$WORKDIR/source.json"
     cat >"$WORKDIR/canto.toml" <<EOF
 [canto]
 work_dir = "$WORKDIR/run"
@@ -251,7 +284,18 @@ mixed_port = 7890
 fwmark = 424081
 routing_mark = 424080
 lan_cidrs = ["$LAN_NET"]
+${extra}
 EOF
+}
+
+write_file_source_config() {
+    source_json debug >"$WORKDIR/source.json"
+    write_canto_toml ""
+}
+
+write_tproxy_config() {
+    source_json info >"$WORKDIR/source.json"
+    write_canto_toml $'mode = "tproxy"\nbypass_cn = false'
 }
 
 write_url_source_config() {
@@ -278,12 +322,21 @@ lan_cidrs = ["$LAN_NET"]
 EOF
 }
 
-wait_for_listen() {
+wait_for_ready() {
     local i
     for i in $(seq 1 40); do
-        if ip netns exec "$NS_GW" bash -c 'ss -lntu | grep -q ":7893"'; then
-            return 0
-        fi
+        case "$WAIT_MODE" in
+            tun)
+                if ip netns exec "$NS_GW" bash -c "ip link show canto >/dev/null 2>&1 || ss -lntu | grep -q ':7890'"; then
+                    return 0
+                fi
+                ;;
+            tproxy)
+                if ip netns exec "$NS_GW" bash -c 'ss -lntu | grep -q ":7893"'; then
+                    return 0
+                fi
+                ;;
+        esac
         sleep 0.25
     done
     return 1
@@ -301,8 +354,12 @@ wait_for_log() {
     return 1
 }
 
-nft_present() {
+nft_canto_present() {
     ip netns exec "$NS_GW" nft list table inet canto >/dev/null 2>&1
+}
+
+nft_singbox_present() {
+    ip netns exec "$NS_GW" nft list table inet sing-box >/dev/null 2>&1
 }
 
 start_canto() {
@@ -310,9 +367,9 @@ start_canto() {
     ip netns exec "$NS_GW" "$CANTO_BIN" --config "$WORKDIR/canto.toml" run \
         >"$WORKDIR/canto.log" 2>&1 &
     CANTO_PID=$!
-    if ! wait_for_listen; then
-        sed -n '1,120p' "$WORKDIR/canto.log" >&2 || true
-        fail "canto/sing-box did not listen on :7893"
+    if ! wait_for_ready; then
+        sed -n '1,160p' "$WORKDIR/canto.log" >&2 || true
+        fail "canto/sing-box did not become ready (mode=${WAIT_MODE})"
     fi
 }
 
@@ -364,45 +421,66 @@ log "sing-box=$SING_BOX"
 setup_netns
 write_file_source_config
 
-ip netns exec "$NS_WAN" python3 -m http.server 80 --bind "$WAN_HOST" >/tmp/canto-wan-http.log 2>&1 &
+ip netns exec "$NS_WAN" python3 -m http.server 80 --bind "$WAN_PROXY" >/tmp/canto-wan-http.log 2>&1 &
 HTTP_PID=$!
-ip netns exec "$NS_WAN" python3 -m http.server 8000 --bind "$WAN_HOST" >/tmp/canto-wan-http-8000.log 2>&1 &
+ip netns exec "$NS_WAN" python3 -m http.server 8000 --bind "$WAN_PROXY" >/tmp/canto-wan-http-8000.log 2>&1 &
 HTTP_8000_PID=$!
+ip netns exec "$NS_WAN" python3 -m http.server 80 --bind "$WAN_CN" >/tmp/canto-wan-cn-http.log 2>&1 &
+HTTP_CN_PID=$!
 sleep 0.3
 
-log "expect LAN curl to fail before canto (no MASQUERADE)"
-if ip netns exec "$NS_LAN" curl -fsS -m 2 "http://${WAN_HOST}/" >/dev/null 2>&1; then
-    fail "LAN reached WAN before canto; topology is leaking"
+log "expect LAN curl to fail before masquerade"
+if ip netns exec "$NS_LAN" curl -fsS -m 2 "http://${WAN_PROXY}/" >/dev/null 2>&1; then
+    fail "LAN reached WAN before masquerade; topology is leaking"
 fi
-pass "LAN cannot reach WAN before canto"
+pass "LAN cannot reach WAN before masquerade"
 
-log "starting canto in gateway netns"
+setup_masquerade
+if ip netns exec "$NS_LAN" curl -fsS -m 2 "http://${WAN_PROXY}/" >/dev/null 2>&1; then
+    fail "LAN reached non-CN :80 via masquerade; hijack test would be inconclusive"
+fi
+if ! ip netns exec "$NS_LAN" curl -fsS -m 5 "http://${WAN_PROXY}:8000/" >/dev/null; then
+    fail "LAN masquerade to WAN :8000 failed"
+fi
+pass "masquerade covers :8000 but not non-CN :80"
+
+WAIT_MODE="tun"
+log "starting canto TUN path in gateway netns"
 start_canto
-pass "canto listening in gw netns"
+pass "canto TUN ready in gw netns"
 
-if ! nft_present; then
-    sed -n '1,80p' "$WORKDIR/canto.log" >&2 || true
-    fail "nft table inet canto not installed"
-fi
-pass "nft table inet canto exists"
-
-if ! ip netns exec "$NS_LAN" curl -fsS -m 5 "http://${WAN_HOST}/" >/dev/null; then
+if nft_canto_present; then
     sed -n '1,120p' "$WORKDIR/canto.log" >&2 || true
-    fail "LAN tproxy curl http://${WAN_HOST}/ failed"
+    fail "TUN path installed leftover table inet canto"
 fi
-pass "LAN client reaches WAN via tproxy"
+pass "TUN path has no inet canto table"
 
-if ip netns exec "$NS_LAN" curl -fsS -m 2 "http://${WAN_HOST}:8000/" >/dev/null 2>&1; then
-    fail "LAN client reached unproxied port 8000 under common ports"
+if ! ip netns exec "$NS_LAN" curl -fsS -m 5 "http://${WAN_PROXY}/" >/dev/null; then
+    sed -n '1,160p' "$WORKDIR/canto.log" >&2 || true
+    echo '--- runtime config ---' >&2
+    sed -n '1,220p' "$WORKDIR/run/config.json" >&2 || true
+    ip netns exec "$NS_GW" nft list ruleset >&2 || true
+    fail "LAN TUN curl http://${WAN_PROXY}/ failed"
 fi
-pass "LAN client cannot reach port 8000 under common ports"
+pass "LAN client reaches non-CN :80 via hijack"
 
-if ! ip netns exec "$NS_GW" curl -fsS -m 5 "http://${WAN_HOST}/" >/dev/null; then
-    sed -n '1,120p' "$WORKDIR/canto.log" >&2 || true
-    fail "local tproxy curl from gw failed"
+if ! ip netns exec "$NS_LAN" curl -fsS -m 5 "http://${WAN_PROXY}:8000/" >/dev/null; then
+    sed -n '1,160p' "$WORKDIR/canto.log" >&2 || true
+    fail "LAN curl http://${WAN_PROXY}:8000/ failed; expected kernel forward (sing-box would reject 8000)"
 fi
-pass "gateway process reaches WAN via local tproxy"
+pass "LAN :8000 forwards without entering sing-box"
 
+if ! ip netns exec "$NS_LAN" curl -fsS -m 5 "http://${WAN_CN}/" >/dev/null; then
+    sed -n '1,160p' "$WORKDIR/canto.log" >&2 || true
+    fail "LAN curl http://${WAN_CN}/ failed; expected CN bypass (sing-box would reject CN IP)"
+fi
+pass "LAN CN :80 forwards without entering sing-box"
+
+if ! ip netns exec "$NS_GW" curl -fsS -m 5 "http://${WAN_PROXY}/" >/dev/null; then
+    sed -n '1,160p' "$WORKDIR/canto.log" >&2 || true
+    fail "local TUN curl from gw failed"
+fi
+pass "gateway process reaches WAN via TUN"
 
 if ip netns exec "$NS_WAN" curl -fsS -m 3 "http://${WAN_GW}:7890/" >/dev/null 2>&1; then
     fail "WAN was able to connect to mixed port 7890"
@@ -410,10 +488,13 @@ fi
 pass "WAN cannot open mixed port"
 
 stop_canto
-if nft_present; then
-    fail "nft table inet canto still present after stop"
+if nft_canto_present; then
+    fail "nft table inet canto present after TUN stop"
 fi
-pass "nft table removed after SIGTERM"
+if nft_singbox_present; then
+    fail "nft table inet sing-box still present after TUN stop"
+fi
+pass "TUN leftovers removed after SIGTERM"
 
 log "checking URL source, refresh, and last-good cache"
 write_url_source_config
@@ -432,35 +513,53 @@ if ! wait_for_log "Source refresh applied; restarting sing-box"; then
     sed -n '1,160p' "$WORKDIR/canto.log" >&2 || true
     fail "URL refresh did not restart sing-box"
 fi
-if ! nft_present; then
-    fail "nft table inet canto was torn down during refresh"
+if nft_canto_present; then
+    fail "refresh installed inet canto on TUN path"
 fi
-if ! wait_for_listen; then
-    fail "sing-box did not listen after refresh restart"
+if ! wait_for_ready; then
+    fail "sing-box did not become ready after refresh restart"
 fi
-pass "refresh restarts sing-box and keeps nftables"
+pass "refresh restarts sing-box without canto nftables"
 
 stop_source_http
 if ! wait_for_log "Source refresh kept the current configuration"; then
     sed -n '1,160p' "$WORKDIR/canto.log" >&2 || true
     fail "failed URL refresh did not keep the current process"
 fi
-if ! nft_present; then
-    fail "nft table inet canto missing after failed refresh"
-fi
-if ! wait_for_listen; then
+if ! wait_for_ready; then
     fail "sing-box stopped after failed refresh"
 fi
-pass "failed refresh keeps sing-box and nftables"
+pass "failed refresh keeps sing-box"
 
 stop_canto
-if nft_present; then
+if nft_canto_present; then
     fail "nft table inet canto still present after URL-run stop"
 fi
 
 start_canto
 pass "canto started from last-good cache while URL was down"
+stop_canto
+
+log "checking tproxy escape hatch"
+WAIT_MODE="tproxy"
+write_tproxy_config
+start_canto
+pass "canto tproxy ready"
+
+if ! nft_canto_present; then
+    sed -n '1,120p' "$WORKDIR/canto.log" >&2 || true
+    fail "tproxy path did not install inet canto"
+fi
+if ! ip netns exec "$NS_LAN" curl -fsS -m 5 "http://${WAN_PROXY}/" >/dev/null; then
+    sed -n '1,160p' "$WORKDIR/canto.log" >&2 || true
+    fail "LAN tproxy curl http://${WAN_PROXY}/ failed"
+fi
+pass "LAN client reaches WAN via tproxy"
 
 stop_canto
+if nft_canto_present; then
+    fail "nft table inet canto still present after tproxy stop"
+fi
+pass "tproxy nft table removed after SIGTERM"
 
 log "all netns checks passed"

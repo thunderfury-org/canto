@@ -7,12 +7,12 @@ use tracing_subscriber::FmtSubscriber;
 
 use canto::cli::{Cli, Commands, ConfigCommands, RunArgs};
 use canto::config::{
-    HttpFetcher, PortsFilter, RefreshOutcome, Settings, SourceLocator, apply_runtime_overlay,
-    obtain_source, prepare_runtime_config, refresh_source, source_cache_path, write_runtime_config,
-    write_source_cache,
+    HttpFetcher, NetworkMode, PortsFilter, RefreshOutcome, Settings, SourceLocator,
+    apply_runtime_overlay_with_capture, obtain_source, prepare_runtime_config, refresh_source,
+    source_cache_path, write_runtime_config, write_source_cache,
 };
 use canto::error::Result;
-use canto::network::{NetworkGuard, NftablesManager, resolve_lan_cidrs};
+use canto::network::{NetworkGuard, NftablesManager, resolve_lan_cidrs, resolve_tun_capture};
 use canto::supervisor::ProcessSupervisor;
 
 #[tokio::main]
@@ -66,7 +66,14 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
 
     info!("Loading source config from {locator}");
     let raw = obtain_source(&locator, &cache_path, &fetcher).await?;
-    let runtime = apply_runtime_overlay(raw.clone(), &settings.network)?;
+    let tun_capture = if settings.network.mode.is_tun() {
+        let strict = cfg!(target_os = "linux") && apply_network && settings.network.lan;
+        Some(resolve_tun_capture(&settings.network, strict)?)
+    } else {
+        None
+    };
+    let runtime =
+        apply_runtime_overlay_with_capture(raw.clone(), &settings.network, tun_capture.as_ref())?;
     write_runtime_config(&runtime, &runtime_path)?;
 
     let supervisor = ProcessSupervisor::new(
@@ -102,6 +109,7 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
                     &locator,
                     &fetcher,
                     &settings,
+                    tun_capture.as_ref(),
                     &supervisor,
                     &runtime_path,
                     &cache_path,
@@ -120,12 +128,13 @@ async fn apply_url_refresh(
     locator: &SourceLocator,
     fetcher: &HttpFetcher,
     settings: &Settings,
+    capture: Option<&canto::network::TunCapture>,
     supervisor: &ProcessSupervisor,
     runtime_path: &Path,
     cache_path: &Path,
 ) -> bool {
     let next = runtime_path.with_extension("json.next");
-    match refresh_source(locator, fetcher, &settings.network, |overlayed| {
+    match refresh_source(locator, fetcher, &settings.network, capture, |overlayed| {
         write_runtime_config(overlayed, &next)?;
         supervisor.check_config(Some(&next))
     })
@@ -194,11 +203,15 @@ async fn handle_status(settings: Settings) -> Result<()> {
         );
     }
 
-    info!("tproxy fwmark: {:#x}", settings.network.fwmark);
-    info!(
-        "sing-box routing mark: {:#x}",
-        settings.network.routing_mark
-    );
+    info!("capture mode: {}", settings.network.mode.as_str());
+    info!("bypass_cn: {}", settings.network.bypass_cn);
+    if settings.network.mode == NetworkMode::Tproxy {
+        info!("tproxy fwmark: {:#x}", settings.network.fwmark);
+        info!(
+            "sing-box routing mark: {:#x}",
+            settings.network.routing_mark
+        );
+    }
     info!(
         "proxy scope: lan={}, local={}, docker={}",
         settings.network.lan, settings.network.local, settings.network.docker
@@ -212,9 +225,34 @@ async fn handle_status(settings: Settings) -> Result<()> {
         "proxy traffic: tcp={}, udp={}, ports={}",
         settings.network.tcp, settings.network.udp, ports_str
     );
-    match resolve_lan_cidrs(&settings.network.lan_cidrs) {
-        Ok(cidrs) => info!("LAN CIDRs: {}", cidrs.join(", ")),
-        Err(e) => error!("LAN CIDRs: {e}"),
+    if settings.network.mode.is_tun() {
+        match resolve_tun_capture(&settings.network, false) {
+            Ok(capture) => {
+                info!("mixed listen: {}", capture.mixed_listen);
+                info!(
+                    "include_interface: {}",
+                    if capture.include_interface.is_empty() {
+                        "(none)".to_string()
+                    } else {
+                        capture.include_interface.join(", ")
+                    }
+                );
+                info!(
+                    "exclude_interface: {}",
+                    if capture.exclude_interface.is_empty() {
+                        "(none)".to_string()
+                    } else {
+                        capture.exclude_interface.join(", ")
+                    }
+                );
+            }
+            Err(e) => error!("TUN capture: {e}"),
+        }
+    } else {
+        match resolve_lan_cidrs(&settings.network.lan_cidrs) {
+            Ok(cidrs) => info!("LAN CIDRs: {}", cidrs.join(", ")),
+            Err(e) => error!("LAN CIDRs: {e}"),
+        }
     }
     Ok(())
 }
@@ -246,10 +284,14 @@ async fn handle_config(cmd: ConfigCommands, settings: Settings) -> Result<()> {
             Ok(())
         }
         ConfigCommands::DumpNft => {
+            if settings.network.mode.is_tun() {
+                print!("{}", NftablesManager::new(&settings.network).dump());
+                return Ok(());
+            }
             let mut network = settings.network;
             network.lan_cidrs = resolve_lan_cidrs(&network.lan_cidrs)?;
             info!("LAN CIDRs: {}", network.lan_cidrs.join(", "));
-            print!("{}", NftablesManager::new(&network).generate_ruleset());
+            print!("{}", NftablesManager::new(&network).dump());
             Ok(())
         }
     }

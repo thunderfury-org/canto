@@ -10,10 +10,12 @@ refresh_interval_secs = 86400
 
 [network]
 enabled = true
+bypass_cn = true
+# mode = "tproxy"
 tproxy_port = 7893
 dns_port = 1053
 mixed_port = 7890
 fwmark = 424081
 routing_mark = 424080
-# empty = auto-detect on Linux, RFC1918 fallback otherwise
+# empty = auto-detect on Linux
 lan_cidrs = []
