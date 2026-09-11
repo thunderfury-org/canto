@@ -27,6 +27,7 @@ REFRESH_SECS="2"
 
 CANTO_PID=""
 HTTP_PID=""
+HTTP_8000_PID=""
 SOURCE_HTTP_PID=""
 CANTO_BIN=""
 SING_BOX=""
@@ -174,6 +175,8 @@ cleanup() {
     CANTO_PID=""
     stop_pid "${HTTP_PID:-}"
     HTTP_PID=""
+    stop_pid "${HTTP_8000_PID:-}"
+    HTTP_8000_PID=""
     stop_pid "${SOURCE_HTTP_PID:-}"
     SOURCE_HTTP_PID=""
     for ns in "$NS_LAN" "$NS_GW" "$NS_WAN"; do
@@ -363,6 +366,8 @@ write_file_source_config
 
 ip netns exec "$NS_WAN" python3 -m http.server 80 --bind "$WAN_HOST" >/tmp/canto-wan-http.log 2>&1 &
 HTTP_PID=$!
+ip netns exec "$NS_WAN" python3 -m http.server 8000 --bind "$WAN_HOST" >/tmp/canto-wan-http-8000.log 2>&1 &
+HTTP_8000_PID=$!
 sleep 0.3
 
 log "expect LAN curl to fail before canto (no MASQUERADE)"
@@ -387,11 +392,17 @@ if ! ip netns exec "$NS_LAN" curl -fsS -m 5 "http://${WAN_HOST}/" >/dev/null; th
 fi
 pass "LAN client reaches WAN via tproxy"
 
+if ip netns exec "$NS_LAN" curl -fsS -m 2 "http://${WAN_HOST}:8000/" >/dev/null 2>&1; then
+    fail "LAN client reached unproxied port 8000 under common ports"
+fi
+pass "LAN client cannot reach port 8000 under common ports"
+
 if ! ip netns exec "$NS_GW" curl -fsS -m 5 "http://${WAN_HOST}/" >/dev/null; then
     sed -n '1,120p' "$WORKDIR/canto.log" >&2 || true
     fail "local tproxy curl from gw failed"
 fi
 pass "gateway process reaches WAN via local tproxy"
+
 
 if ip netns exec "$NS_WAN" curl -fsS -m 3 "http://${WAN_GW}:7890/" >/dev/null 2>&1; then
     fail "WAN was able to connect to mixed port 7890"
