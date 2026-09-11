@@ -7,8 +7,8 @@ use tracing_subscriber::FmtSubscriber;
 
 use canto::cli::{Cli, Commands, ConfigCommands, RunArgs};
 use canto::config::{
-    HttpFetcher, RefreshOutcome, Settings, SourceLocator, apply_runtime_overlay, obtain_source,
-    prepare_runtime_config, refresh_source, source_cache_path, write_runtime_config,
+    HttpFetcher, PortsFilter, RefreshOutcome, Settings, SourceLocator, apply_runtime_overlay,
+    obtain_source, prepare_runtime_config, refresh_source, source_cache_path, write_runtime_config,
     write_source_cache,
 };
 use canto::error::Result;
@@ -37,6 +37,7 @@ fn init_tracing(verbose: u8) {
         .with_max_level(level)
         .with_target(false)
         .with_thread_ids(false)
+        .with_writer(std::io::stderr)
         .finish();
 
     let _ = tracing::subscriber::set_global_default(subscriber);
@@ -197,6 +198,19 @@ async fn handle_status(settings: Settings) -> Result<()> {
     info!(
         "sing-box routing mark: {:#x}",
         settings.network.routing_mark
+    );
+    info!(
+        "proxy scope: lan={}, local={}, docker={}",
+        settings.network.lan, settings.network.local, settings.network.docker
+    );
+    let ports_str = match &settings.network.ports {
+        PortsFilter::Common => "common".to_string(),
+        PortsFilter::All => "all".to_string(),
+        PortsFilter::Custom(ports) => format!("{ports:?}"),
+    };
+    info!(
+        "proxy traffic: tcp={}, udp={}, ports={}",
+        settings.network.tcp, settings.network.udp, ports_str
     );
     match resolve_lan_cidrs(&settings.network.lan_cidrs) {
         Ok(cidrs) => info!("LAN CIDRs: {}", cidrs.join(", ")),
