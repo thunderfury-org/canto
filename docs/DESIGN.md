@@ -205,14 +205,16 @@ refresh_interval_secs = 86400
 
 [network]
 enabled = true
+lan = true
+local = true
+docker = false
+tcp = true
+udp = false
+ports = "common"
 bypass_cn = true
-# mode = "tproxy"        # 省略则走 TUN + auto_redirect
-tproxy_port = 7893
-dns_port = 1053
 mixed_port = 7890
-fwmark = 424081          # 仅 tproxy 逃生口
-routing_mark = 424080
-lan_cidrs = []           # 空则自动探测；可写成 ["192.168.1.0/24"]
+lan_cidrs = []           # 空则自动探测 LAN 接口
+# mode = "tproxy"        # 省略则走 TUN + auto_redirect
 ```
 
 ---
