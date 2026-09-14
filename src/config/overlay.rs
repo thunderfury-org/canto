@@ -95,12 +95,12 @@ pub fn apply_runtime_overlay_with_capture(
     match network.mode {
         NetworkMode::Tproxy => apply_tproxy_overlay(&mut config, network)?,
         NetworkMode::Tun => {
-            let owned = match capture {
-                Some(_) => None,
-                None => Some(resolve_tun_capture(network, false)?),
-            };
-            let capture = capture.or(owned.as_ref()).expect("tun capture");
-            apply_tun_overlay(&mut config, network, capture)?;
+            if let Some(capture) = capture {
+                apply_tun_overlay(&mut config, network, capture)?;
+            } else {
+                let owned = resolve_tun_capture(network, false)?;
+                apply_tun_overlay(&mut config, network, &owned)?;
+            }
         }
     }
     Ok(config)
@@ -229,42 +229,49 @@ fn insert_dns_in_hijack_if_missing(config: &mut Value) -> Result<()> {
 
 fn insert_tun_pre_sniff_rules(config: &mut Value, network: &NetworkSettings) -> Result<()> {
     let direct = direct_tag(config);
-    let mut injected = Vec::new();
+    let existing = route_rules(config);
+    let sniff_at = existing.iter().position(is_sniff_rule).unwrap_or(0);
+    let before_sniff = &existing[..sniff_at];
 
-    if !route_rules(config).iter().any(is_port_53_hijack) {
+    let has_53 = before_sniff.iter().any(is_port_53_hijack);
+    let has_udp = before_sniff.iter().any(is_udp_bypass);
+    let ports = network.ports.ports();
+    let has_ports = ports.as_ref().is_some_and(|ports| {
+        before_sniff
+            .iter()
+            .any(|rule| is_ports_invert_bypass(rule, ports))
+    });
+    let cnip_outbound = existing
+        .iter()
+        .find(|rule| is_cnip_rule(rule))
+        .and_then(|rule| rule.get("outbound"))
+        .and_then(Value::as_str)
+        .unwrap_or(&direct)
+        .to_string();
+
+    let mut injected = Vec::new();
+    if !has_53 {
         injected.push(json!({
             "port": 53,
             "action": "hijack-dns"
         }));
     }
-
     if network.bypass_cn {
-        let outbound = route_rules(config)
-            .iter()
-            .find(|rule| is_cnip_rule(rule))
-            .and_then(|rule| rule.get("outbound"))
-            .and_then(Value::as_str)
-            .unwrap_or(&direct)
-            .to_string();
         injected.push(json!({
             "rule_set": [CNIP_TAG],
             "action": "bypass",
-            "outbound": outbound
+            "outbound": cnip_outbound
         }));
     }
-
-    if !network.udp && !route_rules(config).iter().any(is_udp_bypass) {
+    if !network.udp && !has_udp {
         injected.push(json!({
             "network": "udp",
             "action": "bypass",
             "outbound": direct
         }));
     }
-
-    if let Some(ports) = network.ports.ports()
-        && !route_rules(config)
-            .iter()
-            .any(|rule| is_ports_invert_bypass(rule, &ports))
+    if let Some(ports) = ports
+        && !has_ports
     {
         injected.push(json!({
             "port": ports,
@@ -281,6 +288,16 @@ fn insert_tun_pre_sniff_rules(config: &mut Value, network: &NetworkSettings) -> 
     let sniff_at = rules.iter().position(is_sniff_rule).unwrap_or(0);
     for (offset, rule) in injected.into_iter().enumerate() {
         rules.insert(sniff_at + offset, rule);
+    }
+
+    let sniff_at = rules.iter().position(is_sniff_rule).unwrap_or(rules.len());
+    let mut idx = sniff_at;
+    while idx < rules.len() {
+        if is_port_53_hijack(&rules[idx]) {
+            rules.remove(idx);
+        } else {
+            idx += 1;
+        }
     }
     Ok(())
 }
@@ -521,8 +538,14 @@ mod tests {
         let config = apply_runtime_overlay(cnip_source(), &NetworkSettings::default()).unwrap();
         let rules = config["route"]["rules"].as_array().unwrap();
         let sniff = rules.iter().position(is_sniff_rule).unwrap();
+        let hijack53 = rules.iter().position(is_port_53_hijack).unwrap();
         let cnip = rules.iter().position(is_cnip_bypass).unwrap();
-        assert!(cnip < sniff);
+        let udp = rules.iter().position(is_udp_bypass).unwrap();
+        let ports = rules
+            .iter()
+            .position(|rule| is_ports_invert_bypass(rule, &PortsFilter::Common.ports().unwrap()))
+            .unwrap();
+        assert!(hijack53 < cnip && cnip < udp && udp < ports && ports < sniff);
         assert!(rules.iter().any(|rule| {
             rule.get("rule_set")
                 .and_then(Value::as_array)
@@ -531,13 +554,55 @@ mod tests {
                 && rule.get("action").is_none()
         }));
         assert_eq!(rules.iter().filter(|rule| is_cnip_rule(rule)).count(), 1);
-        assert!(rules.iter().any(is_port_53_hijack));
-        assert!(rules.iter().any(is_udp_bypass));
-        assert!(
-            rules
-                .iter()
-                .any(|rule| is_ports_invert_bypass(rule, &PortsFilter::Common.ports().unwrap()))
+    }
+
+    #[test]
+    fn test_moves_existing_port_53_hijack_before_sniff() {
+        let source = json!({
+            "outbounds": [{ "tag": "直连", "type": "direct" }],
+            "route": {
+                "rules": [
+                    { "action": "sniff" },
+                    { "port": 53, "action": "hijack-dns" }
+                ]
+            }
+        });
+        let config = overlay_tun(source);
+        let rules = config["route"]["rules"].as_array().unwrap();
+        let sniff = rules.iter().position(is_sniff_rule).unwrap();
+        let hijack53 = rules.iter().position(is_port_53_hijack).unwrap();
+        let udp = rules.iter().position(is_udp_bypass).unwrap();
+        let ports = rules
+            .iter()
+            .position(|rule| is_ports_invert_bypass(rule, &PortsFilter::Common.ports().unwrap()))
+            .unwrap();
+        assert!(hijack53 < udp && udp < ports && ports < sniff);
+        assert_eq!(
+            rules.iter().filter(|rule| is_port_53_hijack(rule)).count(),
+            1
         );
+    }
+
+    #[test]
+    fn test_protocol_dns_hijack_does_not_suppress_port_53() {
+        let source = json!({
+            "outbounds": [{ "tag": "直连", "type": "direct" }],
+            "route": {
+                "rules": [
+                    { "action": "sniff" },
+                    { "protocol": "dns", "action": "hijack-dns" }
+                ]
+            }
+        });
+        let config = overlay_tun(source);
+        let rules = config["route"]["rules"].as_array().unwrap();
+        let sniff = rules.iter().position(is_sniff_rule).unwrap();
+        let hijack53 = rules.iter().position(is_port_53_hijack).unwrap();
+        assert!(hijack53 < sniff);
+        assert!(rules.iter().any(|rule| {
+            rule.get("protocol") == Some(&json!("dns"))
+                && rule.get("action") == Some(&json!("hijack-dns"))
+        }));
     }
 
     #[test]
