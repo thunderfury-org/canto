@@ -4,7 +4,7 @@ use tracing::debug;
 #[cfg(target_os = "linux")]
 use tracing::{info, warn};
 
-use crate::config::{NetworkSettings, PortsFilter};
+use crate::config::{NetworkMode, NetworkSettings, PortsFilter};
 #[cfg(target_os = "linux")]
 use crate::error::CantoError;
 use crate::error::Result;
@@ -21,6 +21,13 @@ pub struct NftablesManager<'a> {
 impl<'a> NftablesManager<'a> {
     pub fn new(settings: &'a NetworkSettings) -> Self {
         Self { settings }
+    }
+
+    pub fn dump(&self) -> String {
+        if self.settings.mode == NetworkMode::Tun {
+            return "# canto TUN path has no nftables ruleset\n".to_string();
+        }
+        self.generate_ruleset()
     }
 
     /// Generates the complete nftables configuration based on network settings.
@@ -563,5 +570,15 @@ mod tests {
         assert!(!rules.contains("iif \"lo\" return"));
         assert!(!rules.contains("iif 'lo' return"));
         assert!(rules.contains("iif \"lo\" accept"));
+    }
+
+    #[test]
+    fn test_tun_dump_has_no_tproxy_rules() {
+        let dump = NftablesManager::new(&NetworkSettings::default()).dump();
+        assert!(dump.contains("no nftables ruleset"));
+        assert!(!dump.contains("tproxy to"));
+        assert!(!dump.contains("masquerade"));
+        assert!(!dump.contains("input_protect"));
+        assert!(!dump.contains("proxy_ports"));
     }
 }

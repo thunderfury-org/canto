@@ -1,8 +1,8 @@
 # canto 系统架构与设计文档
 
-本文档描述 canto **当前落地**的系统设计：模块划分、tproxy 网络编排、源配置覆盖与刷新、故障容错。第 8 节是尚未做的，以及上家里 OpenWrt 的门槛；那些要求和第 3 节的当前劫持行为不同。
+本文档描述 canto **当前落地**的系统设计：模块划分、默认 TUN + `auto_redirect` 覆盖、tproxy 逃生口、源配置刷新、故障容错。第 8 节是尚未做的，以及上家里 OpenWrt 的门槛。
 
-透明入站（redirect / tproxy / TUN / auto_redirect）和内核 `bypass` 的选型见 [INBOUND.md](INBOUND.md)。第 3–5 节只写现在固定的 tproxy 路径，不把路线图里的 TUN 写成已实现。
+透明入站（redirect / tproxy / TUN / auto_redirect）和内核 `bypass` 的选型见 [INBOUND.md](INBOUND.md)。第 3 节写默认 TUN 路径；tproxy 仅作为 `network.mode = "tproxy"` 逃生口。
 
 ---
 
@@ -54,9 +54,9 @@ canto
 ```
 
 ### 2.1 职责边界与协作流程
-1. **启动阶段**：CLI 读取 `canto.toml`。`--no-network` / `network.enabled = false` 跳过网络接管；抓包固定为 tproxy。
-2. **配置准备**：读取必填的 `[singbox].source`（本地文件或 HTTP(S) URL）。`run`、`config generate`、无 `--config` 的 `config check`、以及 `status` 走同一条拉取路径。覆盖 inbound / `default_mark` / `hijack-dns` / `auto_detect_interface`，写出 `config_path`，再调用 `sing-box check`。
-3. **网络接管**：check 通过后，`NetworkGuard` 配置策略路由和 `table inet canto`。
+1. **启动阶段**：CLI 读取 `canto.toml`。`--no-network` / `network.enabled = false` 跳过网络接管。默认捕获为 TUN + `auto_redirect`；`network.mode = "tproxy"` 走手搓 tproxy。
+2. **配置准备**：读取必填的 `[singbox].source`（本地文件或 HTTP(S) URL）。`run`、`config generate`、无 `--config` 的 `config check`、以及 `status` 走同一条拉取路径。覆盖 inbound、bypass 规则和 `auto_detect_interface`，写出 `config_path`，再调用 `sing-box check`。
+3. **网络接管**：check 通过后，TUN 路径只开 `ip_forward`；tproxy 逃生口才装策略路由和 `table inet canto`。
 4. **进程托管**：`ProcessSupervisor` 异步拉起 sing-box，消费 stdout/stderr。源地址是 URL 且 `refresh_interval_secs > 0` 时，按间隔刷新：失败则保持当前进程与 nft；成功则覆盖、check、重启 sing-box，**不拆** nft。
 5. **退出与恢复**：SIGINT/SIGTERM 或子进程退出时，先停止 sing-box，再由 `NetworkGuard` Drop 删除 `inet canto` 表和策略路由。刷新重启不会走到这一步。
 
@@ -64,9 +64,11 @@ canto
 
 ## 3. 透明代理与网络编排设计
 
-当前固定为 **tproxy + 局域网 + 本机**，劫持全部 TCP/UDP。IPv6 流量在链首 `return`，不劫持。自动探测局域网时跳过 docker。这是现状，不是家里 OpenWrt 的目标；生产门槛见 §8.1。
+当前默认是 **TUN + `auto_redirect`**：overlay 改写桌面 `tun-in`，打开 `auto_route` / `auto_redirect`（`strict_route` 关掉，见 ADR 0009），按 LAN 接口 `include_interface`、docker0 `exclude_interface` 限制来源。大陆 IP、非常用端口、关掉的 UDP 用 sniff 之前的 `action: bypass`。IPv6 不配地址、不劫持。`local = false` 在这条路径拒绝启动。
 
-不是因为 TUN 更慢才不用：Linux / OpenWrt 上官方更快的路径是 TUN + `auto_redirect`。当前用手搓 tproxy，是为了按 LAN 来源劫持、挡住 WAN 进站，并且让 `NetworkGuard` 回滚 canto 自己的表。桌面源 JSON 里的 `tun-in` + `auto_route` 会抢网关默认路由，必须整段替换。升级方向见 [INBOUND.md](INBOUND.md)。
+纯 TUN（包进虚拟网卡再跑用户态协议栈）比 tproxy 慢；`auto_redirect` 不是那条路，TCP/UDP 走 nft 重定向进套接字。桌面源 JSON 里的 `tun-in` + `auto_route` 仍会抢网关默认路由，必须改写并打开 `auto_redirect`，且不得写 `route.default_mark`。见 [INBOUND.md](INBOUND.md) 与 ADR 0009。
+
+`network.mode = "tproxy"` 保留 #8 的 `table inet canto` 行为。
 
 ### 3.1 核心数据链路
 
@@ -152,12 +154,12 @@ DNS：
 3. 强制 `route.auto_detect_interface = false`。
 4. 若 `route.rules` 中还没有针对 `dns-in` 的 `hijack-dns` 规则，则插入到规则数组头部。
 
-Inbound tag 固定为 `mixed-in`、`tproxy-in`、`dns-in`。
+默认 TUN inbound tag 固定为 `mixed-in`、`tun-in`。tproxy 逃生口仍是 `mixed-in`、`tproxy-in`、`dns-in`。
 
-**tproxy inbound**
-* `mixed`：`tag = mixed-in`，`listen = 0.0.0.0`，`listen_port = mixed_port`
-* `tproxy`：`tag = tproxy-in`，`listen = ::`，`listen_port = tproxy_port`；不设置 `network`。听 `::` 是为了 IPv4-mapped；nft 链首仍 `return` IPv6，所以 **不劫持 IPv6 流量**。
-* `direct`：`tag = dns-in`，`listen = 0.0.0.0`，`listen_port = dns_port`
+**默认 TUN inbound**
+* `mixed`：`tag = mixed-in`，听第一个 LAN IPv4（仅本机时 `127.0.0.1`），`listen_port = mixed_port`
+* `tun`：`tag = tun-in`，`interface_name = canto`，`auto_route` / `auto_redirect`，`strict_route = false`；有转发来源时才开 `auto_redirect`
+* 不再注入 `tproxy-in` 或 `dns-in`。DNS 用 `{ "port": 53, "action": "hijack-dns" }`。
 
 tproxy 模式下补齐的 DNS 劫持规则：
 
@@ -203,12 +205,16 @@ refresh_interval_secs = 86400
 
 [network]
 enabled = true
-tproxy_port = 7893
-dns_port = 1053
+lan = true
+local = true
+docker = false
+tcp = true
+udp = false
+ports = "common"
+bypass_cn = true
 mixed_port = 7890
-fwmark = 424081          # 0x67891，tproxy / ip rule，避免用 1 这类常见值
-routing_mark = 424080    # 0x67890，sing-box default_mark，须与 fwmark 不同
-lan_cidrs = []           # 空则自动探测；可写成 ["192.168.1.0/24"]
+lan_cidrs = []           # 空则自动探测 LAN 接口
+# mode = "tproxy"        # 省略则走 TUN + auto_redirect
 ```
 
 ---
@@ -248,7 +254,7 @@ macOS 开发机只生成并校验规则，不执行 `nft` / `ip`。
 
 ## 8. 未来演进路线（Roadmap）
 
-已完成：本地或 HTTP(S) 源配置、inbound 覆盖、tproxy 劫持局域网+本机、预检后再接管网络、URL 刷新保活、SIGINT/SIGTERM 清规则。`scripts/netns-check.sh` 在 CI 里覆盖劫持、回滚、URL 源、缓存和刷新。
+已完成：本地或 HTTP(S) 源配置、inbound 覆盖、默认 TUN + `auto_redirect`、#8 范围/端口/仅 TCP、大陆 IP `bypass`、tproxy 逃生口、URL 刷新保活、SIGINT/SIGTERM 清残留。`scripts/netns-check.sh` 在 CI 里覆盖劫持、bypass、回滚、URL 源、缓存和刷新。
 
 下面只列还没做的。愿景仍在 GitHub #3；下一刀开工前单独开 issue，不要在 #3 里续写。
 
@@ -256,10 +262,10 @@ macOS 开发机只生成并校验规则，不执行 `nft` / `ip`。
 
 ### 8.1 上路由器前（阻塞生产）
 
-顺序：先 [#8](https://github.com/thunderfury-org/canto/issues/8) 在现行 tproxy 上把范围 / 端口 / 仅 TCP 做成可配；再 [#6](https://github.com/thunderfury-org/canto/issues/6) 切到 TUN + `auto_redirect` 并做大陆绕过，且必须保住 #8 的语义。不要在 tproxy 上再做一套 cnip nft 表。两者都做完才能上家里的 OpenWrt。
+[#8](https://github.com/thunderfury-org/canto/issues/8) 与 [#6](https://github.com/thunderfury-org/canto/issues/6) 已落地。上家里的 OpenWrt 见 [#7](https://github.com/thunderfury-org/canto/issues/7)。
 
-* **劫持范围与端口**（[#8](https://github.com/thunderfury-org/canto/issues/8)）：局域网、本机、docker 可独立开关；端口可选常用 / 全部 / 自定义；可只劫持 TCP。现网 ShellCrash 是 redirect 仅 TCP；canto 对外语义对齐「只劫持 TCP」，这一刀仍走当前 tproxy，不先改 inbound。
-* **大陆 IP 绕过**（[#6](https://github.com/thunderfury-org/canto/issues/6)）：跟 TUN + `auto_redirect` 一起做。用 sing-box `action: bypass` 或 TUN `route_exclude_address_set`。详见 [INBOUND.md](INBOUND.md)。
+* **劫持范围与端口**（[#8](https://github.com/thunderfury-org/canto/issues/8)，已完成）：局域网、本机、docker 可独立开关；端口可选常用 / 全部 / 自定义；可只劫持 TCP。
+* **大陆 IP 绕过**（[#6](https://github.com/thunderfury-org/canto/issues/6)，已完成）：默认 TUN + `auto_redirect`，源配置 `cnip` 改写成 sniff 之前的 `action: bypass`。不建 cnip nft 表，不用 `route_exclude_address_set`。
 * **nft_tproxy**：现在只尝试 modprobe，内建失败不阻断，真正缺能力时仍在 `nft -f` 时报错。
 * **集成测试**：网关回归目前是 `scripts/netns-check.sh`。再加第二、第三类网关场景时，把断言迁到 `tests/netns_gateway.rs`，脚本只留搭拓扑。
 
@@ -275,7 +281,7 @@ macOS 开发机只生成并校验规则，不执行 `nft` / `ip`。
 * **HTTP(S) 拉源配置**：已支持。自定义 Header、自签证书和订阅转换仍不做。
 * **订阅/provider**：`{My-}` 这类过滤不处理。节点必须预先写进完整 JSON。
 * **覆盖 `experimental.clash_api`**：源配置里有就保留；以后做改写时再加监听地址配置。当前不查延迟/流量。
-* **tun 模式**（[#6](https://github.com/thunderfury-org/canto/issues/6)）：`network.mode` 切到 TUN + `auto_redirect`，缩小 canto 自己的 nftables，而不是优化现行 tproxy。源里的桌面 TUN 仍要 overlay，不能原样 `auto_route`。当前固定 tproxy，legacy `mode` / `bypass_cn_ips` 键忽略。详见 [INBOUND.md](INBOUND.md)。
+* **tun 模式**（[#6](https://github.com/thunderfury-org/canto/issues/6)，已完成）：默认 overlay 为 TUN + `auto_redirect`，canto 不持有 `inet canto`。`mode = "tproxy"` 是逃生口。legacy `bypass_cn_ips` 仍忽略。
 
 ### 8.4 运行与交付
 

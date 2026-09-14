@@ -6,8 +6,8 @@
 
 ## 结论
 
-1. **v1 继续手搓 tproxy。** 网关要按 LAN 来源劫持、WAN 进站不劫持，并且自己掌握 nftables 的申请/回滚。桌面源配置里的 TUN `auto_route` 不能原样用在路由器上。
-2. **Linux / OpenWrt 的升级方向是 TUN + `auto_redirect`，不是把 tproxy 再加厚。** 官方写明 `auto_redirect` 快于 tproxy，OpenWrt 会自动插 fw4 兼容规则，内核 `bypass` 也挂在这条路上。
+1. **默认路径是 TUN + `auto_redirect`。** 桌面源配置里的 TUN `auto_route` 不能原样用在路由器上；overlay 必须打开 `auto_redirect`，并按 LAN 接口限制来源。canto 不持有 `inet canto`。
+2. **不要把 tproxy 再加厚。** 官方写明 `auto_redirect` 快于 tproxy，OpenWrt 会自动插 fw4 兼容规则，内核 `bypass` 也挂在这条路上。`mode = "tproxy"` 只是逃生口。
 3. **Apple / 无 root 的 Android 不是 canto 的目标。** 那些平台最好的透明路径仍是 TUN，但没有 nftables，`auto_redirect` 无效。canto 不编排它们。
 
 ## 四条路径
@@ -84,7 +84,7 @@ canto v1 的 `reserved_ipv4` 目的地址绕过是 nft 层的粗粒度排除，�
 
 ## 平台
 
-**Linux / OpenWrt**：`TUN + auto_route + auto_redirect + strict_route` 是官方推荐。这是 canto 以后 `network.mode` 该切换到的路径。v1 用手搓 tproxy 换来 LAN/WAN 来源控制和 `NetworkGuard` 回滚。
+**Linux / OpenWrt**：官方推荐 `TUN + auto_route + auto_redirect + strict_route`。canto 默认打开前三项，关掉 `strict_route`（网关 WAN 出站会被它掐死，见 ADR 0009）。LAN/WAN 来源用 `include_interface` / `exclude_interface`；`NetworkGuard` 只开转发并清残留。tproxy 是逃生口。
 
 **Android**：无 root 走 VpnService TUN，按包名分流。`auto_redirect` 要 root 服务或 root shell 才完整，才能抓热点。canto 不编排 Android。
 
@@ -93,6 +93,6 @@ canto v1 的 `reserved_ipv4` 目的地址绕过是 nft 层的粗粒度排除，�
 ## 对 canto 代码的约束
 
 - 不要把 `auto_redirect` 写进共用桌面源 JSON；那是网关 overlay 的事。
-- v1 不要重新引入 `network.mode` / `bypass_cn_ips` 配置项。legacy TOML 键被忽略是故意的。
-- 以后做 TUN 模式时，overlay 应保留或改写为 TUN inbound，打开 `auto_redirect`，缩小 canto 自己的 nftables（LAN 来源、WAN 防护、fw4 协同仍可能要留）。不要再实现一套平行的 tproxy 优化。
+- `network.mode` 只当逃生口（`tproxy`）。不要解析已删除的 `bypass_cn_ips`。
+- TUN 路径不持有 `inet canto`。不要写 `route.default_mark`（与 `auto_redirect` 冲突）。不要再实现一套平行的 tproxy 优化。
 - Tailscale 源配置里的 `192.168.5.0/24 → ts-ep` 在 1.14 可走 L3 forwarding，发生在预匹配。overlay 不要丢掉这条路由。

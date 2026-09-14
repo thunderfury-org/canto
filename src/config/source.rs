@@ -7,8 +7,11 @@ use tracing::info;
 
 use crate::config::NetworkSettings;
 use crate::config::Settings;
-use crate::config::overlay::{apply_runtime_overlay, load_source};
+use crate::config::overlay::{
+    apply_runtime_overlay, apply_runtime_overlay_with_capture, load_source,
+};
 use crate::error::{CantoError, Result};
+use crate::network::TunCapture;
 
 const MAX_SOURCE_BYTES: u64 = 10 * 1024 * 1024;
 
@@ -157,13 +160,14 @@ pub async fn refresh_source(
     locator: &SourceLocator,
     fetcher: &impl SourceFetcher,
     network: &NetworkSettings,
+    capture: Option<&TunCapture>,
     check: impl Fn(&Value) -> Result<()>,
 ) -> RefreshOutcome {
     let live = match live_source(locator, fetcher).await {
         Ok(value) => value,
         Err(_) => return RefreshOutcome::KeepCurrent,
     };
-    let overlayed = match apply_runtime_overlay(live.clone(), network) {
+    let overlayed = match apply_runtime_overlay_with_capture(live.clone(), network, capture) {
         Ok(value) => value,
         Err(_) => return RefreshOutcome::KeepCurrent,
     };
@@ -320,9 +324,13 @@ mod tests {
             responses: HashMap::from([(url.to_string(), Err("timeout".to_string()))]),
         };
         let locator = SourceLocator::parse(url).unwrap();
-        let outcome = refresh_source(&locator, &fetcher, &NetworkSettings::default(), |_| {
-            panic!("check should not run when fetch fails")
-        })
+        let outcome = refresh_source(
+            &locator,
+            &fetcher,
+            &NetworkSettings::default(),
+            None,
+            |_| panic!("check should not run when fetch fails"),
+        )
         .await;
         assert!(matches!(outcome, RefreshOutcome::KeepCurrent));
     }
@@ -337,9 +345,13 @@ mod tests {
             )]),
         };
         let locator = SourceLocator::parse(url).unwrap();
-        let outcome = refresh_source(&locator, &fetcher, &NetworkSettings::default(), |_| {
-            Err(CantoError::Config("sing-box check failed".to_string()))
-        })
+        let outcome = refresh_source(
+            &locator,
+            &fetcher,
+            &NetworkSettings::default(),
+            None,
+            |_| Err(CantoError::Config("sing-box check failed".to_string())),
+        )
         .await;
         assert!(matches!(outcome, RefreshOutcome::KeepCurrent));
     }
@@ -354,15 +366,25 @@ mod tests {
             )]),
         };
         let locator = SourceLocator::parse(url).unwrap();
-        let outcome =
-            refresh_source(&locator, &fetcher, &NetworkSettings::default(), |_| Ok(())).await;
+        let outcome = refresh_source(
+            &locator,
+            &fetcher,
+            &NetworkSettings {
+                bypass_cn: false,
+                ..NetworkSettings::default()
+            },
+            None,
+            |_| Ok(()),
+        )
+        .await;
         let RefreshOutcome::Apply { raw, overlayed } = outcome else {
             panic!("expected Apply, got KeepCurrent");
         };
         assert_eq!(raw["inbounds"][0]["tag"], "tun-in");
         assert_eq!(overlayed["inbounds"][0]["tag"], "mixed-in");
+        assert_eq!(overlayed["inbounds"][1]["tag"], "tun-in");
         assert_eq!(overlayed["outbounds"][0]["tag"], "直连");
-        assert_eq!(overlayed["route"]["default_mark"], 0x67890);
+        assert!(overlayed["route"].get("default_mark").is_none());
     }
 
     #[tokio::test]
