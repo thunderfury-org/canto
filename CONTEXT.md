@@ -23,3 +23,12 @@ _Avoid_: 热更新, 订阅更新, reload
 **网关**:
 canto 编排透明代理的那台 Linux / OpenWrt 机器。
 _Avoid_: 客户端, 节点, 路由器
+
+**劫持意图**:
+拦谁（lan / local / docker）、拦什么（tcp / udp / ports）、绕过什么（bypass_cn）。
+_Avoid_: 模式, 代理模式
+
+**捕获**:
+把数据包送进 sing-box 入站的内核路径。网关默认是 redirect 或 tproxy，由 canto 编排 nft。
+_Avoid_: 管道, auto_redirect
+
