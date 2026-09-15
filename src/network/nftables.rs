@@ -4,7 +4,7 @@ use tracing::debug;
 #[cfg(target_os = "linux")]
 use tracing::{info, warn};
 
-use crate::config::{NetworkMode, NetworkSettings, PortsFilter};
+use crate::config::{NetworkSettings, PortsFilter};
 #[cfg(target_os = "linux")]
 use crate::error::CantoError;
 use crate::error::Result;
@@ -16,17 +16,23 @@ const DOCKER_IIFNAME: &str = "docker0";
 
 pub struct NftablesManager<'a> {
     settings: &'a NetworkSettings,
+    cnip: &'a [String],
 }
 
 impl<'a> NftablesManager<'a> {
     pub fn new(settings: &'a NetworkSettings) -> Self {
-        Self { settings }
+        Self {
+            settings,
+            cnip: &[],
+        }
+    }
+
+    pub fn with_cnip(mut self, cnip: &'a [String]) -> Self {
+        self.cnip = cnip;
+        self
     }
 
     pub fn dump(&self) -> String {
-        if self.settings.mode == NetworkMode::Tun {
-            return "# canto TUN path has no nftables ruleset\n".to_string();
-        }
         self.generate_ruleset()
     }
 
@@ -39,6 +45,27 @@ impl<'a> NftablesManager<'a> {
         let routing_mark = self.settings.routing_mark;
         let lan_cidrs = self.lan_cidrs().join(",\n            ");
         let docker_iif = DOCKER_IIFNAME;
+        let cnip_line = if self.cnip.is_empty() {
+            String::new()
+        } else {
+            "\n        ip daddr @cnip return".to_string()
+        };
+        let cnip_set = if self.cnip.is_empty() {
+            String::new()
+        } else {
+            let elements = self.cnip.join(",\n            ");
+            format!(
+                r#"    set cnip {{
+        type ipv4_addr
+        flags interval
+        elements = {{
+            {elements}
+        }}
+    }}
+
+"#
+            )
+        };
 
         let proxy_ports_set = match self.settings.ports.ports() {
             Some(ports) => {
@@ -140,7 +167,7 @@ impl<'a> NftablesManager<'a> {
                     format!(
                         r#"    chain tproxy_prerouting_capture {{
         ip daddr @reserved_ipv4 return
-        meta l4proto {{ tcp, udp }} th dport 53 return
+        meta l4proto {{ tcp, udp }} th dport 53 return{cnip_line}
         {capture_prerouting_rule}
     }}
 
@@ -163,7 +190,7 @@ impl<'a> NftablesManager<'a> {
         meta mark {fwmark} return
         ip saddr != @lan_ipv4 return
         ip daddr @reserved_ipv4 return
-        meta l4proto {{ tcp, udp }} th dport 53 return
+        meta l4proto {{ tcp, udp }} th dport 53 return{cnip_line}
         {capture_prerouting_rule}"#
                     ),
                 ),
@@ -175,7 +202,7 @@ impl<'a> NftablesManager<'a> {
         meta mark {fwmark} return
         iifname != "{docker_iif}" return
         ip daddr @reserved_ipv4 return
-        meta l4proto {{ tcp, udp }} th dport 53 return
+        meta l4proto {{ tcp, udp }} th dport 53 return{cnip_line}
         {capture_prerouting_rule}"#
                     ),
                 ),
@@ -199,7 +226,7 @@ impl<'a> NftablesManager<'a> {
         meta mark {routing_mark} return
         meta mark {fwmark} return
         ip daddr @reserved_ipv4 return
-        meta l4proto {{ tcp, udp }} th dport 53 return
+        meta l4proto {{ tcp, udp }} th dport 53 return{cnip_line}
         {capture_output_rule}"#
             )
         } else {
@@ -249,7 +276,7 @@ impl<'a> NftablesManager<'a> {
         }}
     }}
 
-{proxy_ports_set}{dns_prerouting_extra}    chain dns_prerouting {{
+{proxy_ports_set}{cnip_set}{dns_prerouting_extra}    chain dns_prerouting {{
         type nat hook prerouting priority -110; policy accept;
 {dns_prerouting_body}
     }}
@@ -573,12 +600,39 @@ mod tests {
     }
 
     #[test]
-    fn test_tun_dump_has_no_tproxy_rules() {
+    fn test_dump_contains_tproxy_rules() {
         let dump = NftablesManager::new(&NetworkSettings::default()).dump();
-        assert!(dump.contains("no nftables ruleset"));
-        assert!(!dump.contains("tproxy to"));
+        assert!(dump.contains("tproxy to"));
+        assert!(dump.contains("chain tproxy_output"));
+        assert!(dump.contains("input_protect"));
         assert!(!dump.contains("masquerade"));
-        assert!(!dump.contains("input_protect"));
-        assert!(!dump.contains("proxy_ports"));
+        assert!(!dump.contains("set cnip"));
+    }
+
+    #[test]
+    fn test_includes_cnip_return_when_cidrs_present() {
+        let cidrs = vec!["1.1.8.0/24".to_string(), "9.9.9.10/32".to_string()];
+        let rules = NftablesManager::new(&NetworkSettings::default())
+            .with_cnip(&cidrs)
+            .generate_ruleset();
+        assert!(rules.contains("set cnip"));
+        assert!(rules.contains("1.1.8.0/24"));
+        assert!(rules.contains("9.9.9.10/32"));
+        assert_eq!(rules.matches("ip daddr @cnip return").count(), 2);
+    }
+
+    #[test]
+    fn test_docker_capture_includes_cnip_return() {
+        let settings = NetworkSettings {
+            docker: true,
+            lan: true,
+            ..NetworkSettings::default()
+        };
+        let cidrs = vec!["1.1.8.0/24".to_string()];
+        let rules = NftablesManager::new(&settings)
+            .with_cnip(&cidrs)
+            .generate_ruleset();
+        assert!(rules.contains("chain tproxy_prerouting_capture"));
+        assert!(rules.contains("ip daddr @cnip return"));
     }
 }

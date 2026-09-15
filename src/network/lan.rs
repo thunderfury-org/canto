@@ -1,25 +1,14 @@
 use tracing::{info, warn};
 
-use crate::config::NetworkSettings;
 use crate::error::{CantoError, Result};
 
 const FALLBACK_LAN_CIDRS: &[&str] = &["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"];
-pub const DOCKER_IIFNAME: &str = "docker0";
-pub const LOCAL_MIXED_LISTEN: &str = "127.0.0.1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LanLink {
     pub cidr: String,
     pub iface: String,
     pub src: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TunCapture {
-    pub mixed_listen: String,
-    pub include_interface: Vec<String>,
-    pub exclude_interface: Vec<String>,
-    pub auto_redirect: bool,
 }
 
 pub fn fallback_lan_cidrs() -> Vec<String> {
@@ -57,108 +46,6 @@ pub fn resolve_lan_cidrs(configured: &[String]) -> Result<Vec<String>> {
     }
 }
 
-/// Resolves TUN include/exclude interfaces and the mixed listen address.
-///
-/// `strict` is true for `canto run` on Linux: missing LAN interfaces fail.
-/// `config generate` / `check` and non-Linux use `strict = false`.
-pub fn resolve_tun_capture(network: &NetworkSettings, strict: bool) -> Result<TunCapture> {
-    let mut include_interface = Vec::new();
-    if network.lan {
-        include_interface = resolve_lan_interfaces(&network.lan_cidrs, strict)?;
-    }
-    if network.docker
-        && !include_interface
-            .iter()
-            .any(|iface| iface == DOCKER_IIFNAME)
-    {
-        include_interface.push(DOCKER_IIFNAME.to_string());
-    }
-
-    let mut exclude_interface = Vec::new();
-    if !network.docker {
-        exclude_interface.push(DOCKER_IIFNAME.to_string());
-    }
-
-    let auto_redirect = network.lan || network.docker;
-    let mixed_listen = if !network.lan && !network.docker {
-        LOCAL_MIXED_LISTEN.to_string()
-    } else {
-        first_listen_ip(&network.lan_cidrs, &include_interface)
-            .unwrap_or_else(|| LOCAL_MIXED_LISTEN.to_string())
-    };
-
-    Ok(TunCapture {
-        mixed_listen,
-        include_interface,
-        exclude_interface,
-        auto_redirect,
-    })
-}
-
-fn resolve_lan_interfaces(configured: &[String], strict: bool) -> Result<Vec<String>> {
-    if !configured.is_empty() {
-        let cidrs = validate_cidrs(configured)?;
-        let links = match detect_lan_links(false) {
-            Ok(links) => links,
-            Err(e) if strict => return Err(e),
-            Err(e) => {
-                warn!("LAN interface detection failed ({e})");
-                Vec::new()
-            }
-        };
-        let mut ifaces = Vec::new();
-        for cidr in &cidrs {
-            for link in links.iter().filter(|link| &link.cidr == cidr) {
-                if !ifaces.iter().any(|existing| existing == &link.iface) {
-                    ifaces.push(link.iface.clone());
-                }
-            }
-        }
-        if ifaces.is_empty() && strict {
-            return Err(CantoError::Config(format!(
-                "no interface matched network.lan_cidrs ({})",
-                cidrs.join(", ")
-            )));
-        }
-        if !ifaces.is_empty() {
-            info!(
-                "Using LAN interfaces for CIDRs {}: {}",
-                cidrs.join(", "),
-                ifaces.join(", ")
-            );
-        }
-        return Ok(ifaces);
-    }
-
-    match detect_lan_links(true) {
-        Ok(links) if !links.is_empty() => {
-            let ifaces = unique_ifaces(&links);
-            info!("Detected LAN interfaces: {}", ifaces.join(", "));
-            Ok(ifaces)
-        }
-        Ok(_) if strict => Err(CantoError::Config(
-            "no LAN interfaces detected for TUN include_interface".to_string(),
-        )),
-        Err(e) if strict => Err(e),
-        Ok(_) | Err(_) => Ok(Vec::new()),
-    }
-}
-
-fn first_listen_ip(configured: &[String], include_interface: &[String]) -> Option<String> {
-    let skip_veth = configured.is_empty();
-    let links = detect_lan_links(skip_veth).unwrap_or_default();
-    for iface in include_interface {
-        if let Some(src) = links
-            .iter()
-            .find(|link| &link.iface == iface)
-            .and_then(|link| link.src.clone())
-        {
-            return Some(src);
-        }
-    }
-    None
-}
-
 fn validate_cidrs(cidrs: &[String]) -> Result<Vec<String>> {
     let mut out = Vec::new();
     for cidr in cidrs {
@@ -180,7 +67,7 @@ fn validate_cidrs(cidrs: &[String]) -> Result<Vec<String>> {
     Ok(out)
 }
 
-fn is_ipv4_cidr(value: &str) -> bool {
+pub(crate) fn is_ipv4_cidr(value: &str) -> bool {
     let Some((ip, prefix)) = value.split_once('/') else {
         return false;
     };
@@ -281,17 +168,6 @@ fn unique_cidrs(links: &[LanLink]) -> Vec<String> {
     }
     cidrs
 }
-
-fn unique_ifaces(links: &[LanLink]) -> Vec<String> {
-    let mut ifaces = Vec::new();
-    for link in links {
-        if !ifaces.iter().any(|existing| existing == &link.iface) {
-            ifaces.push(link.iface.clone());
-        }
-    }
-    ifaces
-}
-
 fn is_ignored_cidr(cidr: &str) -> bool {
     cidr.starts_with("127.") || cidr.starts_with("169.254.") || cidr.starts_with("224.")
 }
@@ -401,30 +277,5 @@ mod tests {
         let cidrs = resolve_lan_cidrs(&[]).unwrap();
         assert!(!cidrs.is_empty());
         assert!(cidrs.iter().all(|cidr| is_ipv4_cidr(cidr)));
-    }
-
-    #[test]
-    fn test_tun_capture_local_only_disables_auto_redirect() {
-        let network = NetworkSettings {
-            lan: false,
-            docker: false,
-            bypass_cn: false,
-            ..NetworkSettings::default()
-        };
-        let capture = resolve_tun_capture(&network, false).unwrap();
-        assert!(!capture.auto_redirect);
-        assert_eq!(capture.mixed_listen, LOCAL_MIXED_LISTEN);
-        assert!(capture.include_interface.is_empty());
-        assert_eq!(capture.exclude_interface, vec![DOCKER_IIFNAME.to_string()]);
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    #[test]
-    fn test_tun_capture_non_strict_allows_empty_ifaces() {
-        let network = NetworkSettings::default();
-        let capture = resolve_tun_capture(&network, false).unwrap();
-        assert!(capture.auto_redirect);
-        assert_eq!(capture.mixed_listen, LOCAL_MIXED_LISTEN);
-        assert!(capture.include_interface.is_empty());
     }
 }

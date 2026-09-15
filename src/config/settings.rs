@@ -136,57 +136,10 @@ impl Default for SingBoxSettings {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum NetworkMode {
-    #[default]
-    Tun,
-    Tproxy,
-}
-
-impl NetworkMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Tun => "tun",
-            Self::Tproxy => "tproxy",
-        }
-    }
-
-    pub fn is_tun(self) -> bool {
-        matches!(self, Self::Tun)
-    }
-}
-
-impl Serialize for NetworkMode {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for NetworkMode {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value = String::deserialize(deserializer)?;
-        match value.to_ascii_lowercase().as_str() {
-            "tun" => Ok(Self::Tun),
-            "tproxy" => Ok(Self::Tproxy),
-            other => Err(de::Error::custom(format!(
-                "invalid network.mode '{other}'; expected 'tun' or 'tproxy'"
-            ))),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkSettings {
     #[serde(default = "default_true")]
     pub enabled: bool,
-    #[serde(default)]
-    pub mode: NetworkMode,
     #[serde(default = "default_true")]
     pub bypass_cn: bool,
     #[serde(default = "default_tproxy_port")]
@@ -223,7 +176,6 @@ impl Default for NetworkSettings {
     fn default() -> Self {
         Self {
             enabled: true,
-            mode: NetworkMode::Tun,
             bypass_cn: true,
             tproxy_port: 7893,
             dns_port: 1053,
@@ -275,18 +227,7 @@ fn default_refresh_interval_secs() -> u64 {
 
 impl NetworkSettings {
     pub fn validate(&self) -> Result<()> {
-        if self.mode == NetworkMode::Tun && !self.local {
-            return Err(CantoError::Config(
-                "network.local = false is only supported with network.mode = \"tproxy\""
-                    .to_string(),
-            ));
-        }
-        if self.mode == NetworkMode::Tproxy && self.bypass_cn {
-            return Err(CantoError::Config(
-                "network.bypass_cn requires TUN + auto_redirect; set network.mode = \"tun\" or bypass_cn = false".to_string(),
-            ));
-        }
-        if self.mode == NetworkMode::Tproxy && self.fwmark == self.routing_mark {
+        if self.fwmark == self.routing_mark {
             return Err(CantoError::Config(
                 "network.fwmark and network.routing_mark must be different".to_string(),
             ));
@@ -306,8 +247,8 @@ impl NetworkSettings {
 
     /// Returns whether network capture should be applied.
     ///
-    /// `--no-network` and `enabled = false` skip capture. TUN path only enables
-    /// forwarding and leftover cleanup; tproxy still installs nftables.
+    /// `--no-network` and `enabled = false` skip capture. Enabled capture
+    /// installs tproxy nftables and policy routing.
     pub fn should_apply_capture(&self, no_network: bool) -> Result<bool> {
         if no_network || !self.enabled {
             return Ok(false);
@@ -393,8 +334,6 @@ mod tests {
         assert!(!network.should_apply_capture(false).unwrap());
 
         network.enabled = true;
-        network.mode = NetworkMode::Tproxy;
-        network.bypass_cn = false;
         network.fwmark = network.routing_mark;
         let err = network.should_apply_capture(false).unwrap_err().to_string();
         assert!(err.contains("must be different"));
@@ -458,37 +397,19 @@ lan_cidrs = ["192.168.100.0/24"]
         assert!(settings.network.tcp);
         assert!(!settings.network.udp);
         assert_eq!(settings.network.ports, PortsFilter::Common);
-        assert_eq!(settings.network.mode, NetworkMode::Tun);
         assert!(settings.network.bypass_cn);
         assert!(settings.network.should_apply_capture(false).unwrap());
     }
 
     #[test]
-    fn test_rejects_invalid_mode_and_tun_local_false() {
-        let err = toml::from_str::<Settings>(
-            r#"
-[network]
-mode = "redirect"
-"#,
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(err.contains("invalid network.mode"), "{err}");
-
+    fn test_local_false_and_bypass_cn_are_valid() {
         let network = NetworkSettings {
             local: false,
-            ..NetworkSettings::default()
-        };
-        let err = network.validate().unwrap_err().to_string();
-        assert!(err.contains("network.local = false"), "{err}");
-
-        let network = NetworkSettings {
-            mode: NetworkMode::Tproxy,
             bypass_cn: true,
             ..NetworkSettings::default()
         };
-        let err = network.validate().unwrap_err().to_string();
-        assert!(err.contains("bypass_cn"), "{err}");
+        network.validate().unwrap();
+        assert!(network.should_apply_capture(false).unwrap());
     }
 
     #[test]

@@ -2,9 +2,7 @@
 
 第一台网关是 Linux 虚拟机或云主机，不是家里正在用的 OpenWrt（ADR 0003）。现网路由器继续跑 ShellCrash。验收标准见 [#12](https://github.com/thunderfury-org/canto/issues/12)。
 
-默认捕获按 [ADR 0010](adr/0010-gateway-owns-nft.md)：canto 持有 `table inet canto`，LAN 走 prerouting，本机走 output。仅 TCP 用 redirect，打开 UDP 用 tproxy。不要用 TUN + `auto_redirect` 验收本机劫持。canto 不卸载 ShellCrash（ADR 0006）。MASQUERADE 仍交给系统。
-
-代码若还停在 #6 的 TUN 默认路径，先做 [#13](https://github.com/thunderfury-org/canto/issues/13)，再按本文测。
+默认捕获按 [ADR 0011](adr/0011-tproxy-only-cn-ip-file.md)：canto 持有 `table inet canto`，LAN 走 prerouting，本机走 output，入站是 tproxy。不要用 TUN + `auto_redirect` 验收本机劫持。canto 不卸载 ShellCrash（ADR 0006）。MASQUERADE 仍交给系统。
 
 ## 1. 拓扑
 
@@ -77,7 +75,7 @@ mixed_port = 7890
 lan_cidrs = ["192.168.1.0/24"]
 ```
 
-`source` 也可以是本地 JSON 路径。省略 `mode`：仅 TCP 时走 redirect，打开 UDP 时走 tproxy。redirect inbound 落地前，省略 `mode` 可以先走现有 tproxy。不要设 `mode = "tun"` 来验收 #12。
+`source` 也可以是本地 JSON 路径。不要写 `mode`（该键已忽略）。`bypass_cn = true` 时把 `cn_ip.txt` 放到 `work_dir`，否则首次启动会下载 ShellCrash 的 `china_ip_list.txt`。
 
 ## 5. systemd
 

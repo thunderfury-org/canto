@@ -2,10 +2,8 @@
 use tracing::warn;
 use tracing::{error, info};
 
-use crate::config::{NetworkMode, NetworkSettings};
-#[cfg(target_os = "linux")]
-use crate::error::CantoError;
-use crate::error::Result;
+use crate::config::NetworkSettings;
+use crate::error::{CantoError, Result};
 use crate::network::lan::resolve_lan_cidrs;
 use crate::network::nftables::NftablesManager;
 use crate::network::route::RouteManager;
@@ -19,29 +17,24 @@ pub struct NetworkGuard {
 
 impl NetworkGuard {
     /// Applies network rules and returns a guard that will clean them up when dropped
-    pub fn setup(mut settings: NetworkSettings) -> Result<Self> {
+    pub fn setup(mut settings: NetworkSettings, cnip: &[String]) -> Result<Self> {
         settings.validate()?;
-        match settings.mode {
-            NetworkMode::Tun => {
-                prepare_kernel_tun()?;
-                info!("TUN capture uses sing-box auto_redirect; skipping canto nftables");
-                leftover_cleanup(&settings);
-                Ok(Self { settings })
-            }
-            NetworkMode::Tproxy => {
-                settings.lan_cidrs = resolve_lan_cidrs(&settings.lan_cidrs)?;
-                prepare_kernel_tproxy()?;
-
-                let route = RouteManager::new(&settings);
-                let nft = NftablesManager::new(&settings);
-
-                info!("Initializing transparent proxy network rules");
-                route.setup()?;
-                nft.apply()?;
-
-                Ok(Self { settings })
-            }
+        if settings.bypass_cn && cnip.is_empty() {
+            return Err(CantoError::Config(
+                "network.bypass_cn is true but cn_ip.txt has no IPv4 CIDRs".to_string(),
+            ));
         }
+        settings.lan_cidrs = resolve_lan_cidrs(&settings.lan_cidrs)?;
+        prepare_kernel_tproxy()?;
+
+        let route = RouteManager::new(&settings);
+        let nft = NftablesManager::new(&settings).with_cnip(cnip);
+
+        info!("Initializing transparent proxy network rules");
+        route.setup()?;
+        nft.apply()?;
+
+        Ok(Self { settings })
     }
 
     /// Manually triggers teardown of all network rules
@@ -64,18 +57,6 @@ fn leftover_cleanup(settings: &NetworkSettings) {
     }
     delete_sing_box_table();
     delete_tun_iface();
-}
-
-fn prepare_kernel_tun() -> Result<()> {
-    #[cfg(target_os = "linux")]
-    {
-        enable_ip_forward()
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        Ok(())
-    }
 }
 
 fn prepare_kernel_tproxy() -> Result<()> {

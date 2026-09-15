@@ -29,6 +29,10 @@ _Avoid_: 客户端, 节点, 路由器
 _Avoid_: 模式, 代理模式
 
 **捕获**:
-把数据包送进 sing-box 入站的内核路径。网关默认是 redirect 或 tproxy，由 canto 编排 nft。
-_Avoid_: 管道, auto_redirect
+把数据包送进 sing-box 入站的内核路径。网关默认是 tproxy，由 canto 编排 nft。
+_Avoid_: 管道, auto_redirect, TUN
+
+**大陆 IP 绕过**:
+nft 在打标/tproxy 之前按 `cn_ip.txt` 对目的地址 return。
+_Avoid_: geoip, 源配置 cnip
 

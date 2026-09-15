@@ -1,8 +1,8 @@
 # canto 系统架构与设计文档
 
-本文档描述 canto **当前落地**的系统设计。#6 合入后默认仍是 TUN + `auto_redirect`；这条默认路径已由 [ADR 0010](adr/0010-gateway-owns-nft.md) 作废，代码尚未改回去。第 8 节是尚未做的，以及上家里 OpenWrt 的门槛。
+本文档描述 canto **当前落地**的系统设计。默认捕获是 canto 持有的 tproxy nft（LAN prerouting + 本机 output），见 [ADR 0011](adr/0011-tproxy-only-cn-ip-file.md)。第 8 节是尚未做的，以及上家里 OpenWrt 的门槛。
 
-透明入站选型见 [INBOUND.md](INBOUND.md) 与 ADR 0010。第 3 节写的是 #6 合入后尚未撤回的 TUN 行为；网关目标路径是 canto nft（LAN prerouting + 本机 output）。
+透明入站选型见 [INBOUND.md](INBOUND.md)。redirect inbound 尚未落地；仅 TCP 时 nft 只劫持 TCP，入站仍是 `tproxy-in`。
 
 ---
 
@@ -19,10 +19,10 @@
 canto 采用 Rust 开发，定位为专注于 **sing-box（1.13+）** 的无依赖单二进制透明网关编排工具：
 * **单静态二进制交付**：全静态链接（musl libc），无 glibc 或系统脚本解释器依赖。
 * **数据面与控制面分离**：数据面复用 sing-box；canto 作为控制面，负责网络编排、运行时覆盖和进程监督。
-* **原子化网络编排与 RAII 兜底**：使用 Linux 原生 `nftables` 与策略路由；`NetworkGuard` 在 SIGINT/SIGTERM 或进程退出时撤销规则。SIGKILL / OOM 无法走 Drop，需配合 systemd `ExecStop=canto clean-network`。
+* **原子化网络编排与 RAII 兜底**：使用 Linux 原生 `nftables` 与策略路由；`NetworkGuard` 在 SIGINT/SIGTERM 或进程退出时撤销规则。SIGKILL / OOM 无法走 Drop，需配合 systemd `ExecStop=canto clean-network`。残留的 `inet sing-box` 和名为 `canto` 的 tun 也会清掉。
 * **源配置加载与启动覆盖**：启动必须提供完整 sing-box JSON（本地文件或 HTTP(S) URL）；canto 整段替换 `inbounds`，写入 `route.default_mark`，并关闭 `auto_detect_interface`，保证入站与 nftables 端口/防环标记对齐。URL 在运行中定时刷新：失败则保持当前进程与 nftables，成功则覆盖、check 并重启 sing-box。
 
-当前不做订阅转换、模板合并、TUI、设备过滤、大陆 IP 绕过或 IPv6 劫持。源配置可以是本地文件或 HTTP(S) URL。上 OpenWrt 还缺的能力见第 8 节，不要把「当前不做」读成「永远不做」。
+当前不做订阅转换、模板合并、TUI、设备过滤或 IPv6 劫持。源配置可以是本地文件或 HTTP(S) URL。上 OpenWrt 还缺的能力见第 8 节，不要把「当前不做」读成「永远不做」。
 
 ---
 
@@ -44,6 +44,8 @@ canto
 │   └── overlay.rs       # inbound / default_mark / hijack-dns 覆盖
 ├── src/network/         # 透明代理网络编排
 │   ├── mod.rs
+│   ├── cnip.rs          # cn_ip.txt 解析与下载
+│   ├── lan.rs           # LAN CIDR 探测
 │   ├── nftables.rs      # nftables ruleset 模板生成与执行
 │   ├── route.rs         # Linux 策略路由 (ip rule / ip route)
 │   └── guard.rs         # RAII NetworkGuard 异常安全清理器
@@ -54,9 +56,9 @@ canto
 ```
 
 ### 2.1 职责边界与协作流程
-1. **启动阶段**：CLI 读取 `canto.toml`。`--no-network` / `network.enabled = false` 跳过网络接管。默认捕获为 TUN + `auto_redirect`；`network.mode = "tproxy"` 走手搓 tproxy。
-2. **配置准备**：读取必填的 `[singbox].source`（本地文件或 HTTP(S) URL）。`run`、`config generate`、无 `--config` 的 `config check`、以及 `status` 走同一条拉取路径。覆盖 inbound、bypass 规则和 `auto_detect_interface`，写出 `config_path`，再调用 `sing-box check`。
-3. **网络接管**：check 通过后，TUN 路径只开 `ip_forward`；tproxy 逃生口才装策略路由和 `table inet canto`。
+1. **启动阶段**：CLI 读取 `canto.toml`。`--no-network` / `network.enabled = false` 跳过网络接管。启用时一律 tproxy：策略路由 + `table inet canto`。
+2. **配置准备**：读取必填的 `[singbox].source`（本地文件或 HTTP(S) URL）。`run`、`config generate`、无 `--config` 的 `config check`、以及 `status` 走同一条拉取路径。覆盖 inbound 和 `auto_detect_interface`，写出 `config_path`，再调用 `sing-box check`。`bypass_cn` 时再读或下载 `cn_ip.txt`。
+3. **网络接管**：check 通过后装策略路由和 `table inet canto`。
 4. **进程托管**：`ProcessSupervisor` 异步拉起 sing-box，消费 stdout/stderr。源地址是 URL 且 `refresh_interval_secs > 0` 时，按间隔刷新：失败则保持当前进程与 nft；成功则覆盖、check、重启 sing-box，**不拆** nft。
 5. **退出与恢复**：SIGINT/SIGTERM 或子进程退出时，先停止 sing-box，再由 `NetworkGuard` Drop 删除 `inet canto` 表和策略路由。刷新重启不会走到这一步。
 
@@ -64,9 +66,7 @@ canto
 
 ## 3. 透明代理与网络编排设计
 
-**代码现状（#6，待按 ADR 0010 撤回）**仍是 TUN + `auto_redirect`：overlay 改写桌面 `tun-in`，打开 `auto_route` / `auto_redirect`（`strict_route` 关掉），按 LAN 接口 `include_interface` 限制来源。这条路径只有 prerouting，没有 output，不能劫持本机。目标默认是 canto 持有 `table inet canto`：仅 TCP 走 redirect，打开 UDP 走 tproxy；`bypass_cn` 在 nft 里 `return`。
-
-`network.mode = "tproxy"` 仍是 #8 的 `table inet canto` 行为，也是 ADR 0010 落地前可立刻改回的默认过渡。
+默认捕获是 canto 持有的 `table inet canto`：LAN prerouting tproxy，本机 output 打标后再 tproxy。仅 TCP 时 nft 只匹配 TCP；打开 UDP 时加上 UDP。`bypass_cn` 在 nft 里 `ip daddr @cnip return`，CIDR 来自 `work_dir/cn_ip.txt`。
 
 ### 3.1 核心数据链路
 
@@ -114,6 +114,7 @@ DNS：
 * 生效时 `nft -f -` 一次提交；清理时 `nft delete table inet canto`。
 * 保留地址放在 `set reserved_ipv4`，用于**目的地址**绕过。
 * 局域网来源放在 `set lan_ipv4`。
+* `bypass_cn` 时大陆 IPv4 放在 `set cnip`，在 tproxy/打标之前 `return`。
 * 启动时若 `ip_forward=0` 则写成 `1`；尝试 `modprobe nft_tproxy`，内建内核允许失败。
 
 ### 3.3 策略路由与防回环
@@ -152,14 +153,14 @@ DNS：
 3. 强制 `route.auto_detect_interface = false`。
 4. 若 `route.rules` 中还没有针对 `dns-in` 的 `hijack-dns` 规则，则插入到规则数组头部。
 
-默认 TUN inbound tag 固定为 `mixed-in`、`tun-in`。tproxy 逃生口仍是 `mixed-in`、`tproxy-in`、`dns-in`。
+默认 inbound tag 固定为 `mixed-in`、`tproxy-in`、`dns-in`。桌面源配置里的 `tun-in` 被整段替换。
 
-**默认 TUN inbound**
-* `mixed`：`tag = mixed-in`，听第一个 LAN IPv4（仅本机时 `127.0.0.1`），`listen_port = mixed_port`
-* `tun`：`tag = tun-in`，`interface_name = canto`，`auto_route` / `auto_redirect`，`strict_route = false`；有转发来源时才开 `auto_redirect`
-* 不再注入 `tproxy-in` 或 `dns-in`。DNS 用 `{ "port": 53, "action": "hijack-dns" }`。
+**默认 inbound**
+* `mixed`：`tag = mixed-in`，`listen = 0.0.0.0`，`listen_port = mixed_port`
+* `tproxy`：`tag = tproxy-in`，`listen = ::`，`listen_port = tproxy_port`
+* `direct`：`tag = dns-in`，`listen_port = dns_port`
 
-tproxy 模式下补齐的 DNS 劫持规则：
+补齐的 DNS 劫持规则：
 
 ```json
 {
@@ -211,8 +212,10 @@ udp = false
 ports = "common"
 bypass_cn = true
 mixed_port = 7890
+tproxy_port = 7893
+dns_port = 1053
 lan_cidrs = []           # 空则自动探测 LAN 接口
-# mode = "tproxy"        # 省略则走 TUN + auto_redirect
+# bypass_cn 时使用 work_dir/cn_ip.txt；缺失则下载
 ```
 
 ---
@@ -252,19 +255,19 @@ macOS 开发机只生成并校验规则，不执行 `nft` / `ip`。
 
 ## 8. 未来演进路线（Roadmap）
 
-已完成：本地或 HTTP(S) 源配置、inbound 覆盖、#8 范围/端口/仅 TCP、URL 刷新保活、SIGINT/SIGTERM 清残留。#6 把默认捕获切到 TUN + `auto_redirect`，并让 `bypass_cn` 只挂在那条路上；ADR 0010 认定这不适合网关，下一刀先撤回。`scripts/netns-check.sh` 在 CI 里覆盖劫持、bypass、回滚、URL 源、缓存和刷新。
+已完成：本地或 HTTP(S) 源配置、inbound 覆盖、#8 范围/端口/仅 TCP、URL 刷新保活、SIGINT/SIGTERM 清残留、默认 tproxy nft、`cn_ip.txt` 大陆绕过。`scripts/netns-check.sh` 在 CI 里覆盖劫持、bypass、本机 output、回滚、URL 源、缓存和刷新。
 
 下面只列还没做的。愿景仍在 GitHub #3；下一刀开工前单独开 issue，不要在 #3 里续写。
 
-家里那台正在用的 OpenWrt 仍不是下一台验收机（ADR 0003）：只有一台生产路由器，出问题会断网。[#8](https://github.com/thunderfury-org/canto/issues/8) 的范围开关仍有效，但 #6 的 TUN 默认路径劫持不了本机，也不对齐现网 Redir。下一刀是 [#13](https://github.com/thunderfury-org/canto/issues/13)（ADR 0010）：把捕获改回 canto nft。测试 Linux（[#12](https://github.com/thunderfury-org/canto/issues/12)）排在这之后，[#7](https://github.com/thunderfury-org/canto/issues/7) 再往后。
+家里那台正在用的 OpenWrt 仍不是下一台验收机（ADR 0003）：只有一台生产路由器，出问题会断网。下一刀是测试 Linux（[#12](https://github.com/thunderfury-org/canto/issues/12)），[#7](https://github.com/thunderfury-org/canto/issues/7) 再往后。[#13](https://github.com/thunderfury-org/canto/issues/13) 的 tproxy 切片已落地；redirect inbound 仍未做。
 
 ### 8.1 上路由器前（阻塞生产）
 
-[#8](https://github.com/thunderfury-org/canto/issues/8) 的意图开关仍在。#6 的 TUN 默认已被 ADR 0010 作废，代码尚未撤回。家里的 OpenWrt 见 [#7](https://github.com/thunderfury-org/canto/issues/7)，不拿它当第一台。
+[#8](https://github.com/thunderfury-org/canto/issues/8) 的意图开关仍在。默认捕获已是 tproxy nft（ADR 0011）。家里的 OpenWrt 见 [#7](https://github.com/thunderfury-org/canto/issues/7)，不拿它当第一台。
 
 * **劫持范围与端口**（[#8](https://github.com/thunderfury-org/canto/issues/8)，已完成）：局域网、本机、docker 可独立开关；端口可选常用 / 全部 / 自定义；可只劫持 TCP。
-* **网关捕获撤回**（[#13](https://github.com/thunderfury-org/canto/issues/13)，ADR 0010）：默认改回 canto nft；仅 TCP 走 redirect，打开 UDP 走 tproxy；`bypass_cn` 在 nft `return`，CIDR 来自源配置 `cnip`。redirect inbound 落地前允许省略 `mode` 时先走现有 tproxy。
-* **大陆 IP 绕过**（[#6](https://github.com/thunderfury-org/canto/issues/6)，部分作废）：TUN 路径上的 `action: bypass` 不再是默认。目标是 nft `ip daddr @cnip return`，仍不另下 geoip。
+* **网关捕获撤回**（[#13](https://github.com/thunderfury-org/canto/issues/13) tproxy 切片，ADR 0011）：默认 canto nft + tproxy；TUN 已删除。redirect inbound 仍未做。
+* **大陆 IP 绕过**（ADR 0011）：nft `ip daddr @cnip return`，CIDR 来自 `work_dir/cn_ip.txt`（缺失则下载 ShellCrash 的 `china_ip_list.txt`）。不解析源配置 `cnip`。
 * **nft_tproxy**：现在只尝试 modprobe，内建失败不阻断，真正缺能力时仍在 `nft -f` 时报错。
 * **集成测试**：网关回归目前是 `scripts/netns-check.sh`。再加第二、第三类网关场景时，把断言迁到 `tests/netns_gateway.rs`，脚本只留搭拓扑。
 
@@ -280,11 +283,11 @@ macOS 开发机只生成并校验规则，不执行 `nft` / `ip`。
 * **HTTP(S) 拉源配置**：已支持。自定义 Header、自签证书和订阅转换仍不做。
 * **订阅/provider**：`{My-}` 这类过滤不处理。节点必须预先写进完整 JSON。
 * **覆盖 `experimental.clash_api`**：源配置里有就保留；以后做改写时再加监听地址配置。当前不查延迟/流量。
-* **tun 模式**（[#6](https://github.com/thunderfury-org/canto/issues/6)，默认地位已作废）：`mode = "tun"` 保留为高级选项，不能劫持本机。legacy `bypass_cn_ips` 仍忽略。
+* **tun 模式**：已删除。legacy `mode` / `bypass_cn_ips` 仍忽略。
 
 ### 8.4 运行与交付
 
-* **测试 Linux 网关**（[#12](https://github.com/thunderfury-org/canto/issues/12)）：排在 [#13](https://github.com/thunderfury-org/canto/issues/13) 之后。现网 OpenWrt 继续跑 ShellCrash；测试机挂在 LAN 后面，只切指定设备。必须能证明 LAN prerouting **和** 本机 output。见 [linux-test-gateway.md](linux-test-gateway.md)。
+* **测试 Linux 网关**（[#12](https://github.com/thunderfury-org/canto/issues/12)）：现网 OpenWrt 继续跑 ShellCrash；测试机挂在 LAN 后面，只切指定设备。必须能证明 LAN prerouting **和** 本机 output。见 [linux-test-gateway.md](linux-test-gateway.md)。
 * **OpenWrt 真机交付**（[#7](https://github.com/thunderfury-org/canto/issues/7)）：排在 #12 之后。netns/CI 和测试 Linux 都不能代替家里那台路由器。要 musl 包、procd/自启、fw4 协同；先停 ShellCrash 再接管。canto 仍不自动卸载 ShellCrash。
 * **安装与自启**：现在只有文档里的 systemd 示例。没有安装脚本、procd/OpenRC、交叉编译发布。
 * **内核与面板**：不下载 sing-box，不安装 Dashboard。
