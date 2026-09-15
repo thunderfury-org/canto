@@ -2,7 +2,7 @@
 
 canto is a lightweight transparent proxy and configuration orchestrator designed specifically for sing-box.
 
-Built in Rust as a single static binary, canto loads a complete sing-box JSON, overlays gateway inbounds, overlays gateway TUN inbounds with auto_redirect for LAN and local traffic, and supervises the sing-box process.
+Built in Rust as a single static binary, canto loads a complete sing-box JSON, overlays gateway tproxy inbounds, installs nftables capture for LAN and local traffic, and supervises the sing-box process.
 
 For the in-depth architectural breakdown and design principles, see [docs/DESIGN.md](docs/DESIGN.md).
 
@@ -10,7 +10,7 @@ For the in-depth architectural breakdown and design principles, see [docs/DESIGN
 
 - **Source overlay**: Loads a complete sing-box JSON from a local file or HTTP(S) URL, replaces `inbounds` with mixed/tproxy/dns listeners, writes `route.default_mark`, and disables `auto_detect_interface`. URL sources refresh on an interval; a failed refresh keeps the current process and nftables rules.
 - **Process Supervision**: Manages sing-box lifecycle with asynchronous streaming logs, configuration pre-flight validation, and graceful termination handling.
-- **Atomic Network Orchestration**: Default capture is TUN + `auto_redirect` (no canto nftables). `mode = "tproxy"` still uses `nftables` and policy routing.
+- **Atomic Network Orchestration**: Default capture is tproxy with canto `nftables` and policy routing. `bypass_cn` returns CN destinations in nft before tproxy, using `work_dir/cn_ip.txt`.
 - **Fail-safe Network Guard**: Implements RAII-based cleanup ensuring firewall rules and routing policies are rolled back on SIGINT/SIGTERM or process exit.
 - **Zero Shell Dependencies**: Standalone Rust application without dependencies on bash, awk, sed, or busybox idiosyncrasies.
 
@@ -29,6 +29,8 @@ src/
 │   └── overlay.rs     # Runtime inbound / default_mark overlay
 ├── network/           # Transparent proxy network orchestration
 │   ├── mod.rs
+│   ├── cnip.rs        # cn_ip.txt parse / download
+│   ├── lan.rs         # LAN CIDR detection
 │   ├── nftables.rs    # nftables ruleset generator and manager
 │   ├── route.rs       # Policy routing manager (ip rule / ip route)
 │   └── guard.rs       # RAII lifecycle guard for automatic rollback
@@ -80,17 +82,17 @@ cargo run -- run --no-network
 
 ## Subcommands
 
-- `canto run`: Overlay the source JSON, validate it, apply tproxy rules, and supervise sing-box.
+- `canto run`: Overlay the source JSON, validate it, apply tproxy nftables, and supervise sing-box.
 - `canto status`: Inspect sing-box binary availability, source/runtime config, and proxy parameters.
 - `canto config generate`: Load `source`, overlay inbounds / `default_mark`, and write `config_path`.
 - `canto config check`: Validate sing-box configuration syntax using `sing-box check`.
 - `canto config init`: Initialize a default `canto.toml`.
-- `canto config dump-nft`: Print the tproxy nftables ruleset, or a note that the TUN path has none.
+- `canto config dump-nft`: Print the tproxy nftables ruleset (reads `cn_ip.txt` if present; does not download).
 - `canto clean-network`: Emergency manual teardown of canto nftables table and policy routes.
 
 ## Gateway check without a router
 
-Unit tests and `canto config dump-nft` do not send packets. `scripts/netns-check.sh` builds a LAN/gateway/WAN topology with network namespaces and checks TUN hijack, CN/port bypass, local hijack, WAN port reject, leftover rollback, HTTP(S) source fetch, last-good cache, refresh, and a tproxy escape-hatch regression. CI runs this on every pull request.
+Unit tests and `canto config dump-nft` do not send packets. `scripts/netns-check.sh` builds a LAN/gateway/WAN topology with network namespaces and checks tproxy hijack, CN/port bypass, local output, WAN port reject, leftover rollback, HTTP(S) source fetch, last-good cache, and refresh. CI runs this on every pull request.
 
 On Linux as root:
 

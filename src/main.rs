@@ -7,12 +7,14 @@ use tracing_subscriber::FmtSubscriber;
 
 use canto::cli::{Cli, Commands, ConfigCommands, RunArgs};
 use canto::config::{
-    HttpFetcher, NetworkMode, PortsFilter, RefreshOutcome, Settings, SourceLocator,
-    apply_runtime_overlay_with_capture, obtain_source, prepare_runtime_config, refresh_source,
-    source_cache_path, write_runtime_config, write_source_cache,
+    HttpFetcher, PortsFilter, RefreshOutcome, Settings, SourceLocator, apply_runtime_overlay,
+    obtain_source, prepare_runtime_config, refresh_source, source_cache_path, write_runtime_config,
+    write_source_cache,
 };
 use canto::error::Result;
-use canto::network::{NetworkGuard, NftablesManager, resolve_lan_cidrs, resolve_tun_capture};
+use canto::network::{
+    NetworkGuard, NftablesManager, cn_ip_path, load_cn_ip, read_cn_ip_file, resolve_lan_cidrs,
+};
 use canto::supervisor::ProcessSupervisor;
 
 #[tokio::main]
@@ -66,15 +68,14 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
 
     info!("Loading source config from {locator}");
     let raw = obtain_source(&locator, &cache_path, &fetcher).await?;
-    let tun_capture = if settings.network.mode.is_tun() {
-        let strict = cfg!(target_os = "linux") && apply_network && settings.network.lan;
-        Some(resolve_tun_capture(&settings.network, strict)?)
-    } else {
-        None
-    };
-    let runtime =
-        apply_runtime_overlay_with_capture(raw.clone(), &settings.network, tun_capture.as_ref())?;
+    let runtime = apply_runtime_overlay(raw.clone(), &settings.network)?;
     write_runtime_config(&runtime, &runtime_path)?;
+
+    let cnip = if apply_network && settings.network.bypass_cn {
+        load_cn_ip(&settings.canto.work_dir, &fetcher).await?
+    } else {
+        Vec::new()
+    };
 
     let supervisor = ProcessSupervisor::new(
         settings.singbox.binary.clone(),
@@ -91,7 +92,7 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
     }
 
     let _network_guard = if apply_network {
-        Some(NetworkGuard::setup(settings.network.clone())?)
+        Some(NetworkGuard::setup(settings.network.clone(), &cnip)?)
     } else {
         info!("Network rules disabled (pure proxy mode)");
         None
@@ -109,7 +110,6 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
                     &locator,
                     &fetcher,
                     &settings,
-                    tun_capture.as_ref(),
                     &supervisor,
                     &runtime_path,
                     &cache_path,
@@ -128,13 +128,12 @@ async fn apply_url_refresh(
     locator: &SourceLocator,
     fetcher: &HttpFetcher,
     settings: &Settings,
-    capture: Option<&canto::network::TunCapture>,
     supervisor: &ProcessSupervisor,
     runtime_path: &Path,
     cache_path: &Path,
 ) -> bool {
     let next = runtime_path.with_extension("json.next");
-    match refresh_source(locator, fetcher, &settings.network, capture, |overlayed| {
+    match refresh_source(locator, fetcher, &settings.network, |overlayed| {
         write_runtime_config(overlayed, &next)?;
         supervisor.check_config(Some(&next))
     })
@@ -203,15 +202,13 @@ async fn handle_status(settings: Settings) -> Result<()> {
         );
     }
 
-    info!("capture mode: {}", settings.network.mode.as_str());
+    info!("capture: tproxy");
     info!("bypass_cn: {}", settings.network.bypass_cn);
-    if settings.network.mode == NetworkMode::Tproxy {
-        info!("tproxy fwmark: {:#x}", settings.network.fwmark);
-        info!(
-            "sing-box routing mark: {:#x}",
-            settings.network.routing_mark
-        );
-    }
+    info!("tproxy fwmark: {:#x}", settings.network.fwmark);
+    info!(
+        "sing-box routing mark: {:#x}",
+        settings.network.routing_mark
+    );
     info!(
         "proxy scope: lan={}, local={}, docker={}",
         settings.network.lan, settings.network.local, settings.network.docker
@@ -225,33 +222,19 @@ async fn handle_status(settings: Settings) -> Result<()> {
         "proxy traffic: tcp={}, udp={}, ports={}",
         settings.network.tcp, settings.network.udp, ports_str
     );
-    if settings.network.mode.is_tun() {
-        match resolve_tun_capture(&settings.network, false) {
-            Ok(capture) => {
-                info!("mixed listen: {}", capture.mixed_listen);
-                info!(
-                    "include_interface: {}",
-                    if capture.include_interface.is_empty() {
-                        "(none)".to_string()
-                    } else {
-                        capture.include_interface.join(", ")
-                    }
-                );
-                info!(
-                    "exclude_interface: {}",
-                    if capture.exclude_interface.is_empty() {
-                        "(none)".to_string()
-                    } else {
-                        capture.exclude_interface.join(", ")
-                    }
-                );
-            }
-            Err(e) => error!("TUN capture: {e}"),
-        }
-    } else {
-        match resolve_lan_cidrs(&settings.network.lan_cidrs) {
-            Ok(cidrs) => info!("LAN CIDRs: {}", cidrs.join(", ")),
-            Err(e) => error!("LAN CIDRs: {e}"),
+    match resolve_lan_cidrs(&settings.network.lan_cidrs) {
+        Ok(cidrs) => info!("LAN CIDRs: {}", cidrs.join(", ")),
+        Err(e) => error!("LAN CIDRs: {e}"),
+    }
+    if settings.network.bypass_cn {
+        let path = cn_ip_path(&settings.canto.work_dir);
+        match read_cn_ip_file(&settings.canto.work_dir) {
+            Ok(Some(cidrs)) => info!("cn_ip.txt: {} IPv4 CIDRs ({})", cidrs.len(), path.display()),
+            Ok(None) => info!(
+                "cn_ip.txt: missing ({}); will download on run",
+                path.display()
+            ),
+            Err(e) => error!("cn_ip.txt: {e}"),
         }
     }
     Ok(())
@@ -284,14 +267,30 @@ async fn handle_config(cmd: ConfigCommands, settings: Settings) -> Result<()> {
             Ok(())
         }
         ConfigCommands::DumpNft => {
-            if settings.network.mode.is_tun() {
-                print!("{}", NftablesManager::new(&settings.network).dump());
-                return Ok(());
-            }
             let mut network = settings.network;
             network.lan_cidrs = resolve_lan_cidrs(&network.lan_cidrs)?;
             info!("LAN CIDRs: {}", network.lan_cidrs.join(", "));
-            print!("{}", NftablesManager::new(&network).dump());
+            let cnip = match read_cn_ip_file(&settings.canto.work_dir) {
+                Ok(Some(cidrs)) => {
+                    info!(
+                        "CN CIDRs: {} prefixes from {}",
+                        cidrs.len(),
+                        cn_ip_path(&settings.canto.work_dir).display()
+                    );
+                    cidrs
+                }
+                Ok(None) => {
+                    if network.bypass_cn {
+                        warn!(
+                            "bypass_cn is true but {} is missing; dump omits set cnip",
+                            cn_ip_path(&settings.canto.work_dir).display()
+                        );
+                    }
+                    Vec::new()
+                }
+                Err(e) => return Err(e),
+            };
+            print!("{}", NftablesManager::new(&network).with_cnip(&cnip).dump());
             Ok(())
         }
     }
