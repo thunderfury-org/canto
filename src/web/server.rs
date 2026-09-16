@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tracing::info;
 
@@ -11,22 +12,22 @@ pub struct WebServer {
     settings: WebSettings,
 }
 
+pub struct BoundWebServer {
+    settings: WebSettings,
+    listener: TcpListener,
+    local_addr: SocketAddr,
+}
+
 impl WebServer {
     pub fn new(settings: WebSettings) -> Self {
         Self { settings }
     }
 
-    pub async fn run_with_signal<F>(&self, shutdown_signal: F) -> Result<()>
-    where
-        F: Future<Output = ()> + Send + 'static,
-    {
-        let state = WebState::new(self.settings.clone());
-        let app = create_app(state);
-
+    pub async fn bind(&self) -> Result<BoundWebServer> {
         let listener = TcpListener::bind(&self.settings.listen)
             .await
             .map_err(|e| {
-                CantoError::Network(format!(
+                CantoError::Web(format!(
                     "Failed to bind web listen address {}: {e}",
                     self.settings.listen
                 ))
@@ -34,21 +35,48 @@ impl WebServer {
 
         let local_addr = listener
             .local_addr()
-            .map_err(|e| CantoError::Network(format!("Failed to get local address: {e}")))?;
+            .map_err(|e| CantoError::Web(format!("Failed to get local address: {e}")))?;
 
         info!("Web Studio listening on http://{}", local_addr);
+        Ok(BoundWebServer {
+            settings: self.settings.clone(),
+            listener,
+            local_addr,
+        })
+    }
 
-        axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown_signal)
-            .await
-            .map_err(|e| CantoError::Network(format!("Web Studio server error: {e}")))?;
-
-        info!("Web Studio server stopped gracefully");
-        Ok(())
+    pub async fn run_with_signal<F>(&self, shutdown_signal: F) -> Result<()>
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        let bound = self.bind().await?;
+        bound.run_with_signal(shutdown_signal).await
     }
 
     pub async fn run(&self) -> Result<()> {
         self.run_with_signal(wait_for_shutdown_signal()).await
+    }
+}
+
+impl BoundWebServer {
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_addr
+    }
+
+    pub async fn run_with_signal<F>(self, shutdown_signal: F) -> Result<()>
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        let state = WebState::new(self.settings);
+        let app = create_app(state);
+
+        axum::serve(self.listener, app)
+            .with_graceful_shutdown(shutdown_signal)
+            .await
+            .map_err(|e| CantoError::Web(format!("Web Studio server error: {e}")))?;
+
+        info!("Web Studio server stopped gracefully");
+        Ok(())
     }
 }
 

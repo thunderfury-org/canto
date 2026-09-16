@@ -24,6 +24,17 @@ pub struct StatusResponse {
     pub version: &'static str,
 }
 
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 pub fn extract_token(headers: &HeaderMap) -> Option<String> {
     if let Some(auth_header) = headers.get(header::AUTHORIZATION)
         && let Ok(auth_str) = auth_header.to_str()
@@ -55,7 +66,7 @@ pub fn is_authorized(headers: &HeaderMap, configured_token: &str) -> bool {
         return false;
     }
     if let Some(token) = extract_token(headers) {
-        return token == configured;
+        return constant_time_eq(token.as_bytes(), configured.as_bytes());
     }
     false
 }
@@ -112,7 +123,7 @@ pub async fn handle_verify_auth(
         .or_else(|| extract_token(&headers));
 
     if let Some(token) = candidate
-        && token == configured
+        && constant_time_eq(token.as_bytes(), configured.as_bytes())
     {
         let cookie = format!(
             "canto_admin_token={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
@@ -152,4 +163,50 @@ pub async fn handle_logout() -> Response {
         )
         .body(Body::from(r#"{"authenticated":false,"message":"Logged out"}"#))
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constant_time_eq() {
+        assert!(constant_time_eq(b"secret", b"secret"));
+        assert!(!constant_time_eq(b"secret", b"secret1"));
+        assert!(!constant_time_eq(b"secret1", b"secret"));
+        assert!(!constant_time_eq(b"secret", b"wrong!"));
+    }
+
+    #[test]
+    fn test_extract_token() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(extract_token(&headers), None);
+
+        headers.insert(header::AUTHORIZATION, "Bearer tok_123".parse().unwrap());
+        assert_eq!(extract_token(&headers), Some("tok_123".to_string()));
+
+        headers.insert(header::AUTHORIZATION, "raw_tok_456".parse().unwrap());
+        assert_eq!(extract_token(&headers), Some("raw_tok_456".to_string()));
+
+        headers.remove(header::AUTHORIZATION);
+        headers.insert(
+            header::COOKIE,
+            "session=abc; canto_admin_token=cookie_tok; other=1"
+                .parse()
+                .unwrap(),
+        );
+        assert_eq!(extract_token(&headers), Some("cookie_tok".to_string()));
+    }
+
+    #[test]
+    fn test_is_authorized() {
+        let mut headers = HeaderMap::new();
+        assert!(!is_authorized(&headers, "my_token"));
+        assert!(!is_authorized(&headers, ""));
+
+        headers.insert(header::AUTHORIZATION, "Bearer my_token".parse().unwrap());
+        assert!(is_authorized(&headers, "my_token"));
+        assert!(!is_authorized(&headers, "wrong_token"));
+        assert!(!is_authorized(&headers, ""));
+    }
 }

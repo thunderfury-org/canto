@@ -113,8 +113,9 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
     let (web_shutdown_tx, web_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     let web_task = if settings.web.enabled {
         let web_server = canto::web::WebServer::new(settings.web.clone());
+        let bound_server = web_server.bind().await?;
         Some(tokio::spawn(async move {
-            web_server
+            bound_server
                 .run_with_signal(async {
                     let _ = web_shutdown_rx.await;
                 })

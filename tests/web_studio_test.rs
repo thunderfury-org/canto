@@ -167,7 +167,41 @@ async fn test_protected_api_auth_checks() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
-    // 6. POST /api/auth/verify with valid token -> 200 OK and Set-Cookie
+    // 6. Nonexistent /api/* endpoint without auth -> 401 Unauthorized (protected API subtree)
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/unknown_endpoint")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    // 7. Nonexistent /api/* endpoint with auth -> 404 JSON, NOT SPA index.html fallback
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/unknown_endpoint")
+                .header(header::AUTHORIZATION, "Bearer test_secret_token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(content_type.contains("application/json"));
+
+    // 8. POST /api/auth/verify with valid token -> 200 OK and Set-Cookie
     let response = app
         .clone()
         .oneshot(
