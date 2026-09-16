@@ -15,6 +15,9 @@ pub enum CantoError {
     #[error("Network orchestration error: {0}")]
     Network(String),
 
+    #[error("Web Studio error: {0}")]
+    Web(String),
+
     #[error("Process supervisor error: {0}")]
     Process(String),
 

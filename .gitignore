@@ -32,3 +32,11 @@ target
 
 # Local test data
 /.data/
+node_modules/
+
+# Web Studio frontend dist
+/web/dist/
+
+# Editor directories
+.vscode/
+.idea/

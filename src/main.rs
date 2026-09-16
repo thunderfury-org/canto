@@ -11,7 +11,7 @@ use canto::config::{
     obtain_source, prepare_runtime_config, refresh_source, source_cache_path, write_runtime_config,
     write_source_cache,
 };
-use canto::error::Result;
+use canto::error::{CantoError, Result};
 use canto::network::{
     NetworkGuard, NftablesManager, cn_ip_path, load_cn_ip, read_cn_ip_file, resolve_lan_cidrs,
 };
@@ -59,10 +59,22 @@ async fn run_app(cli: Cli) -> Result<()> {
 async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
     info!("Starting canto orchestrator");
 
+    fs::create_dir_all(&settings.canto.work_dir)?;
+
+    // Server-only mode: network capture disabled and Web Studio enabled.
+    // Operates purely as a configuration generator and web distribution service,
+    // requiring no root privileges or sing-box process supervisor.
+    if !settings.network.enabled && settings.web.enabled {
+        info!("canto running in server-only mode (Web Studio)");
+        let web_server = canto::web::WebServer::new(settings.web.clone());
+        web_server.run().await?;
+        info!("canto shutdown complete");
+        return Ok(());
+    }
+
     let apply_network = settings.network.should_apply_capture(args.no_network)?;
     let fetcher = HttpFetcher::default();
     let locator = SourceLocator::parse(&settings.singbox.source)?;
-    fs::create_dir_all(&settings.canto.work_dir)?;
     let cache_path = source_cache_path(&settings.canto.work_dir);
     let runtime_path = settings.singbox.config_path.clone();
 
@@ -98,28 +110,69 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
         None
     };
 
-    if locator.is_url() && settings.singbox.refresh_interval_secs > 0 {
-        let interval = Duration::from_secs(settings.singbox.refresh_interval_secs);
-        info!(
-            "Refreshing URL source every {} seconds",
-            settings.singbox.refresh_interval_secs
-        );
-        supervisor
-            .run_supervised_with_refresh(interval, || {
-                apply_url_refresh(
-                    &locator,
-                    &fetcher,
-                    &settings,
-                    &supervisor,
-                    &runtime_path,
-                    &cache_path,
-                )
-            })
-            .await?;
+    let (web_shutdown_tx, web_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let web_task = if settings.web.enabled {
+        let web_server = canto::web::WebServer::new(settings.web.clone());
+        let bound_server = web_server.bind().await?;
+        Some(tokio::spawn(async move {
+            bound_server
+                .run_with_signal(async {
+                    let _ = web_shutdown_rx.await;
+                })
+                .await
+        }))
     } else {
-        supervisor.run_supervised().await?;
-    }
+        None
+    };
 
+    let supervisor_fut = async {
+        if locator.is_url() && settings.singbox.refresh_interval_secs > 0 {
+            let interval = Duration::from_secs(settings.singbox.refresh_interval_secs);
+            info!(
+                "Refreshing URL source every {} seconds",
+                settings.singbox.refresh_interval_secs
+            );
+            supervisor
+                .run_supervised_with_refresh(interval, || {
+                    apply_url_refresh(
+                        &locator,
+                        &fetcher,
+                        &settings,
+                        &supervisor,
+                        &runtime_path,
+                        &cache_path,
+                    )
+                })
+                .await
+        } else {
+            supervisor.run_supervised().await
+        }
+    };
+
+    let run_res = if let Some(mut task) = web_task {
+        tokio::select! {
+            res = supervisor_fut => {
+                let _ = web_shutdown_tx.send(());
+                match (&mut task).await {
+                    Ok(Err(e)) => error!("Web Studio server error on exit: {e}"),
+                    Err(e) => warn!("Web Studio task join error: {e}"),
+                    Ok(Ok(())) => {}
+                }
+                res
+            }
+            web_join_res = &mut task => {
+                match web_join_res {
+                    Ok(Err(e)) => Err(e),
+                    Err(e) => Err(CantoError::Web(format!("Web Studio task panicked: {e}"))),
+                    Ok(Ok(())) => Err(CantoError::Web("Web Studio server exited unexpectedly".to_string())),
+                }
+            }
+        }
+    } else {
+        supervisor_fut.await
+    };
+
+    run_res?;
     info!("canto shutdown complete");
     Ok(())
 }
@@ -187,6 +240,24 @@ async fn handle_status(settings: Settings) -> Result<()> {
             settings.singbox.binary.display()
         ),
         Err(e) => error!("sing-box binary: Missing or unusable ({e})"),
+    }
+
+    if settings.web.enabled {
+        info!(
+            "web studio: Enabled (http://{}, token={})",
+            settings.web.listen,
+            if settings.web.admin_token.is_empty() {
+                "none"
+            } else {
+                "configured"
+            }
+        );
+        info!(
+            "web studio public url: {}",
+            settings.web.resolve_public_url()
+        );
+    } else {
+        info!("web studio: Disabled");
     }
 
     if settings.singbox.config_path.exists() {
