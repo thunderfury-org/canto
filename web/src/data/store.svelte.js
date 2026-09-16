@@ -62,13 +62,6 @@ class StudioStore {
         return false;
       }
     } catch (e) {
-      // In offline / standalone preview mode, fallback to matching default
-      if (token === 'secret_admin_tok_canto_2026') {
-        this.isAuthenticated = true;
-        this.adminToken = token;
-        this.authStatusMessage = '离线/本地验证通过';
-        return true;
-      }
       this.isAuthenticated = false;
       this.authStatusMessage = '无法连接到后端服务: ' + e.message;
       return false;

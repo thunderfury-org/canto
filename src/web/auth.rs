@@ -1,3 +1,4 @@
+use axum::Json;
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
@@ -7,12 +8,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::web::state::WebState;
 
+pub const COOKIE_NAME: &str = "canto_admin_token";
+pub const COOKIE_MAX_AGE_SECS: u64 = 30 * 24 * 3600;
+
 #[derive(Debug, Deserialize)]
 pub struct VerifyAuthRequest {
     pub token: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct VerifyAuthResponse {
     pub authenticated: bool,
     pub message: String,
@@ -49,9 +53,10 @@ pub fn extract_token(headers: &HeaderMap) -> Option<String> {
     if let Some(cookie_header) = headers.get(header::COOKIE)
         && let Ok(cookie_str) = cookie_header.to_str()
     {
+        let cookie_prefix = format!("{COOKIE_NAME}=");
         for item in cookie_str.split(';') {
             let item = item.trim();
-            if let Some(token) = item.strip_prefix("canto_admin_token=") {
+            if let Some(token) = item.strip_prefix(&cookie_prefix) {
                 return Some(token.trim().to_string());
             }
         }
@@ -105,17 +110,18 @@ pub async fn handle_status() -> Response {
 pub async fn handle_verify_auth(
     State(state): State<WebState>,
     headers: HeaderMap,
-    body: Option<axum::Json<VerifyAuthRequest>>,
+    body: Option<Json<VerifyAuthRequest>>,
 ) -> Response {
     let configured = state.settings.admin_token.trim();
     if configured.is_empty() {
-        return Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(
-                r#"{"authenticated":false,"message":"Admin token is not configured on server"}"#,
-            ))
-            .unwrap_or_else(|_| StatusCode::UNAUTHORIZED.into_response());
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(VerifyAuthResponse {
+                authenticated: false,
+                message: "Admin token is not configured on server".to_string(),
+            }),
+        )
+            .into_response();
     }
 
     let candidate = body
@@ -126,43 +132,46 @@ pub async fn handle_verify_auth(
         && constant_time_eq(token.as_bytes(), configured.as_bytes())
     {
         let cookie = format!(
-            "canto_admin_token={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
-            30 * 24 * 3600
+            "{COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={COOKIE_MAX_AGE_SECS}"
         );
-        return Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, "application/json")
-            .header(
-                header::SET_COOKIE,
-                HeaderValue::from_str(&cookie).unwrap_or_else(|_| HeaderValue::from_static("")),
-            )
-            .body(Body::from(
-                r#"{"authenticated":true,"message":"Admin authentication successful"}"#,
-            ))
-            .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
+        let resp = Json(VerifyAuthResponse {
+            authenticated: true,
+            message: "Admin authentication successful".to_string(),
+        });
+        let mut response = (StatusCode::OK, resp).into_response();
+        if let Ok(header_val) = HeaderValue::from_str(&cookie) {
+            response
+                .headers_mut()
+                .insert(header::SET_COOKIE, header_val);
+        }
+        return response;
     }
 
-    Response::builder()
-        .status(StatusCode::UNAUTHORIZED)
-        .header(header::CONTENT_TYPE, "application/json")
-        .body(Body::from(
-            r#"{"authenticated":false,"message":"Invalid admin token"}"#,
-        ))
-        .unwrap_or_else(|_| StatusCode::UNAUTHORIZED.into_response())
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(VerifyAuthResponse {
+            authenticated: false,
+            message: "Invalid admin token".to_string(),
+        }),
+    )
+        .into_response()
 }
 
 pub async fn handle_logout() -> Response {
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/json")
-        .header(
-            header::SET_COOKIE,
-            HeaderValue::from_static(
-                "canto_admin_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax",
-            ),
-        )
-        .body(Body::from(r#"{"authenticated":false,"message":"Logged out"}"#))
-        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    let expired_cookie = format!(
+        "{COOKIE_NAME}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax"
+    );
+    let resp = Json(VerifyAuthResponse {
+        authenticated: false,
+        message: "Logged out".to_string(),
+    });
+    let mut response = (StatusCode::OK, resp).into_response();
+    if let Ok(header_val) = HeaderValue::from_str(&expired_cookie) {
+        response
+            .headers_mut()
+            .insert(header::SET_COOKIE, header_val);
+    }
+    response
 }
 
 #[cfg(test)]

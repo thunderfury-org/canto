@@ -11,7 +11,7 @@ use canto::config::{
     obtain_source, prepare_runtime_config, refresh_source, source_cache_path, write_runtime_config,
     write_source_cache,
 };
-use canto::error::Result;
+use canto::error::{CantoError, Result};
 use canto::network::{
     NetworkGuard, NftablesManager, cn_ip_path, load_cn_ip, read_cn_ip_file, resolve_lan_cidrs,
 };
@@ -125,36 +125,54 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
         None
     };
 
-    let supervisor_res = if locator.is_url() && settings.singbox.refresh_interval_secs > 0 {
-        let interval = Duration::from_secs(settings.singbox.refresh_interval_secs);
-        info!(
-            "Refreshing URL source every {} seconds",
-            settings.singbox.refresh_interval_secs
-        );
-        supervisor
-            .run_supervised_with_refresh(interval, || {
-                apply_url_refresh(
-                    &locator,
-                    &fetcher,
-                    &settings,
-                    &supervisor,
-                    &runtime_path,
-                    &cache_path,
-                )
-            })
-            .await
-    } else {
-        supervisor.run_supervised().await
+    let supervisor_fut = async {
+        if locator.is_url() && settings.singbox.refresh_interval_secs > 0 {
+            let interval = Duration::from_secs(settings.singbox.refresh_interval_secs);
+            info!(
+                "Refreshing URL source every {} seconds",
+                settings.singbox.refresh_interval_secs
+            );
+            supervisor
+                .run_supervised_with_refresh(interval, || {
+                    apply_url_refresh(
+                        &locator,
+                        &fetcher,
+                        &settings,
+                        &supervisor,
+                        &runtime_path,
+                        &cache_path,
+                    )
+                })
+                .await
+        } else {
+            supervisor.run_supervised().await
+        }
     };
 
-    if let Some(task) = web_task {
-        let _ = web_shutdown_tx.send(());
-        if let Err(e) = task.await {
-            warn!("Web Studio task failed: {e}");
+    let run_res = if let Some(mut task) = web_task {
+        tokio::select! {
+            res = supervisor_fut => {
+                let _ = web_shutdown_tx.send(());
+                match (&mut task).await {
+                    Ok(Err(e)) => error!("Web Studio server error on exit: {e}"),
+                    Err(e) => warn!("Web Studio task join error: {e}"),
+                    Ok(Ok(())) => {}
+                }
+                res
+            }
+            web_join_res = &mut task => {
+                match web_join_res {
+                    Ok(Err(e)) => Err(e),
+                    Err(e) => Err(CantoError::Web(format!("Web Studio task panicked: {e}"))),
+                    Ok(Ok(())) => Err(CantoError::Web("Web Studio server exited unexpectedly".to_string())),
+                }
+            }
         }
-    }
+    } else {
+        supervisor_fut.await
+    };
 
-    supervisor_res?;
+    run_res?;
     info!("canto shutdown complete");
     Ok(())
 }

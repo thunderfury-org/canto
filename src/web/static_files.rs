@@ -16,20 +16,16 @@ pub async fn static_handler(uri: axum::http::Uri) -> Response {
         return StatusCode::NOT_FOUND.into_response();
     }
 
-    if path.is_empty() || path == "index.html" {
-        return serve_asset("index.html").unwrap_or_else(|| StatusCode::NOT_FOUND.into_response());
+    if !path.is_empty() && path != "index.html" {
+        if let Some(resp) = serve_asset(path) {
+            return resp;
+        }
+        if path.contains('.') {
+            return StatusCode::NOT_FOUND.into_response();
+        }
     }
 
-    if let Some(resp) = serve_asset(path) {
-        return resp;
-    }
-
-    // SPA fallback: client-side routes without file extension serve index.html
-    if !path.contains('.') {
-        return serve_asset("index.html").unwrap_or_else(|| StatusCode::NOT_FOUND.into_response());
-    }
-
-    StatusCode::NOT_FOUND.into_response()
+    serve_asset("index.html").unwrap_or_else(|| StatusCode::NOT_FOUND.into_response())
 }
 
 fn serve_asset(path: &str) -> Option<Response> {
