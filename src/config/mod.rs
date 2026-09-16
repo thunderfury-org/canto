@@ -5,6 +5,7 @@ pub mod source;
 pub use overlay::{apply_runtime_overlay, load_source, write_runtime_config};
 pub use settings::{
     COMMON_PORTS, CantoSettings, NetworkSettings, PortsFilter, Settings, SingBoxSettings,
+    WebSettings,
 };
 pub use source::{
     HttpFetcher, RefreshOutcome, SourceFetcher, SourceLocator, obtain_source,

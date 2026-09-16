@@ -32,3 +32,4 @@ target
 
 # Local test data
 /.data/
+node_modules/

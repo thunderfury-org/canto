@@ -25,3 +25,9 @@ lan_cidrs = []
 # fwmark = 424081
 # routing_mark = 424080
 # bypass_cn 时读 work_dir/cn_ip.txt；没有则下载 china_ip_list.txt
+
+[web]
+enabled = false
+listen = "0.0.0.0:5800"
+admin_token = "secret_admin_tok_canto_2026"
+# public_url = "http://127.0.0.1:5800"

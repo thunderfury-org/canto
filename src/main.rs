@@ -59,10 +59,22 @@ async fn run_app(cli: Cli) -> Result<()> {
 async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
     info!("Starting canto orchestrator");
 
+    fs::create_dir_all(&settings.canto.work_dir)?;
+
+    // Server-only mode: network capture disabled and Web Studio enabled.
+    // Operates purely as a configuration generator and web distribution service,
+    // requiring no root privileges or sing-box process supervisor.
+    if !settings.network.enabled && settings.web.enabled {
+        info!("canto running in server-only mode (Web Studio)");
+        let web_server = canto::web::WebServer::new(settings.web.clone());
+        web_server.run().await?;
+        info!("canto shutdown complete");
+        return Ok(());
+    }
+
     let apply_network = settings.network.should_apply_capture(args.no_network)?;
     let fetcher = HttpFetcher::default();
     let locator = SourceLocator::parse(&settings.singbox.source)?;
-    fs::create_dir_all(&settings.canto.work_dir)?;
     let cache_path = source_cache_path(&settings.canto.work_dir);
     let runtime_path = settings.singbox.config_path.clone();
 
@@ -98,7 +110,21 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
         None
     };
 
-    if locator.is_url() && settings.singbox.refresh_interval_secs > 0 {
+    let (web_shutdown_tx, web_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let web_task = if settings.web.enabled {
+        let web_server = canto::web::WebServer::new(settings.web.clone());
+        Some(tokio::spawn(async move {
+            web_server
+                .run_with_signal(async {
+                    let _ = web_shutdown_rx.await;
+                })
+                .await
+        }))
+    } else {
+        None
+    };
+
+    let supervisor_res = if locator.is_url() && settings.singbox.refresh_interval_secs > 0 {
         let interval = Duration::from_secs(settings.singbox.refresh_interval_secs);
         info!(
             "Refreshing URL source every {} seconds",
@@ -115,11 +141,19 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
                     &cache_path,
                 )
             })
-            .await?;
+            .await
     } else {
-        supervisor.run_supervised().await?;
+        supervisor.run_supervised().await
+    };
+
+    if let Some(task) = web_task {
+        let _ = web_shutdown_tx.send(());
+        if let Err(e) = task.await {
+            warn!("Web Studio task failed: {e}");
+        }
     }
 
+    supervisor_res?;
     info!("canto shutdown complete");
     Ok(())
 }
@@ -187,6 +221,24 @@ async fn handle_status(settings: Settings) -> Result<()> {
             settings.singbox.binary.display()
         ),
         Err(e) => error!("sing-box binary: Missing or unusable ({e})"),
+    }
+
+    if settings.web.enabled {
+        info!(
+            "web studio: Enabled (http://{}, token={})",
+            settings.web.listen,
+            if settings.web.admin_token.is_empty() {
+                "none"
+            } else {
+                "configured"
+            }
+        );
+        info!(
+            "web studio public url: {}",
+            settings.web.resolve_public_url()
+        );
+    } else {
+        info!("web studio: Disabled");
     }
 
     if settings.singbox.config_path.exists() {

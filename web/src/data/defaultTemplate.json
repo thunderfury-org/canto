@@ -1,0 +1,448 @@
+{
+  "log": {
+    "level": "warn",
+    "timestamp": true
+  },
+  "experimental": {
+    "cache_file": {
+      "enabled": true
+    },
+    "clash_api": {
+      "external_controller": "127.0.0.1:9090",
+      "external_ui": "ui",
+      "secret": "",
+      "external_ui_download_url": "https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip",
+      "default_mode": "rule"
+    }
+  },
+  "dns": {
+    "servers": [
+      {
+        "tag": "dns_proxy",
+        "type": "https",
+        "server": "1.1.1.1",
+        "detour": "DNS"
+      },
+      {
+        "tag": "dns_ai",
+        "type": "https",
+        "server": "1.1.1.1",
+        "detour": "AI"
+      },
+      {
+        "tag": "dns_direct",
+        "type": "https",
+        "server": "doh.pub",
+        "domain_resolver": "dns_resolver"
+      },
+      {
+        "tag": "dns_resolver",
+        "type": "tcp",
+        "server": "223.5.5.5"
+      }
+    ],
+    "rules": [
+      {
+        "domain_keyword": [
+          "_dns-sd._udp"
+        ],
+        "action": "predefined",
+        "rcode": "NXDOMAIN"
+      },
+      {
+        "clash_mode": "direct",
+        "server": "dns_direct"
+      },
+      {
+        "wifi_ssid": [
+          "sanzhixiaoxiong"
+        ],
+        "server": "dns_direct"
+      },
+      {
+        "domain_keyword": [
+          "stun."
+        ],
+        "server": "dns_direct"
+      },
+      {
+        "domain_suffix": [
+          "sensorsdata.cn",
+          "courier.push.apple.com",
+          "opencode.ai"
+        ],
+        "server": "dns_direct"
+      },
+      {
+        "rule_set": [
+          "cn"
+        ],
+        "server": "dns_direct"
+      },
+      {
+        "rule_set": [
+          "ai"
+        ],
+        "server": "dns_ai"
+      },
+      {
+        "rule_set": [
+          "proxy"
+        ],
+        "server": "dns_proxy"
+      }
+    ],
+    "final": "dns_direct",
+    "strategy": "ipv4_only",
+    "disable_cache": false,
+    "disable_expire": false,
+    "independent_cache": false,
+    "reverse_mapping": true
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "mtu": 1500,
+      "interface_name": "sing-box-utun",
+      "address": [
+        "192.168.255.1/30"
+      ],
+      "auto_route": true,
+      "strict_route": true
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "默认策略",
+      "type": "selector",
+      "outbounds": [
+        "香港节点",
+        "台湾节点",
+        "日本节点",
+        "新加坡节点",
+        "美国节点",
+        "My 节点",
+        "World 节点",
+        "良心云节点",
+        "ALL",
+        "直连"
+      ],
+      "default": "香港节点",
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "DNS",
+      "type": "selector",
+      "outbounds": [
+        "香港节点",
+        "台湾节点",
+        "日本节点",
+        "新加坡节点",
+        "美国节点",
+        "My 节点",
+        "World 节点",
+        "良心云节点",
+        "ALL",
+        "直连"
+      ],
+      "default": "ALL",
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "AI",
+      "type": "selector",
+      "outbounds": [
+        "香港节点",
+        "台湾节点",
+        "日本节点",
+        "新加坡节点",
+        "美国节点",
+        "My 节点",
+        "World 节点",
+        "良心云节点"
+      ],
+      "default": "台湾节点",
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "Netflix",
+      "type": "selector",
+      "outbounds": [
+        "香港节点",
+        "台湾节点",
+        "日本节点",
+        "新加坡节点",
+        "美国节点",
+        "My 节点",
+        "World 节点",
+        "良心云节点"
+      ],
+      "default": "香港节点",
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "YouTube",
+      "type": "selector",
+      "outbounds": [
+        "香港节点",
+        "台湾节点",
+        "日本节点",
+        "新加坡节点",
+        "美国节点",
+        "My 节点",
+        "World 节点",
+        "良心云节点"
+      ],
+      "default": "香港节点",
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "直连",
+      "type": "direct"
+    },
+    {
+      "tag": "My 节点",
+      "type": "selector",
+      "outbounds": [
+        "{My-}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "World 节点",
+      "type": "selector",
+      "outbounds": [
+        "{World-}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "良心云节点",
+      "type": "selector",
+      "outbounds": [
+        "{良心云-}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "ALL",
+      "type": "urltest",
+      "outbounds": [
+        "{.*}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "香港节点",
+      "type": "urltest",
+      "outbounds": [
+        "{(?i)(港|香港|hk|hongkong|hong kong)}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "台湾节点",
+      "type": "urltest",
+      "outbounds": [
+        "{(?i)(台|台湾|tw|taiwan)}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "日本节点",
+      "type": "urltest",
+      "outbounds": [
+        "{(?i)(日本|jp|japan)}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "新加坡节点",
+      "type": "urltest",
+      "outbounds": [
+        "{(?i)(新加坡|新|sg|singapore)}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "美国节点",
+      "type": "urltest",
+      "outbounds": [
+        "{(?i)(美国|美|\\bus\\b|unitedstates|united states)}"
+      ],
+      "interrupt_exist_connections": false
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "ip_cidr": [
+          "192.168.5.0/24"
+        ],
+        "outbound": "ts-ep"
+      },
+      {
+        "clash_mode": "direct",
+        "outbound": "直连"
+      },
+      {
+        "wifi_ssid": [
+          "sanzhixiaoxiong"
+        ],
+        "outbound": "直连"
+      },
+      {
+        "ip_cidr": [
+          "104.223.57.43",
+          "154.217.255.166"
+        ],
+        "outbound": "直连"
+      },
+      {
+        "network": "udp",
+        "port": 123,
+        "outbound": "直连"
+      },
+      {
+        "action": "sniff"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "protocol": "stun",
+        "outbound": "直连"
+      },
+      {
+        "protocol": "bittorrent",
+        "outbound": "直连"
+      },
+      {
+        "protocol": "ntp",
+        "outbound": "直连"
+      },
+      {
+        "domain_suffix": [
+          "sensorsdata.cn",
+          "courier.push.apple.com",
+          "opencode.ai"
+        ],
+        "outbound": "直连"
+      },
+      {
+        "rule_set": [
+          "private",
+          "privateip"
+        ],
+        "outbound": "直连"
+      },
+      {
+        "rule_set": [
+          "cnip"
+        ],
+        "outbound": "直连"
+      },
+      {
+        "rule_set": [
+          "cn"
+        ],
+        "outbound": "直连"
+      },
+      {
+        "protocol": "quic",
+        "action": "reject"
+      },
+      {
+        "rule_set": [
+          "ai"
+        ],
+        "outbound": "AI"
+      },
+      {
+        "rule_set": [
+          "netflix",
+          "netflixip"
+        ],
+        "outbound": "Netflix"
+      },
+      {
+        "rule_set": [
+          "youtube"
+        ],
+        "outbound": "YouTube"
+      }
+    ],
+    "rule_set": [
+      {
+        "tag": "private",
+        "type": "remote",
+        "download_detour": "ALL",
+        "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset-compatible/private.json"
+      },
+      {
+        "tag": "privateip",
+        "type": "remote",
+        "download_detour": "ALL",
+        "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset-compatible/privateip.json"
+      },
+      {
+        "tag": "ai",
+        "type": "remote",
+        "download_detour": "ALL",
+        "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset-compatible/ai.json"
+      },
+      {
+        "tag": "proxy",
+        "type": "remote",
+        "download_detour": "ALL",
+        "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset-compatible/proxy.json"
+      },
+      {
+        "tag": "cnip",
+        "type": "remote",
+        "download_detour": "ALL",
+        "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset-compatible/cnip.json"
+      },
+      {
+        "tag": "cn",
+        "type": "remote",
+        "download_detour": "ALL",
+        "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset-compatible/cn.json"
+      },
+      {
+        "tag": "netflix",
+        "type": "remote",
+        "download_detour": "ALL",
+        "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset-compatible/netflix.json"
+      },
+      {
+        "tag": "netflixip",
+        "type": "remote",
+        "download_detour": "ALL",
+        "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset-compatible/netflixip.json"
+      },
+      {
+        "tag": "youtube",
+        "type": "remote",
+        "download_detour": "ALL",
+        "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset-compatible/youtube.json"
+      }
+    ],
+    "default_domain_resolver": {
+      "server": "dns_resolver",
+      "client_subnet": "114.114.114.114"
+    },
+    "final": "默认策略",
+    "auto_detect_interface": true
+  },
+  "endpoints": [
+    {
+      "type": "tailscale",
+      "tag": "ts-ep",
+      "auth_key": "",
+      "accept_routes": true
+    }
+  ]
+}

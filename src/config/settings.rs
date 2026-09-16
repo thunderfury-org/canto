@@ -99,6 +99,40 @@ pub struct Settings {
     pub canto: CantoSettings,
     pub singbox: SingBoxSettings,
     pub network: NetworkSettings,
+    pub web: WebSettings,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WebSettings {
+    pub enabled: bool,
+    pub listen: String,
+    pub admin_token: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_url: Option<String>,
+}
+
+impl Default for WebSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            listen: "0.0.0.0:5800".to_string(),
+            admin_token: String::new(),
+            public_url: None,
+        }
+    }
+}
+
+impl WebSettings {
+    pub fn resolve_public_url(&self) -> String {
+        if let Some(ref url) = self.public_url {
+            let trimmed = url.trim();
+            if !trimmed.is_empty() {
+                return trimmed.trim_end_matches('/').to_string();
+            }
+        }
+        format!("http://{}", self.listen)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -497,5 +531,47 @@ refresh_interval_secs = 3600
             "https://config.example/source.json"
         );
         assert_eq!(settings.singbox.refresh_interval_secs, 3600);
+    }
+
+    #[test]
+    fn test_parses_web_settings_defaults_and_custom() {
+        let default_settings: Settings = toml::from_str("").unwrap();
+        assert!(!default_settings.web.enabled);
+        assert_eq!(default_settings.web.listen, "0.0.0.0:5800");
+        assert_eq!(default_settings.web.admin_token, "");
+        assert_eq!(default_settings.web.public_url, None);
+        assert_eq!(
+            default_settings.web.resolve_public_url(),
+            "http://0.0.0.0:5800"
+        );
+
+        let custom_toml = r#"
+[web]
+enabled = true
+listen = "127.0.0.1:9000"
+admin_token = "my-secret-token"
+public_url = "https://canto.example.com/"
+"#;
+        let custom_settings: Settings = toml::from_str(custom_toml).unwrap();
+        assert!(custom_settings.web.enabled);
+        assert_eq!(custom_settings.web.listen, "127.0.0.1:9000");
+        assert_eq!(custom_settings.web.admin_token, "my-secret-token");
+        assert_eq!(
+            custom_settings.web.public_url,
+            Some("https://canto.example.com/".to_string())
+        );
+        assert_eq!(
+            custom_settings.web.resolve_public_url(),
+            "https://canto.example.com"
+        );
+
+        let roundtrip_str = custom_settings.to_toml_string().unwrap();
+        let parsed_roundtrip: Settings = toml::from_str(&roundtrip_str).unwrap();
+        assert_eq!(parsed_roundtrip.web, custom_settings.web);
+
+        let example = Settings::from_file(std::path::Path::new("canto.example.toml")).unwrap();
+        assert!(!example.web.enabled);
+        assert_eq!(example.web.listen, "0.0.0.0:5800");
+        assert_eq!(example.web.admin_token, "secret_admin_tok_canto_2026");
     }
 }
