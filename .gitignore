@@ -36,3 +36,7 @@ node_modules/
 
 # Web Studio frontend dist
 /web/dist/
+
+# Editor directories
+.vscode/
+.idea/
