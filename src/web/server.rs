@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use tokio::net::TcpListener;
 use tracing::info;
 
@@ -10,17 +11,19 @@ use crate::web::state::WebState;
 
 pub struct WebServer {
     settings: WebSettings,
+    work_dir: PathBuf,
 }
 
 pub struct BoundWebServer {
     settings: WebSettings,
+    work_dir: PathBuf,
     listener: TcpListener,
     local_addr: SocketAddr,
 }
 
 impl WebServer {
-    pub fn new(settings: WebSettings) -> Self {
-        Self { settings }
+    pub fn new(settings: WebSettings, work_dir: PathBuf) -> Self {
+        Self { settings, work_dir }
     }
 
     pub async fn bind(&self) -> Result<BoundWebServer> {
@@ -40,6 +43,7 @@ impl WebServer {
         info!("Web Studio listening on http://{}", local_addr);
         Ok(BoundWebServer {
             settings: self.settings.clone(),
+            work_dir: self.work_dir.clone(),
             listener,
             local_addr,
         })
@@ -67,7 +71,7 @@ impl BoundWebServer {
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        let state = WebState::new(self.settings);
+        let state = WebState::new(self.settings, self.work_dir);
         let app = create_app(state);
 
         axum::serve(self.listener, app)

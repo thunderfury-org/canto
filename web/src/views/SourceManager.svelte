@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from 'svelte';
   import { store } from '../data/store.svelte.js';
   import Network from 'lucide-svelte/icons/network';
   import Plus from 'lucide-svelte/icons/plus';
@@ -6,79 +7,99 @@
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
   import Search from 'lucide-svelte/icons/search';
   import Server from 'lucide-svelte/icons/server';
+  import Pencil from 'lucide-svelte/icons/pencil';
 
-  let showAddModal = $state(false);
+  let showModal = $state(false);
+  let editingId = $state(null);
   let newName = $state('');
-  let newType = $state('subscription'); // 'subscription' | 'manual'
+  let newType = $state('subscription');
   let newUrl = $state('');
   let newRawContent = $state('');
   let refreshingId = $state(null);
+  let saving = $state(false);
+  let formError = $state('');
   let searchKeyword = $state('');
 
-  function handleAddSource() {
-    if (!newName.trim()) return;
-
-    // Simulate parsing nodes
-    let parsedNodes = [];
-    if (newType === 'subscription') {
-      parsedNodes = [
-        {
-          type: 'vless',
-          tag: `${newName} - 香港新节点 01`,
-          server: 'hk-new.example.com',
-          server_port: 443,
-          uuid: '11223344-5566-7788-99aa-bbccddeeff00',
-          tls: { enabled: true, server_name: 'hk-new.example.com' }
-        },
-        {
-          type: 'hysteria2',
-          tag: `${newName} - 日本高速 02`,
-          server: 'jp-new.example.com',
-          server_port: 8443,
-          password: 'hy2passwordsample',
-          tls: { enabled: true }
-        }
-      ];
-    } else {
-      parsedNodes = [
-        {
-          type: 'shadowsocks',
-          tag: `${newName} - 自建私有节点`,
-          server: '198.51.100.99',
-          server_port: 8388,
-          method: '2022-blake3-aes-128-gcm',
-          password: 'CustomPrivateKey=='
-        }
-      ];
+  onMount(() => {
+    if (store.isAuthenticated) {
+      store.loadSources();
     }
+  });
 
-    const newSrc = {
-      id: 'src_' + Date.now(),
-      name: newName.trim(),
-      type: newType,
-      url: newUrl.trim(),
-      lastUpdated: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      status: 'active',
-      nodeCount: parsedNodes.length,
-      nodes: parsedNodes
-    };
-
-    store.addSource(newSrc);
-    showAddModal = false;
-    newName = '';
-    newUrl = '';
-    newRawContent = '';
+  function formatTime(value) {
+    if (!value) return '-';
+    return String(value).replace('T', ' ').replace('Z', '').substring(0, 19);
   }
 
-  function handleRefreshSource(sourceId) {
-    refreshingId = sourceId;
-    setTimeout(() => {
-      const src = store.sources.find(s => s.id === sourceId);
-      if (src) {
-        src.lastUpdated = new Date().toISOString().replace('T', ' ').substring(0, 16);
+  function resetForm() {
+    showModal = false;
+    editingId = null;
+    newName = '';
+    newType = 'subscription';
+    newUrl = '';
+    newRawContent = '';
+    formError = '';
+    saving = false;
+  }
+
+  function openCreate() {
+    resetForm();
+    showModal = true;
+  }
+
+  function openEdit(src) {
+    editingId = src.id;
+    newName = src.name || '';
+    newType = src.type || 'subscription';
+    newUrl = src.url || '';
+    newRawContent = src.content || '';
+    formError = '';
+    showModal = true;
+  }
+
+  async function handleSaveSource() {
+    if (!newName.trim()) {
+      formError = '请填写节点源名称';
+      return;
+    }
+    saving = true;
+    formError = '';
+    const payload = {
+      name: newName.trim(),
+      type: newType,
+      url: newType === 'subscription' ? newUrl.trim() : '',
+      content: newType === 'manual' ? newRawContent : ''
+    };
+    try {
+      if (editingId) {
+        await store.updateSource(editingId, payload);
+      } else {
+        await store.createSource(payload);
       }
+      resetForm();
+    } catch (err) {
+      formError = err.message || String(err);
+      saving = false;
+    }
+  }
+
+  async function handleRefreshSource(sourceId) {
+    refreshingId = sourceId;
+    try {
+      await store.refreshSource(sourceId);
+    } catch (err) {
+      formError = err.message || String(err);
+    } finally {
       refreshingId = null;
-    }, 800);
+    }
+  }
+
+  async function handleDeleteSource(sourceId) {
+    try {
+      await store.removeSource(sourceId);
+    } catch (err) {
+      formError = err.message || String(err);
+    }
   }
 </script>
 
@@ -95,7 +116,7 @@
 
     <div class="flex items-center gap-2">
       <button
-        onclick={() => (showAddModal = true)}
+        onclick={openCreate}
         class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
       >
         <Plus size={14} />
@@ -105,15 +126,15 @@
   </div>
 
   <!-- Add Source Modal -->
-  {#if showAddModal}
+  {#if showModal}
     <div class="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 z-50">
       <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 max-w-lg w-full space-y-4 shadow-2xl">
         <div class="flex items-center justify-between border-b border-slate-800 pb-3">
           <h3 class="text-sm font-semibold text-slate-100 flex items-center gap-2">
             <Network size={16} class="text-emerald-400" />
-            <span>添加新代理节点源</span>
+            <span>{editingId ? '编辑节点源' : '添加新代理节点源'}</span>
           </h3>
-          <button onclick={() => (showAddModal = false)} class="text-slate-400 hover:text-slate-200">
+          <button onclick={resetForm} class="text-slate-400 hover:text-slate-200">
             &times;
           </button>
         </div>
@@ -176,21 +197,34 @@
           {/if}
         </div>
 
+        {#if formError}
+          <div class="text-xs px-3 py-2 rounded bg-rose-950/40 border border-rose-800/40 text-rose-300">
+            {formError}
+          </div>
+        {/if}
+
         <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
           <button
-            onclick={() => (showAddModal = false)}
+            onclick={resetForm}
             class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs"
           >
             取消
           </button>
           <button
-            onclick={handleAddSource}
-            class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium"
+            onclick={handleSaveSource}
+            disabled={saving}
+            class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-50"
           >
-            确认并导入
+            {saving ? '保存中...' : (editingId ? '保存修改' : '确认并导入')}
           </button>
         </div>
       </div>
+    </div>
+  {/if}
+
+  {#if formError && !showModal}
+    <div class="text-xs px-3 py-2 rounded bg-rose-950/40 border border-rose-800/40 text-rose-300">
+      {formError}
     </div>
   {/if}
 
@@ -207,6 +241,11 @@
 
   <!-- Sources Cards List -->
   <div class="space-y-4">
+    {#if store.sources.length === 0}
+      <div class="bg-slate-900/80 border border-dashed border-slate-800 rounded-lg p-8 text-center text-xs text-slate-500">
+        还没有节点源。添加外部订阅 URL 或手动录入自建节点。
+      </div>
+    {/if}
     {#each store.sources as src}
       {@const filteredNodes = (src.nodes || []).filter(n => 
         !searchKeyword || 
@@ -233,20 +272,35 @@
                 {src.url}
               </div>
             {/if}
+            {#if src.lastError}
+              <div class="text-xs text-rose-400">
+                {src.lastError}
+              </div>
+            {/if}
           </div>
 
           <div class="flex items-center gap-2 text-xs">
-            <span class="text-slate-500">更新于: {src.lastUpdated}</span>
+            <span class="px-1.5 py-0.5 rounded font-mono {src.status === 'error' ? 'bg-rose-950 text-rose-300 border border-rose-800/60' : 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'}">
+              {src.status === 'error' ? 'error' : (src.status || 'active')}
+            </span>
+            <span class="text-slate-500">更新于: {formatTime(src.lastUpdated)}</span>
+            <button
+              onclick={() => openEdit(src)}
+              class="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
+              title="编辑节点源"
+            >
+              <Pencil size={13} />
+            </button>
             <button
               onclick={() => handleRefreshSource(src.id)}
               disabled={refreshingId === src.id}
               class="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 disabled:opacity-50"
-              title="模拟重新拉取并解析"
+              title="重新拉取并解析"
             >
               <RefreshCw size={13} class={refreshingId === src.id ? 'animate-spin text-cyan-400' : ''} />
             </button>
             <button
-              onclick={() => store.deleteSource(src.id)}
+              onclick={() => handleDeleteSource(src.id)}
               class="p-1.5 rounded bg-slate-800/80 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700/80 hover:border-rose-800"
               title="删除此节点源"
             >

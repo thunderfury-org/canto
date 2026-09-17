@@ -66,7 +66,8 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
     // requiring no root privileges or sing-box process supervisor.
     if !settings.network.enabled && settings.web.enabled {
         info!("canto running in server-only mode (Web Studio)");
-        let web_server = canto::web::WebServer::new(settings.web.clone());
+        let web_server =
+            canto::web::WebServer::new(settings.web.clone(), settings.canto.work_dir.clone());
         web_server.run().await?;
         info!("canto shutdown complete");
         return Ok(());
@@ -112,7 +113,8 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
 
     let (web_shutdown_tx, web_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     let web_task = if settings.web.enabled {
-        let web_server = canto::web::WebServer::new(settings.web.clone());
+        let web_server =
+            canto::web::WebServer::new(settings.web.clone(), settings.canto.work_dir.clone());
         let bound_server = web_server.bind().await?;
         Some(tokio::spawn(async move {
             bound_server
