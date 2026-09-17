@@ -17,6 +17,10 @@ class StudioStore {
   authStatusMessage = $state('');
   templatePersistTimers = {};
   templateSaveError = $state('');
+  profilePersistTimers = {};
+  profileSaveError = $state('');
+  preview = $state({ config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 });
+  previewError = $state('');
 
   // Computed
   selectedTemplate = $derived(
@@ -33,6 +37,9 @@ class StudioStore {
 
   // Compilation result for selected profile
   currentCompiled = $derived.by(() => {
+    if (this.isAuthenticated) {
+      return this.preview || { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 };
+    }
     const prof = this.selectedProfile;
     if (!prof) return { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 };
     const tpl = this.templates.find(t => t.id === prof.templateId);
@@ -60,6 +67,7 @@ class StudioStore {
         this.authStatusMessage = '认证通过，已保存至浏览器';
         await this.loadSources();
         await this.loadTemplates();
+        await this.loadProfiles();
         return true;
       } else {
         this.isAuthenticated = false;
@@ -91,6 +99,7 @@ class StudioStore {
     if (this.isAuthenticated) {
       this.loadSources();
       this.loadTemplates();
+      this.loadProfiles();
       return;
     }
     this.templates = JSON.parse(JSON.stringify(initialTemplates));
@@ -346,9 +355,7 @@ class StudioStore {
         throw new Error(await this.apiError(res));
       }
       await this.loadSources();
-      for (const p of this.profiles) {
-        p.sourceIds = p.sourceIds.filter(id => id !== sourceId);
-      }
+      await this.loadProfiles();
       return;
     }
     this.deleteSource(sourceId);
@@ -361,8 +368,8 @@ class StudioStore {
 
   deleteProfile(profileId) {
     this.profiles = this.profiles.filter(p => p.id !== profileId);
-    if (this.selectedProfileId === profileId && this.profiles.length > 0) {
-      this.selectedProfileId = this.profiles[0].id;
+    if (this.selectedProfileId === profileId) {
+      this.selectedProfileId = this.profiles[0]?.id || '';
     }
   }
 
@@ -372,6 +379,162 @@ class StudioStore {
       this.profiles[idx] = updated;
     }
     this.profiles = [...this.profiles];
+  }
+
+  async loadProfiles() {
+    try {
+      const res = await fetch('/api/profiles', { headers: this.authHeaders() });
+      if (!res.ok) {
+        return false;
+      }
+      const data = await res.json();
+      this.profiles = Array.isArray(data) ? data : [];
+      if (!this.profiles.some(p => p.id === this.selectedProfileId)) {
+        this.selectedProfileId = this.profiles[0]?.id || '';
+      }
+      await this.refreshPreview();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async refreshPreview() {
+    const prof = this.selectedProfile;
+    if (!this.isAuthenticated || !prof?.id) {
+      this.preview = { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 };
+      this.previewError = '';
+      return;
+    }
+    try {
+      const res = await fetch(`/api/profiles/${prof.id}/preview`, {
+        headers: this.authHeaders()
+      });
+      if (!res.ok) {
+        this.previewError = await this.apiError(res);
+        this.preview = { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 };
+        return;
+      }
+      this.preview = await res.json();
+      this.previewError = '';
+    } catch (err) {
+      this.previewError = '预览失败: ' + (err.message || err);
+    }
+  }
+
+  scheduleProfilePersist(profileId) {
+    if (!this.isAuthenticated || !profileId) return;
+    clearTimeout(this.profilePersistTimers[profileId]);
+    this.profilePersistTimers[profileId] = setTimeout(() => {
+      void this.flushProfile(profileId);
+    }, 400);
+  }
+
+  async flushProfile(profileId, extra = {}) {
+    const prof = this.profiles.find(p => p.id === profileId);
+    if (!prof || !this.isAuthenticated) return;
+    try {
+      await this.saveProfile(prof, extra);
+      this.profileSaveError = '';
+    } catch (err) {
+      this.profileSaveError = '保存 Profile 失败: ' + (err.message || err);
+    }
+  }
+
+  async saveProfile(prof, extra = {}) {
+    if (!this.isAuthenticated) {
+      this.updateProfile(prof);
+      return prof;
+    }
+    const res = await fetch(`/api/profiles/${prof.id}`, {
+      method: 'PUT',
+      headers: this.authHeaders(),
+      body: JSON.stringify({
+        name: prof.name,
+        description: prof.description || '',
+        templateId: prof.templateId,
+        sourceIds: prof.sourceIds,
+        ...extra
+      })
+    });
+    if (!res.ok) {
+      throw new Error(await this.apiError(res));
+    }
+    const updated = await res.json();
+    this.replaceProfile(updated);
+    await this.refreshPreview();
+    return updated;
+  }
+
+  replaceProfile(updated) {
+    const idx = this.profiles.findIndex(p => p.id === updated.id);
+    if (idx !== -1) {
+      this.profiles[idx] = updated;
+      this.profiles = [...this.profiles];
+    }
+    if (this.selectedProfileId === updated.id) {
+      this.selectedProfileId = updated.id;
+    }
+  }
+
+  async createProfile(payload = {}) {
+    const body = {
+      name: payload.name || `新设备分发配置 ${this.profiles.length + 1}`,
+      description: payload.description || '自定义组装分发配置',
+      templateId: payload.templateId || this.templates[0]?.id,
+      sourceIds: payload.sourceIds || (this.sources[0] ? [this.sources[0].id] : [])
+    };
+    if (!this.isAuthenticated) {
+      const newToken = 'tok_' + Math.random().toString(36).substring(2, 10);
+      const local = {
+        id: 'prof_' + Date.now(),
+        token: newToken,
+        publicUrl: `http://studio.internal.lan:8080/sub/${newToken}`,
+        updatedAt: new Date().toISOString(),
+        ...body
+      };
+      this.addProfile(local);
+      return local;
+    }
+    const res = await fetch('/api/profiles', {
+      method: 'POST',
+      headers: this.authHeaders(),
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      throw new Error(await this.apiError(res));
+    }
+    const created = await res.json();
+    this.profiles = [...this.profiles, created];
+    this.selectedProfileId = created.id;
+    await this.refreshPreview();
+    return created;
+  }
+
+  async removeProfile(profileId) {
+    if (this.isAuthenticated) {
+      const res = await fetch(`/api/profiles/${profileId}`, {
+        method: 'DELETE',
+        headers: this.authHeaders()
+      });
+      if (!res.ok && res.status !== 204) {
+        throw new Error(await this.apiError(res));
+      }
+    }
+    this.deleteProfile(profileId);
+    await this.refreshPreview();
+  }
+
+  async rotateProfileToken(profileId) {
+    const prof = this.profiles.find(p => p.id === profileId);
+    if (!prof) return;
+    if (!this.isAuthenticated) {
+      prof.token = 'tok_' + Math.random().toString(36).substring(2, 10);
+      prof.publicUrl = `http://studio.internal.lan:8080/sub/${prof.token}`;
+      this.updateProfile(prof);
+      return prof;
+    }
+    return this.saveProfile(prof, { rotateToken: true });
   }
 }
 

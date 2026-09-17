@@ -785,3 +785,329 @@ async fn test_templates_crud_persist_and_schema_validation() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(listed, json!([]));
 }
+
+#[tokio::test]
+async fn test_profiles_crud_preview_and_public_subscription() {
+    let (state, dir) = test_state(test_settings());
+    let app = create_app(state);
+
+    let unauthorized = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/profiles")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+    let (status, listed) = json_body(
+        app.clone()
+            .oneshot(auth_req("GET", "/api/profiles", Body::empty()))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed, json!([]));
+
+    let template_body = json!({
+        "name": "网关模板",
+        "content": {
+            "log": { "level": "warn" },
+            "outbounds": [
+                { "type": "selector", "tag": "默认策略", "outbounds": ["香港节点", "直连"] },
+                { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|hk)}"] },
+                { "type": "direct", "tag": "直连" }
+            ]
+        }
+    });
+    let (status, template) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/templates",
+                Body::from(template_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{template}");
+    let template_id = template["id"].as_str().unwrap().to_string();
+
+    let source_body = json!({
+        "name": "自建节点",
+        "type": "manual",
+        "nodes": [
+            { "type": "vless", "tag": "HK-01", "server": "hk.example.com", "server_port": 443 },
+            { "type": "trojan", "tag": "JP-01", "server": "jp.example.com", "server_port": 443 }
+        ]
+    });
+    let (status, source) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/sources",
+                Body::from(source_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{source}");
+    let source_id = source["id"].as_str().unwrap().to_string();
+
+    let missing_name = json!({
+        "name": "  ",
+        "templateId": template_id,
+        "sourceIds": [source_id]
+    });
+    let (status, err) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/profiles",
+                Body::from(missing_name.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(err["error"].as_str().unwrap().contains("name"), "{err}");
+
+    let missing_template = json!({
+        "name": "家庭网关",
+        "templateId": "tpl_missing",
+        "sourceIds": [source_id]
+    });
+    let (status, err) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/profiles",
+                Body::from(missing_template.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(err["error"].as_str().unwrap().contains("template"), "{err}");
+
+    let empty_sources = json!({
+        "name": "家庭网关",
+        "templateId": template_id,
+        "sourceIds": []
+    });
+    let (status, err) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/profiles",
+                Body::from(empty_sources.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(err["error"].as_str().unwrap().contains("source"), "{err}");
+
+    let create_body = json!({
+        "name": "家庭网关",
+        "description": "OpenWrt",
+        "templateId": template_id,
+        "sourceIds": [source_id]
+    });
+    let (status, created) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/profiles",
+                Body::from(create_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["name"], "家庭网关");
+    assert_eq!(created["templateId"], template_id);
+    assert_eq!(created["sourceIds"][0], source_id);
+    let profile_id = created["id"].as_str().unwrap().to_string();
+    assert!(profile_id.starts_with("prof_"), "{profile_id}");
+    let token = created["token"].as_str().unwrap().to_string();
+    assert!(token.starts_with("tok_"), "{token}");
+    assert_eq!(token.len(), 36);
+    assert_eq!(
+        created["publicUrl"],
+        format!("http://127.0.0.1:5800/sub/{token}")
+    );
+
+    let persisted = std::fs::read_to_string(dir.join("studio").join("profiles.json")).unwrap();
+    assert!(persisted.contains(&profile_id));
+    assert!(persisted.contains(&token));
+    assert!(!persisted.contains("publicUrl"));
+
+    let (status, preview) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "GET",
+                &format!("/api/profiles/{profile_id}/preview"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{preview}");
+    assert_eq!(preview["config"]["outbounds"][1]["outbounds"][0], "HK-01");
+    assert_eq!(preview["config"]["outbounds"][3]["tag"], "HK-01");
+    assert_eq!(preview["config"]["outbounds"][3]["type"], "vless");
+    assert_eq!(preview["usedCount"], 1);
+    assert_eq!(preview["totalNodes"], 2);
+    assert_eq!(preview["matchedMap"]["香港节点"][0], "HK-01");
+    let leftover = serde_json::to_string(&preview["config"]).unwrap();
+    assert!(!leftover.contains("{(?i)(港|hk)}"), "{leftover}");
+
+    let public = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/sub/{token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(public.status(), StatusCode::OK);
+    let etag = public
+        .headers()
+        .get(header::ETAG)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let content_type = public
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(content_type.contains("application/json"));
+    let (_, compiled) = json_body(public).await;
+    assert_eq!(compiled, preview["config"]);
+    assert_eq!(compiled["outbounds"][1]["outbounds"][0], "HK-01");
+    assert_eq!(compiled["outbounds"][3]["server"], "hk.example.com");
+    assert_eq!(compiled["log"]["level"], "warn");
+    assert_eq!(compiled["outbounds"][0]["type"], "selector");
+    assert!(
+        !compiled["outbounds"][0]["outbounds"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let tags: Vec<&str> = compiled["outbounds"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["tag"].as_str().unwrap())
+        .collect();
+    assert!(tags.contains(&"HK-01"));
+    assert!(!tags.contains(&"JP-01"));
+    for (i, tag) in tags.iter().enumerate() {
+        assert!(!tags[..i].contains(tag), "duplicate outbound tag {tag}");
+        let outbound = &compiled["outbounds"][i];
+        assert!(outbound["type"].as_str().is_some(), "{outbound}");
+    }
+
+    let not_modified = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/sub/{token}"))
+                .header(header::IF_NONE_MATCH, etag)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(not_modified.status(), StatusCode::NOT_MODIFIED);
+
+    let missing_sub = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/sub/tok_does_not_exist")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing_sub.status(), StatusCode::NOT_FOUND);
+
+    let rotate = json!({ "rotateToken": true, "name": "家庭网关-改" });
+    let (status, updated) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/profiles/{profile_id}"),
+                Body::from(rotate.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{updated}");
+    assert_eq!(updated["name"], "家庭网关-改");
+    let new_token = updated["token"].as_str().unwrap().to_string();
+    assert_ne!(new_token, token);
+
+    let old_sub = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/sub/{token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(old_sub.status(), StatusCode::NOT_FOUND);
+
+    let new_sub = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/sub/{new_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(new_sub.status(), StatusCode::OK);
+
+    let delete_res = app
+        .clone()
+        .oneshot(auth_req(
+            "DELETE",
+            &format!("/api/profiles/{profile_id}"),
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(delete_res.status(), StatusCode::NO_CONTENT);
+
+    let (status, listed) = json_body(
+        app.oneshot(auth_req("GET", "/api/profiles", Body::empty()))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed, json!([]));
+}
