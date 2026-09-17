@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::config::WebSettings;
+use crate::web::studio::model::now_rfc3339;
 use crate::web::studio::{ProfileStore, SourceStore, TemplateStore};
 
 #[derive(Clone, Debug)]
@@ -11,6 +13,8 @@ pub struct WebState {
     pub templates: Arc<TemplateStore>,
     pub profiles: Arc<ProfileStore>,
     pub http: reqwest::Client,
+    pub started_at: Instant,
+    pub started_at_rfc3339: String,
 }
 
 impl WebState {
@@ -51,6 +55,12 @@ impl WebState {
             templates: Arc::new(templates),
             profiles: Arc::new(profiles),
             http: reqwest::Client::new(),
+            started_at: Instant::now(),
+            started_at_rfc3339: now_rfc3339(),
         }
+    }
+
+    pub fn uptime_secs(&self) -> u64 {
+        self.started_at.elapsed().as_secs()
     }
 }
