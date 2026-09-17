@@ -1,4 +1,5 @@
 import { initialTemplates, initialSources, initialProfiles, compileProfile } from './mock.js';
+import defaultTemplateRaw from './defaultTemplate.json';
 
 class StudioStore {
   currentTab = $state('dashboard');
@@ -14,6 +15,8 @@ class StudioStore {
   );
   isAuthenticated = $state(false);
   authStatusMessage = $state('');
+  templatePersistTimers = {};
+  templateSaveError = $state('');
 
   // Computed
   selectedTemplate = $derived(
@@ -56,6 +59,7 @@ class StudioStore {
         }
         this.authStatusMessage = '认证通过，已保存至浏览器';
         await this.loadSources();
+        await this.loadTemplates();
         return true;
       } else {
         this.isAuthenticated = false;
@@ -82,28 +86,145 @@ class StudioStore {
   }
 
   resetData() {
+    this.profiles = JSON.parse(JSON.stringify(initialProfiles));
+    this.selectedProfileId = 'prof_home_router';
+    if (this.isAuthenticated) {
+      this.loadSources();
+      this.loadTemplates();
+      return;
+    }
     this.templates = JSON.parse(JSON.stringify(initialTemplates));
     this.sources = JSON.parse(JSON.stringify(initialSources));
-    this.profiles = JSON.parse(JSON.stringify(initialProfiles));
     this.selectedTemplateId = 'tpl_tailscale_gateway';
-    this.selectedProfileId = 'prof_home_router';
   }
 
   touchTemplate(tplId) {
     const tpl = this.templates.find(t => t.id === tplId);
     if (tpl) {
-      tpl.updatedAt = new Date().toISOString().replace('T', ' ').substring(0, 16);
+      tpl.updatedAt = new Date().toISOString();
     }
     this.templates = [...this.templates];
+    this.scheduleTemplatePersist(tplId);
   }
 
   updateTemplateContent(tplId, newContent) {
     const tpl = this.templates.find(t => t.id === tplId);
     if (tpl) {
       tpl.content = newContent;
-      tpl.updatedAt = new Date().toISOString().replace('T', ' ').substring(0, 16);
+      tpl.updatedAt = new Date().toISOString();
     }
     this.templates = [...this.templates];
+    this.scheduleTemplatePersist(tplId);
+  }
+
+  scheduleTemplatePersist(tplId) {
+    if (!this.isAuthenticated || !tplId) return;
+    clearTimeout(this.templatePersistTimers[tplId]);
+    this.templatePersistTimers[tplId] = setTimeout(() => {
+      void this.flushTemplate(tplId);
+    }, 400);
+  }
+
+  async flushTemplate(tplId) {
+    const tpl = this.templates.find(t => t.id === tplId);
+    if (!tpl || !this.isAuthenticated) return;
+    try {
+      await this.updateTemplate(tplId, {
+        name: tpl.name,
+        description: tpl.description || '',
+        content: tpl.content
+      });
+      this.templateSaveError = '';
+    } catch (err) {
+      this.templateSaveError = '保存模板失败: ' + (err.message || err);
+    }
+  }
+
+  async loadTemplates() {
+    try {
+      const res = await fetch('/api/templates', { headers: this.authHeaders() });
+      if (!res.ok) {
+        return false;
+      }
+      const data = await res.json();
+      this.templates = Array.isArray(data) ? data : [];
+      if (!this.templates.some(t => t.id === this.selectedTemplateId)) {
+        this.selectedTemplateId = this.templates[0]?.id || '';
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async createTemplate(payload = {}) {
+    const body = {
+      name: payload.name || `自定义模板 ${this.templates.length + 1}`,
+      description: payload.description || '新建的自定义配置模板',
+      content: JSON.parse(JSON.stringify(payload.content || defaultTemplateRaw))
+    };
+    if (!this.isAuthenticated) {
+      const local = {
+        id: 'tpl_' + Date.now(),
+        updatedAt: new Date().toISOString(),
+        ...body
+      };
+      this.templates = [...this.templates, local];
+      this.selectedTemplateId = local.id;
+      return local;
+    }
+    const res = await fetch('/api/templates', {
+      method: 'POST',
+      headers: this.authHeaders(),
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      throw new Error(await this.apiError(res));
+    }
+    const created = await res.json();
+    this.templates = [...this.templates, created];
+    this.selectedTemplateId = created.id;
+    return created;
+  }
+
+  async updateTemplate(id, payload) {
+    if (!this.isAuthenticated) {
+      return this.templates.find(t => t.id === id);
+    }
+    const res = await fetch(`/api/templates/${id}`, {
+      method: 'PUT',
+      headers: this.authHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      throw new Error(await this.apiError(res));
+    }
+    const updated = await res.json();
+    const idx = this.templates.findIndex(t => t.id === id);
+    if (idx !== -1) {
+      this.templates[idx] = {
+        ...this.templates[idx],
+        updatedAt: updated.updatedAt
+      };
+      this.templates = [...this.templates];
+    }
+    return updated;
+  }
+
+  async removeTemplate(id) {
+    if (this.isAuthenticated) {
+      const res = await fetch(`/api/templates/${id}`, {
+        method: 'DELETE',
+        headers: this.authHeaders()
+      });
+      if (!res.ok && res.status !== 204) {
+        throw new Error(await this.apiError(res));
+      }
+    }
+    this.templates = this.templates.filter(t => t.id !== id);
+    if (this.selectedTemplateId === id) {
+      this.selectedTemplateId = this.templates[0]?.id || '';
+    }
   }
 
   authHeaders() {

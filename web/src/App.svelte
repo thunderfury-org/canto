@@ -23,6 +23,6 @@
   </main>
 
   <footer class="border-t border-slate-800/80 py-3 text-center text-xs text-slate-500">
-    <span>canto Web Studio Interactive Prototype &bull; Svelte 5 + Vite &bull; 为 Issue #16 设计定型</span>
+    <span>canto Web Studio</span>
   </footer>
 </div>

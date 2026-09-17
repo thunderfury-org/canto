@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from 'svelte';
   import { store } from '../data/store.svelte.js';
   import { testRegexMatch } from '../data/mock.js';
   import FileCode2 from 'lucide-svelte/icons/file-code-2';
@@ -21,6 +22,12 @@
 
   // Keep track of current template id to only sync rawJson when template switches or entering raw mode
   let lastSyncedTplId = $state(null);
+
+  onMount(() => {
+    if (store.isAuthenticated) {
+      store.loadTemplates();
+    }
+  });
 
   $effect(() => {
     const tpl = store.selectedTemplate;
@@ -77,31 +84,97 @@
 
   // Collect all outbound group tags in the current template for dropdown references
   let availableOutboundTags = $derived(
-    (store.selectedTemplate.content?.outbounds || []).map(o => o.tag).filter(Boolean)
+    (store.selectedTemplate?.content?.outbounds || []).map(o => o.tag).filter(Boolean)
   );
 
-  function handleCreateTemplate() {
-    const newId = 'tpl_' + Date.now();
-    const newTpl = {
-      id: newId,
-      name: '自定义模板 ' + (store.templates.length + 1),
-      description: '新建的自定义配置模板',
-      updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      content: JSON.parse(JSON.stringify(store.selectedTemplate.content))
-    };
-    store.templates.push(newTpl);
-    store.selectedTemplateId = newId;
-    lastSyncedTplId = null;
+  let saveError = $state('');
+  let creating = $state(false);
+
+  async function handleCreateTemplate() {
+    creating = true;
+    saveError = '';
+    try {
+      const source = store.selectedTemplate?.content;
+      await store.createTemplate({
+        name: source ? `自定义模板 ${store.templates.length + 1}` : '新配置模板',
+        description: source ? '基于当前模板克隆' : '新建的自定义配置模板',
+        content: source
+      });
+      lastSyncedTplId = null;
+    } catch (err) {
+      saveError = err.message || String(err);
+    } finally {
+      creating = false;
+    }
   }
 
-  function handleDeleteTemplate(id) {
-    if (store.templates.length <= 1) {
-      alert('至少需要保留一份模板！');
+  async function handleDeleteTemplate(id) {
+    if (!confirm('删除这份配置模板？此操作不可撤销。')) {
       return;
     }
-    store.templates = store.templates.filter(t => t.id !== id);
-    store.selectedTemplateId = store.templates[0].id;
-    lastSyncedTplId = null;
+    saveError = '';
+    try {
+      await store.removeTemplate(id);
+      lastSyncedTplId = null;
+    } catch (err) {
+      saveError = err.message || String(err);
+    }
+  }
+
+  function addRuleSet() {
+    const tpl = store.selectedTemplate;
+    if (!tpl.content.route) tpl.content.route = { rules: [], rule_set: [] };
+    if (!tpl.content.route.rule_set) tpl.content.route.rule_set = [];
+    tpl.content.route.rule_set.push({
+      tag: 'ruleset_' + (tpl.content.route.rule_set.length + 1),
+      type: 'remote',
+      format: 'source',
+      url: '',
+      download_detour: 'ALL'
+    });
+    triggerUpdate();
+  }
+
+  function removeRuleSet(idx) {
+    const sets = store.selectedTemplate.content?.route?.rule_set;
+    if (sets) {
+      sets.splice(idx, 1);
+      triggerUpdate();
+    }
+  }
+
+  function addEndpoint() {
+    const tpl = store.selectedTemplate;
+    if (!tpl.content.endpoints) tpl.content.endpoints = [];
+    tpl.content.endpoints.push({
+      type: 'tailscale',
+      tag: 'ts-ep-' + (tpl.content.endpoints.length + 1),
+      auth_key: '',
+      accept_routes: true
+    });
+    triggerUpdate();
+  }
+
+  function removeEndpoint(idx) {
+    const tpl = store.selectedTemplate;
+    if (tpl.content.endpoints) {
+      tpl.content.endpoints.splice(idx, 1);
+      triggerUpdate();
+    }
+  }
+
+  function ensureExperimentalDefaults() {
+    const content = store.selectedTemplate?.content;
+    if (!content) return;
+    if (!content.log) content.log = { level: 'warn', timestamp: true };
+    if (!content.experimental) content.experimental = {};
+    if (!content.experimental.clash_api) {
+      content.experimental.clash_api = {
+        external_controller: '127.0.0.1:9090',
+        default_mode: 'rule'
+      };
+    }
+    triggerUpdate();
   }
 
   function getMatchedNodesForPattern(pattern) {
@@ -248,6 +321,28 @@
 </script>
 
 <div class="space-y-4">
+  {#if saveError || store.templateSaveError}
+    <div class="p-2.5 bg-rose-950/60 border border-rose-800/60 rounded text-xs text-rose-300 flex items-center gap-2">
+      <AlertCircle size={14} class="shrink-0" />
+      <span>{saveError || store.templateSaveError}</span>
+    </div>
+  {/if}
+
+  {#if !store.selectedTemplate}
+    <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-8 text-center space-y-3">
+      <FileCode2 size={28} class="mx-auto text-indigo-400" />
+      <h2 class="text-sm font-semibold text-slate-100">还没有配置模板</h2>
+      <p class="text-xs text-slate-400">创建一份配置模板后，即可分模块编辑 DNS、入站、策略组和路由规则。</p>
+      <button
+        onclick={handleCreateTemplate}
+        disabled={creating}
+        class="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium inline-flex items-center gap-1.5"
+      >
+        <Plus size={13} />
+        <span>{creating ? '创建中...' : '新建配置模板'}</span>
+      </button>
+    </div>
+  {:else}
   <!-- Top Control Bar -->
   <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
     <!-- Template Switcher & Quick Meta Edit -->
@@ -286,22 +381,21 @@
 
       <button
         onclick={handleCreateTemplate}
+        disabled={creating}
         title="基于当前模板新建克隆"
-        class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700"
+        class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700 disabled:opacity-50"
       >
         <Plus size={13} />
         <span>克隆新建</span>
       </button>
 
-      {#if store.templates.length > 1}
-        <button
-          onclick={() => handleDeleteTemplate(store.selectedTemplateId)}
-          title="删除当前模板"
-          class="p-1 rounded bg-slate-800/80 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700/80 hover:border-rose-800 text-xs"
-        >
-          <Trash2 size={13} />
-        </button>
-      {/if}
+      <button
+        onclick={() => handleDeleteTemplate(store.selectedTemplateId)}
+        title="删除当前模板"
+        class="p-1 rounded bg-slate-800/80 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700/80 hover:border-rose-800 text-xs"
+      >
+        <Trash2 size={13} />
+      </button>
     </div>
 
     <!-- Mode Toggle: Visual vs Raw -->
@@ -404,7 +498,7 @@
         </button>
 
         <button
-          onclick={() => (currentSubTab = 'experimental')}
+          onclick={() => { ensureExperimentalDefaults(); currentSubTab = 'experimental'; }}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'experimental' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
           <span>Log & Clash API</span>
@@ -880,6 +974,65 @@
               </tbody>
             </table>
           </div>
+
+          <div class="space-y-3 pt-2 border-t border-slate-800">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-semibold text-slate-200">规则集 (rule_set)</h3>
+              <button
+                onclick={addRuleSet}
+                class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700"
+              >
+                <Plus size={13} />
+                <span>添加规则集</span>
+              </button>
+            </div>
+            <div class="grid grid-cols-1 gap-2">
+              {#each store.selectedTemplate.content?.route?.rule_set || [] as rs, rsIdx}
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-2 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs">
+                  <input
+                    type="text"
+                    bind:value={rs.tag}
+                    oninput={triggerUpdate}
+                    placeholder="tag"
+                    class="md:col-span-2 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-100 font-mono"
+                  />
+                  <select
+                    bind:value={rs.type}
+                    onchange={triggerUpdate}
+                    class="md:col-span-2 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-cyan-300 font-mono"
+                  >
+                    <option value="remote">remote</option>
+                    <option value="local">local</option>
+                    <option value="inline">inline</option>
+                  </select>
+                  <input
+                    type="text"
+                    bind:value={rs.url}
+                    oninput={triggerUpdate}
+                    placeholder="https://.../cn.json"
+                    class="md:col-span-6 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-200 font-mono"
+                  />
+                  <select
+                    bind:value={rs.download_detour}
+                    onchange={triggerUpdate}
+                    class="md:col-span-1 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-200 font-mono"
+                  >
+                    <option value="">detour</option>
+                    {#each availableOutboundTags as oTag}
+                      <option value={oTag}>{oTag}</option>
+                    {/each}
+                  </select>
+                  <button
+                    onclick={() => removeRuleSet(rsIdx)}
+                    class="md:col-span-1 text-slate-500 hover:text-rose-400 p-1 justify-self-end"
+                    title="删除规则集"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              {/each}
+            </div>
+          </div>
         </div>
       {/if}
 
@@ -957,13 +1110,38 @@
 
           <!-- Endpoints Card -->
           <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
-            <h3 class="text-sm font-semibold text-slate-200">Tailscale 端点 (Endpoints)</h3>
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-semibold text-slate-200">端点 (Endpoints)</h3>
+              <button
+                onclick={addEndpoint}
+                class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700"
+              >
+                <Plus size={13} />
+                <span>添加端点</span>
+              </button>
+            </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {#each store.selectedTemplate.content?.endpoints || [] as ep}
+              {#each store.selectedTemplate.content?.endpoints || [] as ep, epIdx}
                 <div class="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-2 text-xs">
-                  <div class="flex items-center justify-between">
-                    <span class="font-bold text-slate-100 font-mono">{ep.tag}</span>
-                    <span class="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 font-mono">{ep.type}</span>
+                  <div class="flex items-center justify-between gap-2">
+                    <input
+                      type="text"
+                      bind:value={ep.tag}
+                      oninput={triggerUpdate}
+                      placeholder="endpoint-tag"
+                      class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-slate-100 font-mono font-bold flex-1"
+                    />
+                    <select
+                      bind:value={ep.type}
+                      onchange={triggerUpdate}
+                      class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-indigo-300 font-mono"
+                    >
+                      <option value="tailscale">tailscale</option>
+                      <option value="wireguard">wireguard</option>
+                    </select>
+                    <button onclick={() => removeEndpoint(epIdx)} class="text-slate-500 hover:text-rose-400 p-1">
+                      <Trash2 size={13} />
+                    </button>
                   </div>
                   <div>
                     <span class="text-slate-500 block mb-1">Auth Key (可选):</span>
@@ -990,6 +1168,7 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div class="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
               <span class="font-bold text-slate-200 text-sm">日志配置 (Log)</span>
+              {#if store.selectedTemplate.content?.log}
               <div>
                 <label for="log-level" class="block text-slate-400 mb-1">日志级别</label>
                 <select
@@ -1015,10 +1194,14 @@
                 />
                 <label for="log-ts" class="text-slate-300 cursor-pointer">在日志输出中包含时间戳</label>
               </div>
+              {:else}
+              <p class="text-slate-500">当前模板没有 log 段，可在 Raw JSON 中添加。</p>
+              {/if}
             </div>
 
             <div class="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
               <span class="font-bold text-slate-200 text-sm">Clash API 面板</span>
+              {#if store.selectedTemplate.content?.experimental?.clash_api}
               <div>
                 <label for="clash-ctrl" class="block text-slate-400 mb-1">控制器监听地址 (External Controller)</label>
                 <input
@@ -1042,10 +1225,14 @@
                   <option value="direct">direct (全部直连)</option>
                 </select>
               </div>
+              {:else}
+              <p class="text-slate-500">当前模板没有 Clash API 配置，可在 Raw JSON 中添加。</p>
+              {/if}
             </div>
           </div>
         </div>
       {/if}
     </div>
+  {/if}
   {/if}
 </div>
