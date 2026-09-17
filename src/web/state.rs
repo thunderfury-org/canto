@@ -2,12 +2,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::config::WebSettings;
-use crate::web::studio::SourceStore;
+use crate::web::studio::{SourceStore, TemplateStore};
 
 #[derive(Clone, Debug)]
 pub struct WebState {
     pub settings: Arc<WebSettings>,
     pub sources: Arc<SourceStore>,
+    pub templates: Arc<TemplateStore>,
     pub http: reqwest::Client,
 }
 
@@ -23,9 +24,20 @@ impl WebState {
                 SourceStore::empty(&work_dir)
             }
         };
+        let templates = match TemplateStore::load(&work_dir) {
+            Ok(store) => store,
+            Err(err) => {
+                tracing::warn!(
+                    "Failed to load templates from {}: {err}; starting empty",
+                    work_dir.display()
+                );
+                TemplateStore::empty(&work_dir)
+            }
+        };
         Self {
             settings: Arc::new(settings),
             sources: Arc::new(sources),
+            templates: Arc::new(templates),
             http: reqwest::Client::new(),
         }
     }

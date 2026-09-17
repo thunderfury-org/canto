@@ -10,7 +10,8 @@ use crate::web::auth::{handle_logout, handle_status, handle_verify_auth, require
 use crate::web::state::WebState;
 use crate::web::static_files::static_handler;
 use crate::web::studio::api::{
-    create_source, delete_source, get_source, list_sources, refresh_source, update_source,
+    create_source, create_template, delete_source, delete_template, get_source, get_template,
+    list_sources, list_templates, refresh_source, update_source, update_template,
 };
 
 pub fn create_app(state: WebState) -> Router {
@@ -31,6 +32,13 @@ pub fn create_app(state: WebState) -> Router {
             get(get_source).put(update_source).delete(delete_source),
         )
         .route("/sources/{id}/refresh", post(refresh_source))
+        .route("/templates", get(list_templates).post(create_template))
+        .route(
+            "/templates/{id}",
+            get(get_template)
+                .put(update_template)
+                .delete(delete_template),
+        )
         .fallback(api_fallback_404)
         .layer(middleware::from_fn_with_state(
             state.clone(),

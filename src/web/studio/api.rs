@@ -9,7 +9,10 @@ use serde_json::{Value, json};
 use tracing::warn;
 
 use crate::web::state::WebState;
-use crate::web::studio::model::{NodeSource, SourceKind, new_source_id};
+use crate::web::studio::model::{
+    NodeSource, SourceKind, Template, new_source_id, new_template_id, now_rfc3339,
+    validate_template_content,
+};
 use crate::web::studio::parser::parse_subscription;
 
 #[derive(Debug, Deserialize)]
@@ -275,6 +278,102 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
             Some(trimmed.to_string())
         }
     })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateTemplateRequest {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub content: Value,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateTemplateRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub content: Option<Value>,
+}
+
+pub async fn list_templates(State(state): State<WebState>) -> Response {
+    (StatusCode::OK, Json(state.templates.list().await)).into_response()
+}
+
+pub async fn get_template(State(state): State<WebState>, Path(id): Path<String>) -> Response {
+    match state.templates.get(&id).await {
+        Some(template) => (StatusCode::OK, Json(template)).into_response(),
+        None => json_error(StatusCode::NOT_FOUND, "template not found"),
+    }
+}
+
+pub async fn create_template(
+    State(state): State<WebState>,
+    Json(req): Json<CreateTemplateRequest>,
+) -> Response {
+    let name = req.name.trim();
+    if name.is_empty() {
+        return json_error(StatusCode::BAD_REQUEST, "name is required");
+    }
+    if let Err(err) = validate_template_content(&req.content) {
+        return json_error(StatusCode::BAD_REQUEST, &err);
+    }
+
+    let template = Template {
+        id: new_template_id(),
+        name: name.to_string(),
+        description: req.description.trim().to_string(),
+        updated_at: Some(now_rfc3339()),
+        content: req.content,
+    };
+
+    match state.templates.insert(template).await {
+        Ok(saved) => (StatusCode::CREATED, Json(saved)).into_response(),
+        Err(err) => json_error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
+    }
+}
+
+pub async fn update_template(
+    State(state): State<WebState>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateTemplateRequest>,
+) -> Response {
+    let Some(mut template) = state.templates.get(&id).await else {
+        return json_error(StatusCode::NOT_FOUND, "template not found");
+    };
+
+    if let Some(name) = req.name {
+        let name = name.trim();
+        if name.is_empty() {
+            return json_error(StatusCode::BAD_REQUEST, "name is required");
+        }
+        template.name = name.to_string();
+    }
+    if let Some(description) = req.description {
+        template.description = description.trim().to_string();
+    }
+    if let Some(content) = req.content {
+        if let Err(err) = validate_template_content(&content) {
+            return json_error(StatusCode::BAD_REQUEST, &err);
+        }
+        template.content = content;
+    }
+    template.updated_at = Some(now_rfc3339());
+
+    match state.templates.replace(template).await {
+        Ok(Some(saved)) => (StatusCode::OK, Json(saved)).into_response(),
+        Ok(None) => json_error(StatusCode::NOT_FOUND, "template not found"),
+        Err(err) => json_error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
+    }
+}
+
+pub async fn delete_template(State(state): State<WebState>, Path(id): Path<String>) -> Response {
+    match state.templates.delete(&id).await {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => json_error(StatusCode::NOT_FOUND, "template not found"),
+        Err(err) => json_error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
+    }
 }
 
 fn json_error(status: StatusCode, message: &str) -> Response {
