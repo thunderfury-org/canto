@@ -18,6 +18,7 @@ pub fn parse_subscription(input: &str) -> Result<Vec<Value>, String> {
         return Err("empty subscription content".to_string());
     }
 
+    // Clash YAML (`proxies:`) is not parsed here. Tracked in issue #24.
     if let Some(nodes) = try_parse_json(input) {
         return Ok(uniquify_tags(nodes));
     }
