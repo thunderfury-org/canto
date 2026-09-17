@@ -155,20 +155,37 @@ fn parse_ss(rest: &str) -> Result<Value, String> {
         (method, password, host, port)
     };
 
-    let tag = fragment.unwrap_or_else(|| format!("{host}:{port}"));
+    let tag = fragment
+        .filter(|s| !s.is_empty())
+        .or_else(|| qget(&query, &["remarks"]).map(ToString::to_string))
+        .unwrap_or_else(|| format!("{host}:{port}"));
     let mut obj = outbound_base("shadowsocks", &tag, &host, port);
-    obj.insert("method".into(), json!(method));
+    obj.insert("method".into(), json!(normalize_ss_method(&method)));
     obj.insert("password".into(), json!(password));
 
     if let Some(plugin) = qget(&query, &["plugin"]) {
         let mut parts = plugin.split(';');
         if let Some(name) = parts.next().filter(|s| !s.is_empty()) {
+            let name = if name == "simple-obfs" {
+                "obfs-local"
+            } else {
+                name
+            };
             obj.insert("plugin".into(), json!(name));
             let opts: Vec<&str> = parts.filter(|s| !s.is_empty()).collect();
             if !opts.is_empty() {
                 obj.insert("plugin_opts".into(), json!(opts.join(";")));
             }
         }
+    }
+    if qget(&query, &["uot", "udp-over-tcp", "udp_over_tcp"]).is_some_and(truthy) {
+        obj.insert(
+            "udp_over_tcp".into(),
+            json!({ "enabled": true, "version": 2 }),
+        );
+    }
+    if let Some(multiplex) = multiplex_from_query(&query) {
+        obj.insert("multiplex".into(), multiplex);
     }
 
     Ok(Value::Object(obj))
@@ -208,11 +225,19 @@ fn vmess_from_json(value: &Value, fragment: Option<String>) -> Result<Value, Str
         .or(fragment)
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| format!("{server}:{port}"));
-    let security = json_string(value, &["scy", "security"]).unwrap_or_else(|| "auto".to_string());
+    let security = json_string(value, &["scy", "security"])
+        .filter(|s| {
+            !matches!(
+                s.to_ascii_lowercase().as_str(),
+                "http" | "gun" | "none" | ""
+            )
+        })
+        .unwrap_or_else(|| "auto".to_string());
 
     let mut obj = outbound_base("vmess", &tag, &server, port);
     obj.insert("uuid".into(), json!(uuid));
     obj.insert("security".into(), json!(security));
+    obj.insert("packet_encoding".into(), json!("xudp"));
     if let Some(alter_id) = json_u16(value, &["aid", "alterId", "alter_id"])
         && alter_id > 0
     {
@@ -243,8 +268,11 @@ fn vmess_from_json(value: &Value, fragment: Option<String>) -> Result<Value, Str
     if tls_on {
         obj.insert(
             "tls".into(),
-            build_tls(sni.or(host), alpn, false, fingerprint, None, None),
+            build_tls(sni.or(host.clone()), alpn, false, fingerprint, None, None),
         );
+    }
+    if let Some(multiplex) = multiplex_from_value(value) {
+        obj.insert("multiplex".into(), multiplex);
     }
     Ok(Value::Object(obj))
 }
@@ -259,11 +287,15 @@ fn parse_vmess_link(body: &str, fragment: Option<String>) -> Result<Value, Strin
     obj.insert("uuid".into(), json!(percent_decode(&uuid)));
     let security = qget(&link.query, &["encryption", "security", "scy"]).unwrap_or("auto");
     obj.insert("security".into(), json!(security));
+    obj.insert("packet_encoding".into(), json!("xudp"));
     if let Some(transport) = transport_from_query(&link.query) {
         obj.insert("transport".into(), transport);
     }
     if let Some(tls) = tls_from_query(&link.query, false) {
         obj.insert("tls".into(), tls);
+    }
+    if let Some(multiplex) = multiplex_from_query(&link.query) {
+        obj.insert("multiplex".into(), multiplex);
     }
     Ok(Value::Object(obj))
 }
@@ -282,14 +314,18 @@ fn parse_vless(rest: &str) -> Result<Value, String> {
     {
         obj.insert("flow".into(), json!(flow));
     }
-    if let Some(packet_encoding) = qget(&link.query, &["packetEncoding", "packet_encoding"]) {
-        obj.insert("packet_encoding".into(), json!(packet_encoding));
-    }
+    let packet_encoding =
+        qget(&link.query, &["packetEncoding", "packet_encoding"]).unwrap_or("xudp");
+    obj.insert("packet_encoding".into(), json!(packet_encoding));
     if let Some(transport) = transport_from_query(&link.query) {
         obj.insert("transport".into(), transport);
     }
     if let Some(tls) = tls_from_query(&link.query, false) {
         obj.insert("tls".into(), tls);
+    }
+    fill_tls_server_name_from_ws_host(&mut obj);
+    if let Some(multiplex) = multiplex_from_query(&link.query) {
+        obj.insert("multiplex".into(), multiplex);
     }
     Ok(Value::Object(obj))
 }
@@ -308,11 +344,27 @@ fn parse_trojan(rest: &str) -> Result<Value, String> {
     if let Some(tls) = tls_from_query(&link.query, true) {
         obj.insert("tls".into(), tls);
     }
+    if let Some(multiplex) = multiplex_from_query(&link.query) {
+        obj.insert("multiplex".into(), multiplex);
+    }
     Ok(Value::Object(obj))
 }
 
 fn parse_hysteria2(rest: &str) -> Result<Value, String> {
-    let link = parse_common_link_full(rest)?;
+    let (body, fragment) = split_fragment(rest);
+    let (without_query, query) = split_query(&body);
+    let (userinfo, hostport) = split_userinfo_host(without_query.trim_end_matches('/'));
+    let (host, port) = split_host_port(&hostport)?;
+    if host.is_empty() {
+        return Err("missing server host".to_string());
+    }
+    let link = CommonLink {
+        userinfo,
+        host,
+        port,
+        query,
+        fragment,
+    };
     let password = link
         .userinfo
         .as_deref()
@@ -323,6 +375,15 @@ fn parse_hysteria2(rest: &str) -> Result<Value, String> {
 
     let mut obj = outbound_base("hysteria2", &tag_of(&link), &link.host, link.port);
     obj.insert("password".into(), json!(password));
+    if let Some(server_ports) = hy2_server_ports(&hostport, &link.query) {
+        obj.insert("server_ports".into(), json!(server_ports));
+    }
+    if let Some(up) = qget(&link.query, &["upmbps", "up"]).and_then(parse_leading_int) {
+        obj.insert("up_mbps".into(), json!(up));
+    }
+    if let Some(down) = qget(&link.query, &["downmbps", "down"]).and_then(parse_leading_int) {
+        obj.insert("down_mbps".into(), json!(down));
+    }
 
     if let Some(obfs) = qget(&link.query, &["obfs"])
         && !obfs.is_empty()
@@ -339,7 +400,12 @@ fn parse_hysteria2(rest: &str) -> Result<Value, String> {
         obj.insert("obfs".into(), Value::Object(obfs_obj));
     }
 
-    if let Some(tls) = tls_from_query(&link.query, true) {
+    if let Some(mut tls) = tls_from_query(&link.query, true) {
+        if let Some(tls_obj) = tls.as_object_mut()
+            && !tls_obj.contains_key("alpn")
+        {
+            tls_obj.insert("alpn".into(), json!(["h3"]));
+        }
         obj.insert("tls".into(), tls);
     }
     Ok(Value::Object(obj))
@@ -384,10 +450,13 @@ fn tag_of(link: &CommonLink) -> String {
 }
 
 fn transport_from_query(query: &HashMap<String, String>) -> Option<Value> {
-    let net = qget(query, &["type", "net", "network"]).unwrap_or("tcp");
+    let net = qget(query, &["type", "net", "network", "obfs"]).unwrap_or("tcp");
     let header = qget(query, &["headerType", "header_type"]).unwrap_or("none");
     let path = qget(query, &["path"]);
-    let host = qget(query, &["host", "Host"]);
+    let mut host = qget(query, &["host", "Host"]);
+    if host.is_none() && matches!(net, "ws" | "websocket") {
+        host = qget(query, &["sni", "peer"]);
+    }
     let service = qget(query, &["serviceName", "service_name"]);
     build_transport(net, header, path, host, service)
 }
@@ -463,8 +532,16 @@ fn build_transport(
     obj.insert("type".into(), json!(transport_type));
     match transport_type {
         "ws" => {
+            let (path, early_data) = split_early_data(path);
             if let Some(path) = path {
-                obj.insert("path".into(), json!(normalize_path(path)));
+                obj.insert("path".into(), json!(normalize_path(&path)));
+            }
+            if let Some(early_data) = early_data {
+                obj.insert(
+                    "early_data_header_name".into(),
+                    json!("Sec-WebSocket-Protocol"),
+                );
+                obj.insert("max_early_data".into(), json!(early_data));
             }
             if let Some(host) = host {
                 obj.insert("headers".into(), json!({ "Host": host }));
@@ -516,11 +593,14 @@ fn build_tls(
     if let Some(alpn) = alpn.filter(|v| !v.is_empty()) {
         tls.insert("alpn".into(), json!(alpn));
     }
+    let has_reality = public_key.as_ref().is_some_and(|s| !s.is_empty());
     if let Some(fingerprint) = fingerprint.filter(|s| !s.is_empty()) {
         tls.insert(
             "utls".into(),
             json!({ "enabled": true, "fingerprint": fingerprint }),
         );
+    } else if has_reality {
+        tls.insert("utls".into(), json!({ "enabled": true }));
     }
     if let Some(public_key) = public_key.filter(|s| !s.is_empty()) {
         let mut reality = serde_json::Map::new();
@@ -650,7 +730,12 @@ fn split_host_port(hostport: &str) -> Result<(String, u16), String> {
 }
 
 fn parse_port(raw: &str) -> Result<u16, String> {
-    raw.trim()
+    let digits: String = raw
+        .trim()
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect();
+    digits
         .parse::<u16>()
         .map_err(|_| format!("invalid port '{raw}'"))
         .and_then(|port| {
@@ -683,11 +768,160 @@ fn truthy(value: &str) -> bool {
 fn split_csv(value: impl AsRef<str>) -> Vec<String> {
     value
         .as_ref()
+        .trim()
+        .trim_matches(|ch| ch == '{' || ch == '}')
         .split(',')
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(ToString::to_string)
         .collect()
+}
+
+fn normalize_ss_method(method: &str) -> String {
+    match method {
+        "chacha20-poly1305" => "chacha20-ietf-poly1305".to_string(),
+        "xchacha20-poly1305" => "xchacha20-ietf-poly1305".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn split_early_data(path: Option<&str>) -> (Option<String>, Option<u64>) {
+    let Some(path) = path else {
+        return (None, None);
+    };
+    if let Some((base, ed)) = path.rsplit_once("?ed=")
+        && let Ok(value) = ed.parse::<u64>()
+    {
+        return (Some(base.to_string()), Some(value));
+    }
+    (Some(path.to_string()), None)
+}
+
+fn parse_leading_int(value: &str) -> Option<u64> {
+    let digits: String = value.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        None
+    } else {
+        digits.parse().ok()
+    }
+}
+
+fn hy2_server_ports(hostport: &str, query: &HashMap<String, String>) -> Option<Vec<String>> {
+    let mut ranges = Vec::new();
+    if let Some(extra) = extra_port_ranges(hostport) {
+        ranges.extend(extra);
+    }
+    if let Some(mport) = qget(query, &["mport", "server_ports"]) {
+        ranges.extend(normalize_port_ranges(mport));
+    }
+    if ranges.is_empty() {
+        None
+    } else {
+        ranges.dedup();
+        Some(ranges)
+    }
+}
+
+fn extra_port_ranges(hostport: &str) -> Option<Vec<String>> {
+    let extra = if hostport.starts_with('[') {
+        let end = hostport.find(']')?;
+        hostport[end + 1..].strip_prefix(':')?.split_once(',')?.1
+    } else {
+        hostport.rsplit_once(':')?.1.split_once(',')?.1
+    };
+    let ranges = normalize_port_ranges(extra);
+    if ranges.is_empty() {
+        None
+    } else {
+        Some(ranges)
+    }
+}
+
+fn normalize_port_ranges(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(|part| part.replace('-', ":"))
+        .collect()
+}
+
+fn multiplex_from_query(query: &HashMap<String, String>) -> Option<Value> {
+    multiplex_from_fields(
+        qget(query, &["protocol"]),
+        qget(query, &["max-streams", "max_streams"]),
+        qget(query, &["max-connections", "max_connections"]),
+        qget(query, &["min-streams", "min_streams"]),
+        qget(query, &["padding"]),
+    )
+}
+
+fn multiplex_from_value(value: &Value) -> Option<Value> {
+    multiplex_from_fields(
+        json_string(value, &["protocol"]).as_deref(),
+        json_string(value, &["max_streams", "max-streams"]).as_deref(),
+        json_string(value, &["max_connections", "max-connections"]).as_deref(),
+        json_string(value, &["min_streams", "min-streams"]).as_deref(),
+        json_string(value, &["padding"]).as_deref(),
+    )
+}
+
+fn multiplex_from_fields(
+    protocol: Option<&str>,
+    max_streams: Option<&str>,
+    max_connections: Option<&str>,
+    min_streams: Option<&str>,
+    padding: Option<&str>,
+) -> Option<Value> {
+    let protocol = protocol?;
+    if !matches!(protocol, "smux" | "yamux" | "h2mux") {
+        return None;
+    }
+    let mut obj = serde_json::Map::new();
+    obj.insert("enabled".into(), json!(true));
+    obj.insert("protocol".into(), json!(protocol));
+    if let Some(max_streams) = max_streams.and_then(|s| s.parse::<u64>().ok()) {
+        obj.insert("max_streams".into(), json!(max_streams));
+    } else {
+        if let Some(max_connections) = max_connections.and_then(|s| s.parse::<u64>().ok()) {
+            obj.insert("max_connections".into(), json!(max_connections));
+        }
+        if let Some(min_streams) = min_streams.and_then(|s| s.parse::<u64>().ok()) {
+            obj.insert("min_streams".into(), json!(min_streams));
+        }
+    }
+    if padding.is_some_and(truthy) {
+        obj.insert("padding".into(), json!(true));
+    }
+    Some(Value::Object(obj))
+}
+
+fn fill_tls_server_name_from_ws_host(obj: &mut serde_json::Map<String, Value>) {
+    let sni_missing = obj
+        .get("tls")
+        .and_then(Value::as_object)
+        .map(|tls| {
+            tls.get("server_name")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .is_empty()
+        })
+        .unwrap_or(true);
+    if !sni_missing {
+        return;
+    }
+    let Some(host) = obj
+        .get("transport")
+        .and_then(|transport| transport.get("headers"))
+        .and_then(|headers| headers.get("Host"))
+        .and_then(Value::as_str)
+        .filter(|host| !host.is_empty())
+        .map(ToString::to_string)
+    else {
+        return;
+    };
+    if let Some(tls) = obj.get_mut("tls").and_then(Value::as_object_mut) {
+        tls.insert("server_name".into(), json!(host));
+    }
 }
 
 fn normalize_path(path: &str) -> String {
@@ -959,5 +1193,84 @@ mod tests {
         let node = parse_uri(uri).unwrap();
         assert_eq!(node["server"], "2001:db8::1");
         assert_eq!(node["server_port"], 8443);
+    }
+
+    #[test]
+    fn test_parses_ss_plugin_cipher_alias_and_uot() {
+        let userinfo = b64("chacha20-poly1305:secret");
+        let uri = format!(
+            "ss://{userinfo}@203.0.113.8:8388?plugin=simple-obfs;obfs=http;obfs-host=download.windowsupdate.com&uot=1&remarks=ss-plugin"
+        );
+        let node = parse_uri(&uri).unwrap();
+        assert_eq!(node["method"], "chacha20-ietf-poly1305");
+        assert_eq!(node["plugin"], "obfs-local");
+        assert_eq!(
+            node["plugin_opts"],
+            "obfs=http;obfs-host=download.windowsupdate.com"
+        );
+        assert_eq!(node["udp_over_tcp"]["enabled"], true);
+        assert_eq!(node["tag"], "ss-plugin");
+    }
+
+    #[test]
+    fn test_parses_vmess_ws_early_data_and_grpc() {
+        let ws = r#"{
+            "ps":"VM-WS","add":"hk.example.com","port":443,
+            "id":"11111111-1111-1111-1111-111111111111",
+            "net":"ws","host":"hk.example.com","path":"/ws?ed=2048","tls":"tls","sni":"hk.example.com"
+        }"#;
+        let node = parse_uri(&format!("vmess://{}", b64(ws))).unwrap();
+        assert_eq!(node["packet_encoding"], "xudp");
+        assert_eq!(node["transport"]["path"], "/ws");
+        assert_eq!(node["transport"]["max_early_data"], 2048);
+        assert_eq!(
+            node["transport"]["early_data_header_name"],
+            "Sec-WebSocket-Protocol"
+        );
+        assert_eq!(node["transport"]["headers"]["Host"], "hk.example.com");
+
+        let grpc = r#"{
+            "ps":"VM-GRPC","add":"hk.example.com","port":443,
+            "id":"11111111-1111-1111-1111-111111111111",
+            "net":"grpc","path":"GunService","tls":"tls","sni":"hk.example.com","scy":"gun"
+        }"#;
+        let node = parse_uri(&format!("vmess://{}", b64(grpc))).unwrap();
+        assert_eq!(node["security"], "auto");
+        assert_eq!(node["transport"]["type"], "grpc");
+        assert_eq!(node["transport"]["service_name"], "GunService");
+    }
+
+    #[test]
+    fn test_parses_vless_grpc_and_reality_utls_without_fp() {
+        let grpc = "vless://11111111-1111-1111-1111-111111111111@hk.example.com:443?type=grpc&serviceName=GunService&security=tls&sni=hk.example.com#g";
+        let node = parse_uri(grpc).unwrap();
+        assert_eq!(node["packet_encoding"], "xudp");
+        assert_eq!(node["transport"]["type"], "grpc");
+        assert_eq!(node["transport"]["service_name"], "GunService");
+
+        let reality = "vless://22222222-2222-2222-2222-222222222222@jp.example.com:443?security=reality&pbk=PublicKeyReality&sid=ab#r";
+        let node = parse_uri(reality).unwrap();
+        assert_eq!(node["tls"]["reality"]["enabled"], true);
+        assert_eq!(node["tls"]["utls"]["enabled"], true);
+        assert!(node["tls"]["utls"].get("fingerprint").is_none());
+    }
+
+    #[test]
+    fn test_parses_trojan_h2_and_braced_alpn() {
+        let uri = "trojan://secret@tw.example.com:443?security=tls&sni=tw.example.com&type=h2&host=tw.example.com&path=/h2&alpn={h2,http/1.1}#h2";
+        let node = parse_uri(uri).unwrap();
+        assert_eq!(node["transport"]["type"], "http");
+        assert_eq!(node["transport"]["path"], "/h2");
+        assert_eq!(node["tls"]["alpn"], json!(["h2", "http/1.1"]));
+    }
+
+    #[test]
+    fn test_parses_hysteria2_port_hopping_and_default_alpn() {
+        let uri = "hysteria2://hy2pass@jp.example.com:443,10000-20000?sni=jp.example.com&mport=30000-40000#hop";
+        let node = parse_uri(uri).unwrap();
+        assert_eq!(node["server"], "jp.example.com");
+        assert_eq!(node["server_port"], 443);
+        assert_eq!(node["server_ports"], json!(["10000:20000", "30000:40000"]));
+        assert_eq!(node["tls"]["alpn"], json!(["h3"]));
     }
 }
