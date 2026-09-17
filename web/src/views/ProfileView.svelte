@@ -40,6 +40,21 @@
     URL.revokeObjectURL(url);
   }
 
+  $effect(() => {
+    store.selectedProfileId;
+    store.templates;
+    store.sources;
+    if (store.isAuthenticated) {
+      void store.refreshPreview();
+    }
+  });
+
+  function persistActive() {
+    if (!activeProfile) return;
+    store.updateProfile(activeProfile);
+    store.scheduleProfilePersist(activeProfile.id);
+  }
+
   function toggleSourceBinding(sourceId) {
     if (!activeProfile) return;
     const current = [...activeProfile.sourceIds];
@@ -55,22 +70,49 @@
     }
     activeProfile.sourceIds = current;
     store.updateProfile(activeProfile);
+    void store.flushProfile(activeProfile.id);
   }
 
-  function handleCreateProfile() {
-    const newId = 'prof_' + Date.now();
-    const newToken = 'tok_' + Math.random().toString(36).substring(2, 10);
-    const newProf = {
-      id: newId,
-      name: '新设备分发配置 ' + (store.profiles.length + 1),
-      description: '自定义组装分发配置',
-      templateId: store.templates[0].id,
-      sourceIds: [store.sources[0].id],
-      token: newToken,
-      publicUrl: `http://studio.internal.lan:8080/sub/${newToken}`,
-      updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
-    };
-    store.addProfile(newProf);
+  async function handleCreateProfile() {
+    if (!store.templates[0] || !store.sources[0]) {
+      alert('请先创建至少一个配置模板和一个节点源');
+      return;
+    }
+    try {
+      await store.createProfile({
+        name: '新设备分发配置 ' + (store.profiles.length + 1),
+        description: '自定义组装分发配置',
+        templateId: store.templates[0].id,
+        sourceIds: [store.sources[0].id]
+      });
+    } catch (err) {
+      alert(err.message || err);
+    }
+  }
+
+  async function handleDeleteProfile() {
+    if (!activeProfile) return;
+    try {
+      await store.removeProfile(activeProfile.id);
+    } catch (err) {
+      alert(err.message || err);
+    }
+  }
+
+  async function handleRotateToken() {
+    if (!activeProfile) return;
+    try {
+      await store.rotateProfileToken(activeProfile.id);
+    } catch (err) {
+      alert(err.message || err);
+    }
+  }
+
+  function handleTemplateChange(templateId) {
+    if (!activeProfile) return;
+    activeProfile.templateId = templateId;
+    store.updateProfile(activeProfile);
+    void store.flushProfile(activeProfile.id);
   }
 </script>
 
@@ -99,7 +141,7 @@
 
         {#if store.profiles.length > 1}
           <button
-            onclick={() => store.deleteProfile(store.selectedProfileId)}
+            onclick={handleDeleteProfile}
             title="删除此 Profile"
             class="p-1.5 rounded bg-slate-800/80 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700/80 hover:border-rose-800 text-xs"
           >
@@ -133,6 +175,12 @@
   </div>
 
   {#if activeProfile}
+    {#if store.profileSaveError || store.previewError}
+      <div class="text-xs text-rose-400 bg-rose-950/40 border border-rose-900/60 rounded px-3 py-2">
+        {store.profileSaveError || store.previewError}
+      </div>
+    {/if}
+
     <!-- Main 2-Column Split: Assembly Config (Left) vs Live Output (Right) -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
       <!-- Left Column: Assembly Settings -->
@@ -148,6 +196,7 @@
                 id="prof-name"
                 type="text"
                 bind:value={activeProfile.name}
+                oninput={persistActive}
                 class="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-cyan-500 font-medium"
               />
             </div>
@@ -157,6 +206,7 @@
                 id="prof-desc"
                 type="text"
                 bind:value={activeProfile.description}
+                oninput={persistActive}
                 class="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-cyan-500"
               />
             </div>
@@ -166,15 +216,12 @@
                 <input
                   id="prof-token"
                   type="text"
-                  bind:value={activeProfile.token}
-                  class="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-cyan-400 font-mono focus:outline-none focus:border-cyan-500"
+                  value={activeProfile.token}
+                  readonly
+                  class="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-cyan-400 font-mono focus:outline-none"
                 />
                 <button
-                  onclick={() => {
-                    activeProfile.token = 'tok_' + Math.random().toString(36).substring(2, 10);
-                    activeProfile.publicUrl = `http://studio.internal.lan:8080/sub/${activeProfile.token}`;
-                    store.updateProfile(activeProfile);
-                  }}
+                  onclick={handleRotateToken}
                   class="px-2 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs shrink-0"
                 >
                   重置 Token
@@ -206,10 +253,7 @@
                   name="template_choice"
                   value={tpl.id}
                   checked={activeProfile.templateId === tpl.id}
-                  onchange={() => {
-                    activeProfile.templateId = tpl.id;
-                    store.updateProfile(activeProfile);
-                  }}
+                  onchange={() => handleTemplateChange(tpl.id)}
                   class="mt-0.5 text-cyan-500"
                 />
                 <div class="text-xs space-y-0.5">

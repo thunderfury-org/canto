@@ -3,15 +3,16 @@ use axum::body::Body;
 use axum::http::{StatusCode, header};
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::web::auth::{handle_logout, handle_status, handle_verify_auth, require_admin_auth};
 use crate::web::state::WebState;
 use crate::web::static_files::static_handler;
 use crate::web::studio::api::{
-    create_source, create_template, delete_source, delete_template, get_source, get_template,
-    list_sources, list_templates, refresh_source, update_source, update_template,
+    create_profile, create_source, create_template, delete_profile, delete_source, delete_template,
+    get_source, get_subscription, get_template, list_profiles, list_sources, list_templates,
+    preview_profile, refresh_source, update_profile, update_source, update_template,
 };
 
 pub fn create_app(state: WebState) -> Router {
@@ -39,6 +40,9 @@ pub fn create_app(state: WebState) -> Router {
                 .put(update_template)
                 .delete(delete_template),
         )
+        .route("/profiles", get(list_profiles).post(create_profile))
+        .route("/profiles/{id}", put(update_profile).delete(delete_profile))
+        .route("/profiles/{id}/preview", get(preview_profile))
         .fallback(api_fallback_404)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -48,6 +52,7 @@ pub fn create_app(state: WebState) -> Router {
     let api = Router::new().merge(auth_api).merge(protected_api);
 
     Router::new()
+        .route("/sub/{token}", get(get_subscription))
         .nest("/api", api)
         .fallback(static_handler)
         .layer(cors)

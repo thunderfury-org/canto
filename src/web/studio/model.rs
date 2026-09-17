@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::error::{CantoError, Result};
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SourceKind {
@@ -73,12 +75,66 @@ pub struct Template {
     pub content: Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Profile {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub template_id: String,
+    #[serde(default)]
+    pub source_ids: Vec<String>,
+    pub token: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_url: Option<String>,
+}
+
+impl Profile {
+    pub fn with_public_url(mut self, base: &str) -> Self {
+        let base = base.trim_end_matches('/');
+        self.public_url = Some(format!("{base}/sub/{}", self.token));
+        self
+    }
+
+    pub fn strip_public_url(&mut self) {
+        self.public_url = None;
+    }
+}
+
 pub fn new_template_id() -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     format!("tpl_{nanos:x}")
+}
+
+pub fn new_profile_id() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("prof_{nanos:x}")
+}
+
+pub fn new_profile_token() -> Result<String> {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes)
+        .map_err(|err| CantoError::Web(format!("failed to generate profile token: {err}")))?;
+    Ok(format!("tok_{}", hex_encode(&bytes)))
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0xf) as usize] as char);
+    }
+    out
 }
 
 pub fn is_safe_id(id: &str) -> bool {
