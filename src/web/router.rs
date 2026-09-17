@@ -9,6 +9,9 @@ use tower_http::cors::{Any, CorsLayer};
 use crate::web::auth::{handle_logout, handle_status, handle_verify_auth, require_admin_auth};
 use crate::web::state::WebState;
 use crate::web::static_files::static_handler;
+use crate::web::studio::api::{
+    create_source, delete_source, get_source, list_sources, refresh_source, update_source,
+};
 
 pub fn create_app(state: WebState) -> Router {
     let cors = CorsLayer::new()
@@ -22,6 +25,12 @@ pub fn create_app(state: WebState) -> Router {
 
     let protected_api = Router::new()
         .route("/status", get(handle_status))
+        .route("/sources", get(list_sources).post(create_source))
+        .route(
+            "/sources/{id}",
+            get(get_source).put(update_source).delete(delete_source),
+        )
+        .route("/sources/{id}/refresh", post(refresh_source))
         .fallback(api_fallback_404)
         .layer(middleware::from_fn_with_state(
             state.clone(),

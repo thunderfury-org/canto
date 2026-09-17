@@ -55,6 +55,7 @@ class StudioStore {
           localStorage.setItem('canto_admin_token', token);
         }
         this.authStatusMessage = '认证通过，已保存至浏览器';
+        await this.loadSources();
         return true;
       } else {
         this.isAuthenticated = false;
@@ -105,8 +106,106 @@ class StudioStore {
     this.templates = [...this.templates];
   }
 
+  authHeaders() {
+    return {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${this.adminToken}`
+    };
+  }
+
+  async loadSources() {
+    try {
+      const res = await fetch('/api/sources', { headers: this.authHeaders() });
+      if (!res.ok) {
+        return false;
+      }
+      const data = await res.json();
+      this.sources = Array.isArray(data) ? data : [];
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async apiError(res) {
+    try {
+      const data = await res.json();
+      return data.error || `HTTP ${res.status}`;
+    } catch {
+      return `HTTP ${res.status}`;
+    }
+  }
+
   addSource(newSource) {
-    this.sources.push(newSource);
+    this.sources = [...this.sources, newSource];
+  }
+
+  async createSource(payload) {
+    if (!this.isAuthenticated) {
+      const local = {
+        id: 'src_' + Date.now(),
+        lastUpdated: new Date().toISOString(),
+        status: 'active',
+        nodes: [],
+        ...payload
+      };
+      this.addSource(local);
+      return local;
+    }
+    const res = await fetch('/api/sources', {
+      method: 'POST',
+      headers: this.authHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      throw new Error(await this.apiError(res));
+    }
+    const created = await res.json();
+    await this.loadSources();
+    return created;
+  }
+
+  async updateSource(id, payload) {
+    if (!this.isAuthenticated) {
+      const idx = this.sources.findIndex(s => s.id === id);
+      if (idx !== -1) {
+        this.sources[idx] = { ...this.sources[idx], ...payload };
+        this.sources = [...this.sources];
+      }
+      return this.sources.find(s => s.id === id);
+    }
+    const res = await fetch(`/api/sources/${id}`, {
+      method: 'PUT',
+      headers: this.authHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      throw new Error(await this.apiError(res));
+    }
+    const updated = await res.json();
+    await this.loadSources();
+    return updated;
+  }
+
+  async refreshSource(sourceId) {
+    if (!this.isAuthenticated) {
+      const src = this.sources.find(s => s.id === sourceId);
+      if (src) {
+        src.lastUpdated = new Date().toISOString();
+        this.sources = [...this.sources];
+      }
+      return src;
+    }
+    const res = await fetch(`/api/sources/${sourceId}/refresh`, {
+      method: 'POST',
+      headers: this.authHeaders()
+    });
+    if (!res.ok) {
+      throw new Error(await this.apiError(res));
+    }
+    const updated = await res.json();
+    await this.loadSources();
+    return updated;
   }
 
   deleteSource(sourceId) {
@@ -114,6 +213,24 @@ class StudioStore {
     for (const p of this.profiles) {
       p.sourceIds = p.sourceIds.filter(id => id !== sourceId);
     }
+  }
+
+  async removeSource(sourceId) {
+    if (this.isAuthenticated) {
+      const res = await fetch(`/api/sources/${sourceId}`, {
+        method: 'DELETE',
+        headers: this.authHeaders()
+      });
+      if (!res.ok && res.status !== 204) {
+        throw new Error(await this.apiError(res));
+      }
+      await this.loadSources();
+      for (const p of this.profiles) {
+        p.sourceIds = p.sourceIds.filter(id => id !== sourceId);
+      }
+      return;
+    }
+    this.deleteSource(sourceId);
   }
 
   addProfile(newProfile) {
