@@ -12,6 +12,7 @@ For the in-depth architectural breakdown and design principles, see [docs/DESIGN
 - **Process Supervision**: Manages sing-box lifecycle with asynchronous streaming logs, configuration pre-flight validation, and graceful termination handling.
 - **Atomic Network Orchestration**: Default capture is tproxy with canto `nftables` and policy routing. `bypass_cn` returns CN destinations in nft before tproxy, using `work_dir/cn_ip.txt`.
 - **Fail-safe Network Guard**: Implements RAII-based cleanup ensuring firewall rules and routing policies are rolled back on SIGINT/SIGTERM or process exit.
+- **Web Studio**: Optional embedded UI that assembles templates and node sources into token-protected `/sub/:token` endpoints. A gateway can set `[singbox].source` to that URL. URL refresh keeps nftables in place; identical overlayed JSON does not restart sing-box.
 - **Zero Shell Dependencies**: Standalone Rust application without dependencies on bash, awk, sed, or busybox idiosyncrasies.
 
 ## Architecture
@@ -37,6 +38,7 @@ src/
 ├── supervisor/        # Child process supervision
 │   ├── mod.rs
 │   └── process.rs     # sing-box process runner, validator, and log stream
+├── web/               # Optional Web Studio (Axum + embedded Svelte)
 └── error.rs           # Unified error handling (thiserror)
 ```
 
@@ -56,7 +58,9 @@ Generate a default `canto.toml`:
 cargo run -- config init
 ```
 
-Point `[singbox].source` at a complete sing-box JSON file or an HTTP(S) URL that serves one.
+Point `[singbox].source` at a complete sing-box JSON file or an HTTP(S) URL that serves one, including a Web Studio `/sub/:token` endpoint.
+
+Enable `[web]` in `canto.toml` and run `canto run` with `[network].enabled = false` to host Studio only.
 
 ### 3. Check Status
 

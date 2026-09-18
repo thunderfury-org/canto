@@ -231,6 +231,27 @@ async fn test_protected_api_auth_checks() {
 }
 
 #[tokio::test]
+async fn test_status_reports_started_at_and_uptime() {
+    let (state, _dir) = test_state(test_settings());
+    let app = create_app(state);
+
+    let response = app
+        .oneshot(auth_req("GET", "/api/status", Body::empty()))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let (_, body) = json_body(response).await;
+    assert_eq!(body["status"], "ok");
+    assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
+    let started_at = body["startedAt"].as_str().expect("startedAt");
+    assert!(
+        started_at.ends_with('Z') && started_at.contains('T'),
+        "{started_at}"
+    );
+    assert!(body["uptimeSecs"].as_u64().is_some(), "{body}");
+}
+
+#[tokio::test]
 async fn test_server_startup_and_graceful_shutdown() {
     use canto::web::WebServer;
     use std::time::Duration;

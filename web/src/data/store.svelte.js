@@ -21,6 +21,8 @@ class StudioStore {
   profileSaveError = $state('');
   preview = $state({ config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 });
   previewError = $state('');
+  studioStatus = $state(null);
+  statusError = $state('');
 
   // Computed
   selectedTemplate = $derived(
@@ -68,6 +70,7 @@ class StudioStore {
         await this.loadSources();
         await this.loadTemplates();
         await this.loadProfiles();
+        await this.loadStatus();
         return true;
       } else {
         this.isAuthenticated = false;
@@ -88,6 +91,8 @@ class StudioStore {
     this.isAuthenticated = false;
     this.adminToken = '';
     this.authStatusMessage = '已退出登录';
+    this.studioStatus = null;
+    this.statusError = '';
     if (typeof window !== 'undefined') {
       localStorage.removeItem('canto_admin_token');
     }
@@ -241,6 +246,30 @@ class StudioStore {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${this.adminToken}`
     };
+  }
+
+  async loadStatus() {
+    if (!this.isAuthenticated) {
+      this.studioStatus = null;
+      return false;
+    }
+    try {
+      const res = await fetch('/api/status', { headers: this.authHeaders() });
+      if (!res.ok) {
+        this.statusError = await this.apiError(res);
+        if (res.status === 401) {
+          this.isAuthenticated = false;
+          this.authStatusMessage = 'Token 校验失败 (HTTP 401 Unauthorized)';
+        }
+        return false;
+      }
+      this.studioStatus = await res.json();
+      this.statusError = '';
+      return true;
+    } catch (err) {
+      this.statusError = '无法获取服务状态: ' + (err.message || err);
+      return false;
+    }
   }
 
   async loadSources() {

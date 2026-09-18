@@ -157,6 +157,7 @@ pub async fn refresh_source(
     locator: &SourceLocator,
     fetcher: &impl SourceFetcher,
     network: &NetworkSettings,
+    current_overlayed: Option<&Value>,
     check: impl Fn(&Value) -> Result<()>,
 ) -> RefreshOutcome {
     let live = match live_source(locator, fetcher).await {
@@ -168,10 +169,15 @@ pub async fn refresh_source(
         Err(_) => return RefreshOutcome::KeepCurrent,
     };
     match check(&overlayed) {
-        Ok(()) => RefreshOutcome::Apply {
-            raw: live,
-            overlayed,
-        },
+        Ok(()) => {
+            if current_overlayed == Some(&overlayed) {
+                return RefreshOutcome::KeepCurrent;
+            }
+            RefreshOutcome::Apply {
+                raw: live,
+                overlayed,
+            }
+        }
         Err(_) => RefreshOutcome::KeepCurrent,
     }
 }
@@ -320,9 +326,13 @@ mod tests {
             responses: HashMap::from([(url.to_string(), Err("timeout".to_string()))]),
         };
         let locator = SourceLocator::parse(url).unwrap();
-        let outcome = refresh_source(&locator, &fetcher, &NetworkSettings::default(), |_| {
-            panic!("check should not run when fetch fails")
-        })
+        let outcome = refresh_source(
+            &locator,
+            &fetcher,
+            &NetworkSettings::default(),
+            None,
+            |_| panic!("check should not run when fetch fails"),
+        )
         .await;
         assert!(matches!(outcome, RefreshOutcome::KeepCurrent));
     }
@@ -337,9 +347,13 @@ mod tests {
             )]),
         };
         let locator = SourceLocator::parse(url).unwrap();
-        let outcome = refresh_source(&locator, &fetcher, &NetworkSettings::default(), |_| {
-            Err(CantoError::Config("sing-box check failed".to_string()))
-        })
+        let outcome = refresh_source(
+            &locator,
+            &fetcher,
+            &NetworkSettings::default(),
+            None,
+            |_| Err(CantoError::Config("sing-box check failed".to_string())),
+        )
         .await;
         assert!(matches!(outcome, RefreshOutcome::KeepCurrent));
     }
@@ -361,6 +375,7 @@ mod tests {
                 bypass_cn: false,
                 ..NetworkSettings::default()
             },
+            None,
             |_| Ok(()),
         )
         .await;
@@ -372,6 +387,41 @@ mod tests {
         assert_eq!(overlayed["inbounds"][1]["tag"], "tproxy-in");
         assert_eq!(overlayed["outbounds"][0]["tag"], "直连");
         assert_eq!(overlayed["route"]["default_mark"], 0x67890);
+    }
+
+    #[tokio::test]
+    async fn test_refresh_keeps_current_when_overlayed_config_unchanged() {
+        let url = "https://config.example/source.json";
+        let fetcher = FakeFetcher {
+            responses: HashMap::from([(
+                url.to_string(),
+                Ok(r#"{"inbounds":[{"type":"tun","tag":"tun-in"}],"outbounds":[{"tag":"直连","type":"direct"}]}"#.to_string()),
+            )]),
+        };
+        let locator = SourceLocator::parse(url).unwrap();
+        let network = NetworkSettings {
+            bypass_cn: false,
+            ..NetworkSettings::default()
+        };
+        let first = refresh_source(&locator, &fetcher, &network, None, |_| Ok(())).await;
+        let RefreshOutcome::Apply { overlayed, .. } = first else {
+            panic!("expected Apply on first refresh");
+        };
+
+        let second =
+            refresh_source(&locator, &fetcher, &network, Some(&overlayed), |_| Ok(())).await;
+        assert!(
+            matches!(second, RefreshOutcome::KeepCurrent),
+            "unchanged overlayed config should not restart"
+        );
+
+        let mut changed = overlayed.clone();
+        changed["outbounds"][0]["tag"] = json!("新节点");
+        let third = refresh_source(&locator, &fetcher, &network, Some(&changed), |_| Ok(())).await;
+        assert!(
+            matches!(third, RefreshOutcome::Apply { .. }),
+            "changed overlayed config should apply"
+        );
     }
 
     #[tokio::test]

@@ -23,9 +23,12 @@ pub struct VerifyAuthResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StatusResponse {
     pub status: &'static str,
     pub version: &'static str,
+    pub started_at: String,
+    pub uptime_secs: u64,
 }
 
 pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -94,10 +97,12 @@ pub async fn require_admin_auth(
     next.run(request).await
 }
 
-pub async fn handle_status() -> Response {
+pub async fn handle_status(State(state): State<WebState>) -> Response {
     let resp = StatusResponse {
         status: "ok",
         version: env!("CARGO_PKG_VERSION"),
+        started_at: state.started_at_rfc3339.clone(),
+        uptime_secs: state.uptime_secs(),
     };
     let json = serde_json::to_string(&resp).unwrap_or_default();
     Response::builder()

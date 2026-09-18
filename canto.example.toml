@@ -5,6 +5,7 @@ work_dir = "./run"
 binary = "sing-box"
 source = ".data/config-with-tailscale.json"
 # source = "https://config.example/source.json"
+# source = "http://127.0.0.1:5800/sub/tok_your_profile_token"
 config_path = "./run/config.json"
 refresh_interval_secs = 86400
 
@@ -31,3 +32,5 @@ enabled = false
 listen = "0.0.0.0:5800"
 admin_token = "secret_admin_tok_canto_2026"
 # public_url = "http://127.0.0.1:5800"
+# 纯服务端：network.enabled = false 且 web.enabled = true
+# 网关消费：把 [singbox].source 设为 {public_url}/sub/:token

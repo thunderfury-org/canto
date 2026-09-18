@@ -24,7 +24,7 @@
   });
 
   function copyActiveUrl() {
-    if (store.selectedProfile) {
+    if (store.isAuthenticated && store.selectedProfile) {
       navigator.clipboard.writeText(store.selectedProfile.publicUrl);
       copied = true;
       setTimeout(() => (copied = false), 2000);
@@ -125,7 +125,7 @@
 
     <!-- Top Right Status & Utilities -->
     <div class="flex items-center gap-2.5">
-      {#if store.selectedProfile}
+      {#if store.isAuthenticated && store.selectedProfile}
         <button
           onclick={copyActiveUrl}
           title="复制当前激活 Profile 订阅链接"

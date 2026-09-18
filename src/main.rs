@@ -179,6 +179,13 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
     Ok(())
 }
 
+fn read_runtime_json(path: &Path) -> Option<serde_json::Value> {
+    let text = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&text)
+        .ok()
+        .filter(serde_json::Value::is_object)
+}
+
 async fn apply_url_refresh(
     locator: &SourceLocator,
     fetcher: &HttpFetcher,
@@ -188,10 +195,17 @@ async fn apply_url_refresh(
     cache_path: &Path,
 ) -> bool {
     let next = runtime_path.with_extension("json.next");
-    match refresh_source(locator, fetcher, &settings.network, |overlayed| {
-        write_runtime_config(overlayed, &next)?;
-        supervisor.check_config(Some(&next))
-    })
+    let current = read_runtime_json(runtime_path);
+    match refresh_source(
+        locator,
+        fetcher,
+        &settings.network,
+        current.as_ref(),
+        |overlayed| {
+            write_runtime_config(overlayed, &next)?;
+            supervisor.check_config(Some(&next))
+        },
+    )
     .await
     {
         RefreshOutcome::KeepCurrent => {

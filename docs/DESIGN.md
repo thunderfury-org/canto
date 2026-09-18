@@ -20,9 +20,10 @@ canto 采用 Rust 开发，定位为专注于 **sing-box（1.13+）** 的无依�
 * **单静态二进制交付**：全静态链接（musl libc），无 glibc 或系统脚本解释器依赖。
 * **数据面与控制面分离**：数据面复用 sing-box；canto 作为控制面，负责网络编排、运行时覆盖和进程监督。
 * **原子化网络编排与 RAII 兜底**：使用 Linux 原生 `nftables` 与策略路由；`NetworkGuard` 在 SIGINT/SIGTERM 或进程退出时撤销规则。SIGKILL / OOM 无法走 Drop，需配合 systemd `ExecStop=canto clean-network`。残留的 `inet sing-box` 和名为 `canto` 的 tun 也会清掉。
-* **源配置加载与启动覆盖**：启动必须提供完整 sing-box JSON（本地文件或 HTTP(S) URL）；canto 整段替换 `inbounds`，写入 `route.default_mark`，并关闭 `auto_detect_interface`，保证入站与 nftables 端口/防环标记对齐。URL 在运行中定时刷新：失败则保持当前进程与 nftables，成功则覆盖、check 并重启 sing-box。
+* **源配置加载与启动覆盖**：启动必须提供完整 sing-box JSON（本地文件或 HTTP(S) URL，包括 Web Studio 的 `/sub/:token`）；canto 整段替换 `inbounds`，写入 `route.default_mark`，并关闭 `auto_detect_interface`，保证入站与 nftables 端口/防环标记对齐。URL 在运行中定时刷新：失败或覆盖结果未变则保持当前进程与 nftables；源配置有变则覆盖、check 并重启 sing-box。
+* **可选 Web Studio**：`[web].enabled` 打开后内嵌配置生产端，管理模板、节点源与 Profile，经 Token 保护的 HTTP 订阅端点分发完整 JSON。
 
-当前不做订阅转换、模板合并、TUI、设备过滤或 IPv6 劫持。源配置可以是本地文件或 HTTP(S) URL。上 OpenWrt 还缺的能力见第 8 节，不要把「当前不做」读成「永远不做」。
+网关本身不做节点订阅 URI 转换。模板合并与 `{regex}` 标签展开只发生在 Web Studio。当前不做 TUI、设备过滤或 IPv6 劫持。上 OpenWrt 还缺的能力见第 8 节，不要把「当前不做」读成「永远不做」。
 
 ---
 
@@ -52,6 +53,10 @@ canto
 ├── src/supervisor/      # 子进程监督
 │   ├── mod.rs
 │   └── process.rs       # sing-box 启动、存活监督、日志分流与信号处理
+├── src/web/             # 可选 Web Studio（Axum + 嵌入式 Svelte）
+│   ├── server.rs        # HTTP 服务绑定与优雅退出
+│   ├── studio/          # 模板 / 节点源 / Profile / 标签展开
+│   └── static_files.rs  # rust-embed 前端资源
 └── src/error.rs         # 基于 thiserror 的统一强类型错误枚举
 ```
 
@@ -61,6 +66,13 @@ canto
 3. **网络接管**：check 通过后装策略路由和 `table inet canto`。
 4. **进程托管**：`ProcessSupervisor` 异步拉起 sing-box，消费 stdout/stderr。源地址是 URL 且 `refresh_interval_secs > 0` 时，按间隔刷新：失败则保持当前进程与 nft；成功则覆盖、check、重启 sing-box，**不拆** nft。
 5. **退出与恢复**：SIGINT/SIGTERM 或子进程退出时，先停止 sing-box，再由 `NetworkGuard` Drop 删除 `inet canto` 表和策略路由。刷新重启不会走到这一步。
+6. **Web Studio（可选）**：`[web].enabled = true` 时与监督器并发。`[network].enabled = false` 且 Web 开启则为纯服务端：不拉源配置、不启动 sing-box、不装 nft。
+
+### 2.2 Web Studio 生产端
+
+见 [ADR 0012](adr/0012-web-studio-producer-coexistence.md)。状态落在 `work_dir/studio/`（`templates/*.json`、`sources.json`、`profiles.json`）。管理 API `/api/*` 需要 `admin_token`；公开 `GET /sub/:token` 返回编译后的完整 sing-box JSON，可作为网关 `[singbox].source`。
+
+网关消费该 URL 时走既有覆盖与刷新：失败保留 last-good 与当前 nft；覆盖后的 JSON 与当前 `config_path` 相同则不重启 sing-box。
 
 ---
 
@@ -129,13 +141,13 @@ DNS：
 
 ## 4. 配置流水线与启动覆盖
 
-用户必须提供一份完整的官方 sing-box JSON。节点过滤语法（如 `{My-}`）不处理。dns / outbounds / endpoints / experimental 原样保留，源里的 `tun-in` 被整段替换掉。
+用户必须提供一份完整的官方 sing-box JSON。网关不处理 `{My-}` 这类节点过滤；Web Studio 在分发前做 `{regex}` 标签展开。dns / outbounds / endpoints / experimental 原样保留，源里的 `tun-in` 被整段替换掉。
 
 ### 4.1 源配置
 
-`[singbox].source` 为必填源地址：本地文件路径或 `http://` / `https://` URL。URL 使用系统 CA，不配自定义 Header。上次成功的源配置缓存在 `work_dir/source-cache.json`；启动时拉不到且没有缓存则拒绝接管网络。
+`[singbox].source` 为必填源地址：本地文件路径或 `http://` / `https://` URL（包括 Studio 的 `/sub/:token`）。URL 使用系统 CA，不配自定义 Header。上次成功的源配置缓存在 `work_dir/source-cache.json`；启动时拉不到且没有缓存则拒绝接管网络。纯服务端模式不读源地址。
 
-`config_path` 是运行时输出路径。`canto run`、`canto config generate`、以及未指定 `--config` 的 `canto config check` 都会重新取得源配置并覆盖；`status` 用同一路径探测源配置是否可用。`run` 在 URL 源上还会按 `refresh_interval_secs` 刷新（`0` 关闭）。
+`config_path` 是运行时输出路径。`canto run`、`canto config generate`、以及未指定 `--config` 的 `canto config check` 都会重新取得源配置并覆盖；`status` 用同一路径探测源配置是否可用。`run` 在 URL 源上还会按 `refresh_interval_secs` 刷新（`0` 关闭）：拉取或 check 失败、以及覆盖结果与当前运行时配置相同，都保持当前 sing-box，不拆 nft。
 
 加载失败直接拒绝启动：
 * 未配置 `source`
@@ -216,6 +228,13 @@ tproxy_port = 7893
 dns_port = 1053
 lan_cidrs = []           # 空则自动探测 LAN 接口
 # bypass_cn 时使用 work_dir/cn_ip.txt；缺失则下载
+
+[web]
+enabled = false
+listen = "0.0.0.0:5800"
+admin_token = ""
+# public_url = "http://127.0.0.1:5800"
+# 网关可将 [singbox].source 指到 {public_url}/sub/:token
 ```
 
 ---
@@ -251,11 +270,34 @@ WantedBy=multi-user.target
 
 macOS 开发机只生成并校验规则，不执行 `nft` / `ip`。
 
+### 7.3 Web Studio 部署
+
+纯服务端（`[network].enabled = false` 且 `[web].enabled = true`）不需要 `CAP_NET_ADMIN`，`ExecStop` 也不走 `clean-network`：
+
+```ini
+[Unit]
+Description=canto Web Studio
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/canto run
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Svelte 前端在编译期嵌入二进制。发布前执行 `cd web && npm run build`，或依赖 `build.rs` 在缺少 `web/dist` 时尝试构建。
+
+混合模式（网关 + Studio 同进程）把 `[singbox].source` 指到本机或另一台 Studio 的 `/sub/:token` 即可。
+
 ---
 
 ## 8. 未来演进路线（Roadmap）
 
-已完成：本地或 HTTP(S) 源配置、inbound 覆盖、#8 范围/端口/仅 TCP、URL 刷新保活、SIGINT/SIGTERM 清残留、默认 tproxy nft、`cn_ip.txt` 大陆绕过。`scripts/netns-check.sh` 在 CI 里覆盖劫持、bypass、本机 output、回滚、URL 源、缓存和刷新。
+已完成：本地或 HTTP(S) 源配置、inbound 覆盖、#8 范围/端口/仅 TCP、URL 刷新保活（覆盖未变则不重启）、SIGINT/SIGTERM 清残留、默认 tproxy nft、`cn_ip.txt` 大陆绕过、Web Studio 生产端与网关消费 `/sub/:token`。`scripts/netns-check.sh` 在 CI 里覆盖劫持、bypass、本机 output、回滚、URL 源、缓存和刷新。
 
 下面只列还没做的。愿景仍在 GitHub #3；下一刀开工前单独开 issue，不要在 #3 里续写。
 
@@ -280,8 +322,8 @@ macOS 开发机只生成并校验规则，不执行 `nft` / `ip`。
 
 ### 8.3 配置与节点
 
-* **HTTP(S) 拉源配置**：已支持。自定义 Header、自签证书和订阅转换仍不做。
-* **订阅/provider**：`{My-}` 这类过滤不处理。节点必须预先写进完整 JSON。
+* **HTTP(S) 拉源配置**：已支持，含 Studio `/sub/:token`。自定义 Header 与自签证书仍不做。网关不把节点订阅 URI 转成源配置。
+* **订阅/provider**：网关不处理 `{My-}`。Web Studio 在 Profile 编译时做 `{regex}` 标签展开。Clash YAML 节点源见 [#24](https://github.com/thunderfury-org/canto/issues/24)。
 * **覆盖 `experimental.clash_api`**：源配置里有就保留；以后做改写时再加监听地址配置。当前不查延迟/流量。
 * **tun 模式**：已删除。legacy `mode` / `bypass_cn_ips` 仍忽略。
 
@@ -291,5 +333,5 @@ macOS 开发机只生成并校验规则，不执行 `nft` / `ip`。
 * **OpenWrt 真机交付**（[#7](https://github.com/thunderfury-org/canto/issues/7)）：排在 #12 之后。netns/CI 和测试 Linux 都不能代替家里那台路由器。要 musl 包、procd/自启、fw4 协同；先停 ShellCrash 再接管。canto 仍不自动卸载 ShellCrash。
 * **安装与自启**：现在只有文档里的 systemd 示例。没有安装脚本、procd/OpenRC、交叉编译发布。
 * **内核与面板**：不下载 sing-box，不安装 Dashboard。
-* **TUI / 交互菜单**：不替代 `crash` 选单。可视化编辑器和 SSH 舰队仍是 #3 里的远期，不进当前产品线。
+* **TUI / 交互菜单**：不替代 `crash` 选单。可视化编辑走 Web Studio，不做 SSH 舰队。
 * **daemon**：当前不实现；用 systemd 或 procd 托管 `canto run`。

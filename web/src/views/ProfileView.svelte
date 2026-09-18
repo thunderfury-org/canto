@@ -117,6 +117,15 @@
 </script>
 
 <div class="space-y-4">
+  {#if !store.isAuthenticated}
+    <div class="bg-slate-900/80 border border-amber-800/50 rounded-lg p-6 space-y-1">
+      <h2 class="text-sm font-semibold text-slate-100">需要管理员 Token</h2>
+      <p class="text-xs text-slate-400">认证后再组装 Profile 并复制给网关用的源地址。</p>
+      {#if store.authStatusMessage}
+        <p class="text-xs text-rose-400">{store.authStatusMessage}</p>
+      {/if}
+    </div>
+  {:else}
   <!-- Top Profile Selector & Meta -->
   <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
     <div class="flex items-center gap-2">
@@ -416,5 +425,13 @@
         {/if}
       </div>
     </div>
+  {:else}
+    <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-8 text-center space-y-2">
+      <p class="text-sm text-slate-200">还没有配置档案</p>
+      <p class="text-xs text-slate-500">
+        先准备一份配置模板和一个节点源，再组装 Profile。生成的 HTTP 订阅端点可作为网关源地址。
+      </p>
+    </div>
+  {/if}
   {/if}
 </div>
