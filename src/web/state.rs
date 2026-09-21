@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use crate::config::WebSettings;
 use crate::web::studio::model::now_rfc3339;
-use crate::web::studio::{ProfileStore, SourceStore, TemplateStore};
+use crate::web::studio::{ProfileCompiler, ProfileStore, SourceStore, TemplateStore};
 
 #[derive(Clone, Debug)]
 pub struct WebState {
@@ -12,6 +12,7 @@ pub struct WebState {
     pub sources: Arc<SourceStore>,
     pub templates: Arc<TemplateStore>,
     pub profiles: Arc<ProfileStore>,
+    pub compiler: Arc<ProfileCompiler>,
     pub http: reqwest::Client,
     pub started_at: Instant,
     pub started_at_rfc3339: String,
@@ -49,11 +50,20 @@ impl WebState {
                 ProfileStore::empty(&work_dir)
             }
         };
+        let sources = Arc::new(sources);
+        let templates = Arc::new(templates);
+        let profiles = Arc::new(profiles);
+        let compiler = Arc::new(ProfileCompiler::new(
+            Arc::clone(&templates),
+            Arc::clone(&sources),
+            Arc::clone(&profiles),
+        ));
         Self {
             settings: Arc::new(settings),
-            sources: Arc::new(sources),
-            templates: Arc::new(templates),
-            profiles: Arc::new(profiles),
+            sources,
+            templates,
+            profiles,
+            compiler,
             http: reqwest::Client::new(),
             started_at: Instant::now(),
             started_at_rfc3339: now_rfc3339(),
