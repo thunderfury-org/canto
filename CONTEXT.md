@@ -41,7 +41,7 @@ Web Studio 中的基础 sing-box 配置骨架，包含各核心模块（DNS、In
 _Avoid_: 模板文件, 基础配置
 
 **节点源 (Node Source)**:
-向 Web Studio 提供代理节点的输入源，当前支持 Base64 协议 URI 列表与 sing-box 原生 JSON。Clash YAML（`proxies:`）尚未纳入，见 #24。
+向 Web Studio 提供代理节点的输入源，支持 Clash YAML（`proxies:`）、Base64 协议 URI 列表与 sing-box 原生 JSON。
 _Avoid_: 节点池, 订阅源
 
 **配置档案 (Profile)**:

@@ -1132,3 +1132,150 @@ async fn test_profiles_crud_preview_and_public_subscription() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(listed, json!([]));
 }
+
+#[tokio::test]
+async fn test_sources_parse_clash_yaml_subscription_and_persist() {
+    let clash_yaml = r#"
+port: 7890
+proxies:
+  - name: "Clash-SS"
+    type: ss
+    server: 192.168.1.1
+    port: 8388
+    cipher: aes-256-gcm
+    password: secret
+  - name: "Clash-VMess"
+    type: vmess
+    server: hk.example.com
+    port: 443
+    uuid: 11111111-1111-1111-1111-111111111111
+    network: ws
+    tls: true
+    servername: hk.example.com
+    ws-opts:
+      path: /ws
+  - name: "Clash-VLESS"
+    type: vless
+    server: jp.example.com
+    port: 443
+    uuid: 22222222-2222-2222-2222-222222222222
+    flow: xtls-rprx-vision
+    servername: www.microsoft.com
+    client-fingerprint: chrome
+    reality-opts:
+      public-key: PubReality
+      short-id: ab
+  - name: "Clash-Trojan"
+    type: trojan
+    server: tw.example.com
+    port: 443
+    password: pass
+    sni: tw.example.com
+  - name: "Clash-HY2"
+    type: hysteria2
+    server: jp.example.com
+    port: 8443
+    password: hy2pass
+    ports: 10000-20000
+    obfs: salamander
+    obfs-password: obfs-secret
+  - name: "Clash-Snell"
+    type: snell
+    server: 3.3.3.3
+    port: 1234
+    psk: secret
+"#;
+    let (url, feed) = spawn_feed_server(clash_yaml).await;
+    let (state, dir) = test_state(test_settings());
+    let app = create_app(state);
+
+    let create_body = json!({
+        "name": "Clash机场订阅",
+        "type": "subscription",
+        "url": url
+    });
+    let (status, created) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/sources",
+                Body::from(create_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["status"], "active");
+    assert_eq!(created["nodeCount"], 5);
+
+    let types: Vec<&str> = created["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["type"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        types,
+        ["shadowsocks", "vmess", "vless", "trojan", "hysteria2"]
+    );
+    let id = created["id"].as_str().unwrap().to_string();
+
+    let persisted = std::fs::read_to_string(dir.join("studio").join("sources.json")).unwrap();
+    assert!(persisted.contains("Clash机场订阅"));
+    assert!(persisted.contains("Clash-SS"));
+    assert!(persisted.contains("PubReality"));
+    assert!(!persisted.contains("Clash-Snell"));
+
+    let updated_yaml = r#"
+proxies:
+  - name: "Clash-Only-One"
+    type: trojan
+    server: us.example.com
+    port: 443
+    password: singlepass
+"#;
+    *feed.inner.lock().unwrap() = (StatusCode::OK, updated_yaml.to_string());
+
+    let (status, refreshed) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                &format!("/api/sources/{id}/refresh"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(refreshed["nodeCount"], 1);
+    assert_eq!(refreshed["nodes"][0]["tag"], "Clash-Only-One");
+
+    *feed.inner.lock().unwrap() = (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "clash provider internal error".to_string(),
+    );
+    let (status, failed) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                &format!("/api/sources/{id}/refresh"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(failed["status"], "error");
+    assert_eq!(failed["nodeCount"], 1);
+    assert_eq!(failed["nodes"][0]["tag"], "Clash-Only-One");
+
+    let disk: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.join("studio").join("sources.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(disk["sources"][0]["nodes"][0]["tag"], "Clash-Only-One");
+    assert_eq!(disk["sources"][0]["status"], "error");
+}
