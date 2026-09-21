@@ -51,3 +51,7 @@ _Avoid_: 订阅配置, 导出档案
 **标签展开 (Expansion)**:
 Web Studio 在编译配置时，将策略组中的正则占位符匹配并替换为具体节点标签的计算过程。
 _Avoid_: 宏展开, 占位符替换
+
+**配置编译 (Compilation)**:
+Web Studio 将配置档案（Profile）结合配置模板（Template）与关联节点源（Node Source），经由标签展开与完整性校验组装为可用 sing-box JSON 与分发元数据的过程。
+_Avoid_: 动态生成, 导出配置, 打包

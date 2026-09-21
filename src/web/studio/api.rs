@@ -10,10 +10,10 @@ use serde_json::{Value, json};
 use tracing::warn;
 
 use crate::web::state::WebState;
-use crate::web::studio::expand::{Expansion, expand_profile};
+use crate::web::studio::compiler::CompileError;
 use crate::web::studio::model::{
-    NodeSource, Profile, SourceKind, Template, new_profile_id, new_profile_token, new_source_id,
-    new_template_id, now_rfc3339, validate_template_content,
+    NodeSource, Profile, SourceKind, Template, new_profile_id, new_source_id, new_template_id,
+    now_rfc3339, validate_template_content,
 };
 use crate::web::studio::parser::parse_subscription;
 
@@ -425,13 +425,21 @@ pub async fn create_profile(
         return json_error(StatusCode::BAD_REQUEST, "name is required");
     }
     let source_ids = unique_ids(&req.source_ids);
-    if let Some(err) = validate_profile_refs(&state, &req.template_id, &source_ids).await {
-        return err;
+    if let Err(err) = state
+        .compiler
+        .validate_refs(&req.template_id, &source_ids)
+        .await
+    {
+        let (status, msg) = compile_error_response(err);
+        return json_error(status, &msg);
     }
 
-    let token = match unique_token(&state).await {
+    let token = match state.compiler.allocate_unique_token().await {
         Ok(token) => token,
-        Err(err) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
+        Err(err) => {
+            let (status, msg) = compile_error_response(err);
+            return json_error(status, &msg);
+        }
     };
 
     let profile = Profile {
@@ -480,15 +488,21 @@ pub async fn update_profile(
     if let Some(source_ids) = req.source_ids {
         profile.source_ids = unique_ids(&source_ids);
     }
-    if let Some(err) =
-        validate_profile_refs(&state, &profile.template_id, &profile.source_ids).await
+    if let Err(err) = state
+        .compiler
+        .validate_refs(&profile.template_id, &profile.source_ids)
+        .await
     {
-        return err;
+        let (status, msg) = compile_error_response(err);
+        return json_error(status, &msg);
     }
     if req.rotate_token {
-        match unique_token(&state).await {
+        match state.compiler.allocate_unique_token().await {
             Ok(token) => profile.token = token,
-            Err(err) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
+            Err(err) => {
+                let (status, msg) = compile_error_response(err);
+                return json_error(status, &msg);
+            }
         }
     }
     profile.updated_at = Some(now_rfc3339());
@@ -513,21 +527,12 @@ pub async fn delete_profile(State(state): State<WebState>, Path(id): Path<String
 }
 
 pub async fn preview_profile(State(state): State<WebState>, Path(id): Path<String>) -> Response {
-    let Some(profile) = state.profiles.get(&id).await else {
-        return json_error(StatusCode::NOT_FOUND, "profile not found");
-    };
-    match compile_profile(&state, &profile).await {
-        Ok(expansion) => (
-            StatusCode::OK,
-            Json(json!({
-                "config": expansion.config,
-                "matchedMap": expansion.matched_map,
-                "totalNodes": expansion.total_nodes,
-                "usedCount": expansion.used_count,
-            })),
-        )
-            .into_response(),
-        Err(CompileError::BadRequest(message)) => json_error(StatusCode::BAD_REQUEST, &message),
+    match state.compiler.compile_by_id(&id).await {
+        Ok(compiled) => (StatusCode::OK, Json(compiled)).into_response(),
+        Err(err) => {
+            let (status, msg) = compile_error_response(err);
+            json_error(status, &msg)
+        }
     }
 }
 
@@ -536,89 +541,53 @@ pub async fn get_subscription(
     Path(token): Path<String>,
     headers: HeaderMap,
 ) -> Response {
-    let Some(profile) = state.profiles.get_by_token(&token).await else {
-        return json_error(StatusCode::NOT_FOUND, "subscription not found");
-    };
-    match compile_profile(&state, &profile).await {
-        Ok(expansion) => match serde_json::to_vec(&expansion.config) {
-            Ok(body) => {
-                let etag = etag_for(&body);
-                if headers
-                    .get(header::IF_NONE_MATCH)
-                    .and_then(|value| value.to_str().ok())
-                    == Some(etag.as_str())
-                {
-                    return StatusCode::NOT_MODIFIED.into_response();
-                }
-                Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, "application/json")
-                    .header(header::ETAG, etag)
-                    .body(Body::from(body))
-                    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    match state.compiler.compile_by_token(&token).await {
+        Ok(compiled) => {
+            if headers
+                .get(header::IF_NONE_MATCH)
+                .and_then(|value| value.to_str().ok())
+                == Some(compiled.etag.as_str())
+            {
+                return StatusCode::NOT_MODIFIED.into_response();
             }
-            Err(err) => json_error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
-        },
-        Err(_) => json_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to compile profile",
-        ),
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::ETAG, compiled.etag)
+                .body(Body::from(compiled.raw_bytes))
+                .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
+        Err(err) => {
+            let (status, msg) = compile_error_response(err);
+            json_error(status, &msg)
+        }
     }
 }
 
-enum CompileError {
-    BadRequest(String),
-}
-
-async fn compile_profile(state: &WebState, profile: &Profile) -> Result<Expansion, CompileError> {
-    let Some(template) = state.templates.get(&profile.template_id).await else {
-        return Err(CompileError::BadRequest("template not found".to_string()));
-    };
-    let mut nodes = Vec::new();
-    for source_id in &profile.source_ids {
-        let Some(source) = state.sources.get(source_id).await else {
-            continue;
-        };
-        nodes.extend(source.nodes);
-    }
-    Ok(expand_profile(&template.content, &nodes))
-}
-
-async fn validate_profile_refs(
-    state: &WebState,
-    template_id: &str,
-    source_ids: &[String],
-) -> Option<Response> {
-    if source_ids.is_empty() {
-        return Some(json_error(
+fn compile_error_response(err: CompileError) -> (StatusCode, String) {
+    match err {
+        CompileError::ProfileNotFound(_) => {
+            (StatusCode::NOT_FOUND, "profile not found".to_string())
+        }
+        CompileError::TokenNotFound(_) => {
+            (StatusCode::NOT_FOUND, "subscription not found".to_string())
+        }
+        CompileError::TemplateNotFound(_) => {
+            (StatusCode::BAD_REQUEST, "template not found".to_string())
+        }
+        CompileError::SourceNotFound(id) => {
+            (StatusCode::BAD_REQUEST, format!("source '{id}' not found"))
+        }
+        CompileError::EmptySources => (
             StatusCode::BAD_REQUEST,
-            "at least one source is required",
-        ));
+            "at least one source is required".to_string(),
+        ),
+        CompileError::TokenAllocationFailed => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to allocate a unique profile token".to_string(),
+        ),
+        CompileError::SerializationError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
     }
-    if state.templates.get(template_id).await.is_none() {
-        return Some(json_error(StatusCode::BAD_REQUEST, "template not found"));
-    }
-    for source_id in source_ids {
-        if state.sources.get(source_id).await.is_none() {
-            return Some(json_error(
-                StatusCode::BAD_REQUEST,
-                &format!("source '{source_id}' not found"),
-            ));
-        }
-    }
-    None
-}
-
-async fn unique_token(state: &WebState) -> crate::error::Result<String> {
-    for _ in 0..8 {
-        let token = new_profile_token()?;
-        if state.profiles.get_by_token(&token).await.is_none() {
-            return Ok(token);
-        }
-    }
-    Err(crate::error::CantoError::Web(
-        "failed to allocate a unique profile token".to_string(),
-    ))
 }
 
 fn unique_ids(ids: &[String]) -> Vec<String> {
@@ -631,14 +600,6 @@ fn unique_ids(ids: &[String]) -> Vec<String> {
         out.push(id.to_string());
     }
     out
-}
-
-fn etag_for(body: &[u8]) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    body.hash(&mut hasher);
-    format!("\"{:016x}\"", hasher.finish())
 }
 
 fn json_error(status: StatusCode, message: &str) -> Response {
