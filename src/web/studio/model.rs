@@ -240,9 +240,12 @@ pub fn validate_template_content(content: &Value) -> std::result::Result<(), Str
                         "node group '{tag}' outbound pattern cannot be empty"
                     ));
                 }
-                regex::Regex::new(pattern).map_err(|err| {
-                    format!("node group '{tag}' has invalid regex pattern '{pattern}': {err}")
-                })?;
+                regex::RegexBuilder::new(pattern)
+                    .case_insensitive(true)
+                    .build()
+                    .map_err(|err| {
+                        format!("node group '{tag}' has invalid regex pattern '{pattern}': {err}")
+                    })?;
             }
         }
     }

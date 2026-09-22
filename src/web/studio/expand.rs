@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use regex::Regex;
+use regex::RegexBuilder;
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -178,7 +178,7 @@ fn match_tags(pattern: &str, tags: &[String]) -> Vec<String> {
     if pattern.is_empty() {
         return Vec::new();
     }
-    let Ok(re) = Regex::new(pattern) else {
+    let Ok(re) = RegexBuilder::new(pattern).case_insensitive(true).build() else {
         return Vec::new();
     };
     tags.iter()

@@ -275,16 +275,25 @@
   function getDisplayPattern(outbounds) {
     if (!Array.isArray(outbounds) || outbounds.length === 0) return "";
     const first = outbounds[0];
-    if (typeof first === "string" && first.startsWith("{") && first.endsWith("}") && first.length >= 2) {
-      return first.slice(1, -1);
+    if (typeof first !== "string") return "";
+    let clean = first.trim();
+    if (clean.startsWith("{") && clean.endsWith("}") && clean.length >= 2) {
+      clean = clean.slice(1, -1).trim();
     }
-    return typeof first === "string" ? first : "";
+    if (clean.startsWith("(?i)")) {
+      clean = clean.slice(4).trim();
+    }
+    return clean;
   }
 
   function checkRegexValid(pattern) {
     if (!pattern) return true;
+    let clean = pattern.trim();
+    if (clean.startsWith("(?i)")) {
+      clean = clean.slice(4).trim();
+    }
     try {
-      new RegExp(pattern);
+      new RegExp(clean, "i");
       return true;
     } catch {
       return false;
@@ -299,7 +308,15 @@
     if (s.startsWith("{") && s.endsWith("}") && s.length >= 2) {
       s = s.slice(1, -1).trim();
     }
-    ng.outbounds = s ? [`{${s}}`] : [];
+    if (s.startsWith("(?i)")) {
+      s = s.slice(4).trim();
+    }
+    if (!s) {
+      ng.outbounds = [];
+    } else {
+      const stored = s === ".*" ? "{.*}" : `{(?i)${s}}`;
+      ng.outbounds = [stored];
+    }
     triggerUpdate();
   }
 
@@ -597,7 +614,7 @@
         <div class="space-y-3">
           <div class="flex items-center justify-between px-1">
             <div class="text-xs text-slate-400">
-              节点分组用于从节点源中通过正则表达式筛选并聚合代理节点，系统自动补全占位符，支持自动测速优选。
+              节点分组用于从节点源中通过正则表达式（默认忽略大小写）筛选并聚合代理节点，支持自动测速优选。
             </div>
             <button
               onclick={addNodeGroup}
@@ -688,7 +705,7 @@
                       type="text"
                       value={currentPattern}
                       oninput={(e) => updateNodeGroupPattern(ngIdx, e.currentTarget.value)}
-                      placeholder="例如：(?i)(港|hk) 或 .*"
+                      placeholder="例如：港|hk 或 .*"
                       class="w-full bg-slate-950 text-xs px-3 py-2 rounded border {isValidRegex ? "border-slate-800 focus:border-amber-500/80" : "border-rose-800 text-rose-200"} text-slate-200 focus:outline-none font-mono"
                     />
                     {#if isValidRegex && matchedNodes.length > 0}

@@ -194,11 +194,13 @@ export const initialProfiles = [
 ];
 
 export function testRegexMatch(pattern, tag) {
-  let flags = '';
-  let cleanPattern = pattern;
+  let flags = 'i';
+  let cleanPattern = (pattern || '').trim();
+  if (cleanPattern.startsWith('{') && cleanPattern.endsWith('}') && cleanPattern.length >= 2) {
+    cleanPattern = cleanPattern.slice(1, -1).trim();
+  }
   if (cleanPattern.startsWith('(?i)')) {
-    flags += 'i';
-    cleanPattern = cleanPattern.slice(4);
+    cleanPattern = cleanPattern.slice(4).trim();
   }
   try {
     const re = new RegExp(cleanPattern, flags);
