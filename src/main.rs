@@ -7,9 +7,7 @@ use tracing_subscriber::FmtSubscriber;
 use canto::cli::{Cli, Commands, ConfigCommands, RunArgs};
 use canto::config::{HttpFetcher, PortsFilter, RuntimeConfigEngine, Settings};
 use canto::error::{CantoError, Result};
-use canto::network::{
-    NetworkGuard, NftablesManager, cn_ip_path, load_cn_ip, read_cn_ip_file, resolve_lan_cidrs,
-};
+use canto::network::{NetworkGuard, cn_ip_path, read_cn_ip_file, resolve_lan_cidrs};
 use canto::supervisor::ProcessSupervisor;
 
 #[tokio::main]
@@ -81,14 +79,11 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
     let config_engine = RuntimeConfigEngine::from_settings(&settings)?;
     config_engine.prepare_initial().await?;
 
-    let cnip = if apply_network && settings.network.bypass_cn {
-        load_cn_ip(&settings.canto.work_dir, &fetcher).await?
-    } else {
-        Vec::new()
-    };
-
     let _network_guard = if apply_network {
-        Some(NetworkGuard::setup(settings.network.clone(), &cnip)?)
+        Some(
+            NetworkGuard::start(settings.network.clone(), &settings.canto.work_dir, &fetcher)
+                .await?,
+        )
     } else {
         info!("Network rules disabled (pure proxy mode)");
         None
@@ -288,30 +283,8 @@ async fn handle_config(cmd: ConfigCommands, settings: Settings) -> Result<()> {
             Ok(())
         }
         ConfigCommands::DumpNft => {
-            let mut network = settings.network;
-            network.lan_cidrs = resolve_lan_cidrs(&network.lan_cidrs)?;
-            info!("LAN CIDRs: {}", network.lan_cidrs.join(", "));
-            let cnip = match read_cn_ip_file(&settings.canto.work_dir) {
-                Ok(Some(cidrs)) => {
-                    info!(
-                        "CN CIDRs: {} prefixes from {}",
-                        cidrs.len(),
-                        cn_ip_path(&settings.canto.work_dir).display()
-                    );
-                    cidrs
-                }
-                Ok(None) => {
-                    if network.bypass_cn {
-                        warn!(
-                            "bypass_cn is true but {} is missing; dump omits set cnip",
-                            cn_ip_path(&settings.canto.work_dir).display()
-                        );
-                    }
-                    Vec::new()
-                }
-                Err(e) => return Err(e),
-            };
-            print!("{}", NftablesManager::new(&network).with_cnip(&cnip).dump());
+            let ruleset = NetworkGuard::dump_ruleset(&settings.network, &settings.canto.work_dir)?;
+            print!("{ruleset}");
             Ok(())
         }
     }
