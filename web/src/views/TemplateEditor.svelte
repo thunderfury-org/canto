@@ -14,7 +14,7 @@
   import ArrowUp from 'lucide-svelte/icons/arrow-up';
   import ArrowDown from 'lucide-svelte/icons/arrow-down';
 
-  let currentSubTab = $state('policy_groups'); // 'policy_groups' | 'node_groups' | 'dns' | 'route' | 'inbounds' | 'experimental'
+  let currentSubTab = $state('node_groups'); // 'node_groups' | 'policy_groups' | 'dns' | 'route' | 'inbounds' | 'experimental'
   let editMode = $state('visual'); // 'visual' | 'raw'
   let rawJsonText = $state('');
   let rawJsonError = $state(null);
@@ -529,21 +529,21 @@
       <!-- Sub-module Navigation -->
       <div class="flex flex-wrap items-center gap-1.5 bg-slate-900/60 p-1 rounded-lg border border-slate-800 text-xs">
         <button
-          onclick={() => (currentSubTab = 'policy_groups')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'policy_groups' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
-        >
-          <Sparkles size={13} class="text-cyan-400" />
-          <span>出站策略组 (Policy Groups)</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.policy_groups?.length || 0}</span>
-        </button>
-
-        <button
           onclick={() => (currentSubTab = 'node_groups')}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'node_groups' ? 'bg-slate-800 text-amber-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
           <Layers size={13} class="text-amber-400" />
-          <span>节点分组 (Node Groups)</span>
+          <span>节点分组</span>
           <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.node_groups?.length || 0}</span>
+        </button>
+
+        <button
+          onclick={() => (currentSubTab = 'policy_groups')}
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'policy_groups' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+        >
+          <Sparkles size={13} class="text-cyan-400" />
+          <span>出站策略组</span>
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.policy_groups?.length || 0}</span>
         </button>
 
         <button
@@ -551,7 +551,7 @@
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'dns' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
           <Radio size={13} />
-          <span>DNS 服务器 & 分流</span>
+          <span>DNS 服务器与分流</span>
           <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.dns?.servers?.length || 0}</span>
         </button>
 
@@ -560,7 +560,7 @@
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'route' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
           <Layers size={13} />
-          <span>路由分流规则 (Route)</span>
+          <span>路由分流规则</span>
           <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.route?.rules?.length || 0}</span>
         </button>
 
@@ -568,7 +568,7 @@
           onclick={() => (currentSubTab = 'inbounds')}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'inbounds' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
-          <span>入站 & 端点 (Inbounds)</span>
+          <span>入站与端点</span>
           <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">
             {(store.selectedTemplate.content?.inbounds?.length || 0) + (store.selectedTemplate.content?.endpoints?.length || 0)}
           </span>
@@ -578,144 +578,11 @@
           onclick={() => { ensureExperimentalDefaults(); currentSubTab = 'experimental'; }}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'experimental' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
-          <span>Log & Clash API</span>
+          <span>日志与 Clash API</span>
         </button>
       </div>
 
-      <!-- 1. Policy Groups View -->
-      {#if currentSubTab === 'policy_groups'}
-        <div class="space-y-3">
-          <div class="flex items-center justify-between px-1">
-            <div class="text-xs text-slate-400">
-              出站策略组用于业务分流（如默认策略、AI、流媒体），其候选目标<strong>只能从已定义的节点分组与基础直连/拒绝出站中选择</strong>。
-            </div>
-            <button
-              onclick={addPolicyGroup}
-              class="px-2.5 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium flex items-center gap-1 shadow-sm"
-            >
-              <Plus size={13} />
-              <span>添加出站策略组</span>
-            </button>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {#each store.selectedTemplate.content?.policy_groups || [] as pg, pgIdx}
-              <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-3.5 space-y-3">
-                <!-- Group Header: Type + Tag + Delete -->
-                <div class="flex items-center justify-between gap-2">
-                  <div class="flex items-center gap-2 flex-1">
-                    <select
-                      bind:value={pg.type}
-                      onchange={triggerUpdate}
-                      class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-cyan-300"
-                    >
-                      <option value="selector">selector</option>
-                      <option value="urltest">urltest</option>
-                    </select>
-
-                    <input
-                      type="text"
-                      bind:value={pg.tag}
-                      oninput={triggerUpdate}
-                      placeholder="策略组标签"
-                      class="bg-slate-950 text-slate-100 text-sm font-semibold px-2 py-0.5 rounded border border-slate-800 focus:border-cyan-500 focus:outline-none flex-1 font-mono"
-                    />
-                  </div>
-
-                  <button
-                    onclick={() => removePolicyGroup(pgIdx)}
-                    title="删除此策略组"
-                    class="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-
-                <!-- Default selection option if present -->
-                <div class="flex items-center gap-2 text-xs bg-slate-950/60 p-2 rounded border border-slate-800/80">
-                  <span class="text-slate-400 text-[11px] whitespace-nowrap">默认选中 (Default):</span>
-                  <select
-                    bind:value={pg.default}
-                    onchange={triggerUpdate}
-                    class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-cyan-200 font-mono flex-1"
-                  >
-                    <option value="">(第一项)</option>
-                    {#each pg.outbounds || [] as t}
-                      <option value={t}>{t}</option>
-                    {/each}
-                  </select>
-                </div>
-
-                <!-- Targets list -->
-                <div class="space-y-2 pt-1">
-                  <div class="flex items-center justify-between text-xs text-slate-400">
-                    <span class="font-medium">已包含节点分组:</span>
-                    <span class="text-[11px] text-slate-500">共 {pg.outbounds?.length || 0} 项</span>
-                  </div>
-
-                  <div class="flex flex-wrap gap-1.5 min-h-[30px] p-1.5 bg-slate-950/40 rounded border border-slate-800/60">
-                    {#each pg.outbounds || [] as target, tIdx}
-                      <div class="flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-slate-950 border border-slate-800 text-slate-200">
-                        <span class="font-medium {target === '直连' ? 'text-emerald-400' : 'text-cyan-300'}">{target}</span>
-                        <button
-                          onclick={() => removeCandidateFromPolicyGroup(pgIdx, tIdx)}
-                          title="从策略组中移除"
-                          class="text-slate-500 hover:text-rose-300 font-bold ml-0.5"
-                        >
-                          &times;
-                        </button>
-                      </div>
-                    {/each}
-                    {#if !pg.outbounds || pg.outbounds.length === 0}
-                      <span class="text-xs text-slate-500 italic p-1">请添加至少一个节点分组或直连</span>
-                    {/if}
-                  </div>
-
-                  <!-- Candidate Selection (Strictly Node Groups + Direct) -->
-                  <div class="space-y-1.5 pt-1">
-                    <div class="flex items-center gap-1.5">
-                      <select
-                        id={`candidate-select-${pgIdx}`}
-                        class="bg-slate-950 text-xs px-2.5 py-1 rounded border border-slate-800 text-slate-200 focus:outline-none focus:border-cyan-500/80 flex-1 font-mono"
-                      >
-                        {#each availablePolicyCandidates as cand}
-                          <option value={cand} disabled={pg.outbounds?.includes(cand)}>{cand}</option>
-                        {/each}
-                      </select>
-                      <button
-                        onclick={() => {
-                          const sel = document.getElementById(`candidate-select-${pgIdx}`);
-                          if (sel && sel.value) {
-                            addCandidateToPolicyGroup(pgIdx, sel.value);
-                          }
-                        }}
-                        class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs shrink-0 font-medium"
-                      >
-                        添加
-                      </button>
-                    </div>
-
-                    <!-- Quick Add suggestions for remaining node groups -->
-                    <div class="flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
-                      <span>快捷添加:</span>
-                      {#if !pg.outbounds?.includes('直连')}
-                        <button onclick={() => addCandidateToPolicyGroup(pgIdx, '直连')} class="px-1.5 py-0.5 bg-slate-950 hover:bg-slate-800 rounded border border-slate-800 text-slate-400">直连</button>
-                      {/if}
-                      {#each availableNodeGroupTags as ngTag}
-                        {#if !pg.outbounds?.includes(ngTag)}
-                          <button onclick={() => addCandidateToPolicyGroup(pgIdx, ngTag)} class="px-1.5 py-0.5 bg-slate-950 hover:bg-slate-800 rounded border border-slate-800 text-cyan-400">{ngTag}</button>
-                        {/if}
-                      {/each}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
-
-      <!-- 2. Node Groups View -->
+      <!-- 1. Node Groups View -->
       {#if currentSubTab === 'node_groups'}
         <div class="space-y-3">
           <div class="flex items-center justify-between px-1">
@@ -865,6 +732,139 @@
                     </div>
                   </div>
                 {/if}
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      <!-- 2. Policy Groups View -->
+      {#if currentSubTab === 'policy_groups'}
+        <div class="space-y-3">
+          <div class="flex items-center justify-between px-1">
+            <div class="text-xs text-slate-400">
+              出站策略组用于业务分流（如默认策略、AI、流媒体），其候选目标<strong>只能从已定义的节点分组与基础直连/拒绝出站中选择</strong>。
+            </div>
+            <button
+              onclick={addPolicyGroup}
+              class="px-2.5 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium flex items-center gap-1 shadow-sm"
+            >
+              <Plus size={13} />
+              <span>添加出站策略组</span>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {#each store.selectedTemplate.content?.policy_groups || [] as pg, pgIdx}
+              <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-3.5 space-y-3">
+                <!-- Group Header: Type + Tag + Delete -->
+                <div class="flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2 flex-1">
+                    <select
+                      bind:value={pg.type}
+                      onchange={triggerUpdate}
+                      class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-cyan-300"
+                    >
+                      <option value="selector">selector</option>
+                      <option value="urltest">urltest</option>
+                    </select>
+
+                    <input
+                      type="text"
+                      bind:value={pg.tag}
+                      oninput={triggerUpdate}
+                      placeholder="策略组标签"
+                      class="bg-slate-950 text-slate-100 text-sm font-semibold px-2 py-0.5 rounded border border-slate-800 focus:border-cyan-500 focus:outline-none flex-1 font-mono"
+                    />
+                  </div>
+
+                  <button
+                    onclick={() => removePolicyGroup(pgIdx)}
+                    title="删除此策略组"
+                    class="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+
+                <!-- Default selection option if present -->
+                <div class="flex items-center gap-2 text-xs bg-slate-950/60 p-2 rounded border border-slate-800/80">
+                  <span class="text-slate-400 text-[11px] whitespace-nowrap">默认选中 (Default):</span>
+                  <select
+                    bind:value={pg.default}
+                    onchange={triggerUpdate}
+                    class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-cyan-200 font-mono flex-1"
+                  >
+                    <option value="">(第一项)</option>
+                    {#each pg.outbounds || [] as t}
+                      <option value={t}>{t}</option>
+                    {/each}
+                  </select>
+                </div>
+
+                <!-- Targets list -->
+                <div class="space-y-2 pt-1">
+                  <div class="flex items-center justify-between text-xs text-slate-400">
+                    <span class="font-medium">已包含节点分组:</span>
+                    <span class="text-[11px] text-slate-500">共 {pg.outbounds?.length || 0} 项</span>
+                  </div>
+
+                  <div class="flex flex-wrap gap-1.5 min-h-[30px] p-1.5 bg-slate-950/40 rounded border border-slate-800/60">
+                    {#each pg.outbounds || [] as target, tIdx}
+                      <div class="flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-slate-950 border border-slate-800 text-slate-200">
+                        <span class="font-medium {target === '直连' ? 'text-emerald-400' : 'text-cyan-300'}">{target}</span>
+                        <button
+                          onclick={() => removeCandidateFromPolicyGroup(pgIdx, tIdx)}
+                          title="从策略组中移除"
+                          class="text-slate-500 hover:text-rose-300 font-bold ml-0.5"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    {/each}
+                    {#if !pg.outbounds || pg.outbounds.length === 0}
+                      <span class="text-xs text-slate-500 italic p-1">请添加至少一个节点分组或直连</span>
+                    {/if}
+                  </div>
+
+                  <!-- Candidate Selection (Strictly Node Groups + Direct) -->
+                  <div class="space-y-1.5 pt-1">
+                    <div class="flex items-center gap-1.5">
+                      <select
+                        id={`candidate-select-${pgIdx}`}
+                        class="bg-slate-950 text-xs px-2.5 py-1 rounded border border-slate-800 text-slate-200 focus:outline-none focus:border-cyan-500/80 flex-1 font-mono"
+                      >
+                        {#each availablePolicyCandidates as cand}
+                          <option value={cand} disabled={pg.outbounds?.includes(cand)}>{cand}</option>
+                        {/each}
+                      </select>
+                      <button
+                        onclick={() => {
+                          const sel = document.getElementById(`candidate-select-${pgIdx}`);
+                          if (sel && sel.value) {
+                            addCandidateToPolicyGroup(pgIdx, sel.value);
+                          }
+                        }}
+                        class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs shrink-0 font-medium"
+                      >
+                        添加
+                      </button>
+                    </div>
+
+                    <!-- Quick Add suggestions for remaining node groups -->
+                    <div class="flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
+                      <span>快捷添加:</span>
+                      {#if !pg.outbounds?.includes('直连')}
+                        <button onclick={() => addCandidateToPolicyGroup(pgIdx, '直连')} class="px-1.5 py-0.5 bg-slate-950 hover:bg-slate-800 rounded border border-slate-800 text-slate-400">直连</button>
+                      {/if}
+                      {#each availableNodeGroupTags as ngTag}
+                        {#if !pg.outbounds?.includes(ngTag)}
+                          <button onclick={() => addCandidateToPolicyGroup(pgIdx, ngTag)} class="px-1.5 py-0.5 bg-slate-950 hover:bg-slate-800 rounded border border-slate-800 text-cyan-400">{ngTag}</button>
+                        {/if}
+                      {/each}
+                    </div>
+                  </div>
+                </div>
               </div>
             {/each}
           </div>

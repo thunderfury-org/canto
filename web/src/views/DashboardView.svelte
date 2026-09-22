@@ -136,7 +136,7 @@
 
       <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between">
         <div>
-          <div class="text-xs font-medium text-slate-400">分发 Profile</div>
+          <div class="text-xs font-medium text-slate-400">分发配置</div>
           <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">{store.profiles.length}</div>
           <div class="text-xs text-cyan-400/80 mt-1 flex items-center gap-1">
             <Radio size={11} class="animate-pulse text-emerald-400" />
@@ -209,7 +209,7 @@
           onclick={() => (store.currentTab = 'profiles')}
           class="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors flex items-center gap-1 text-xs"
         >
-          <span>组装 Profile</span>
+          <span>组装配置</span>
           <ArrowRight size={12} />
         </button>
       </div>
@@ -272,7 +272,7 @@
       <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
         <div class="flex items-center gap-2">
           <Boxes size={16} class="text-cyan-400" />
-          <h2 class="text-sm font-semibold text-slate-200">当前活跃分发配置 (Profiles)</h2>
+          <h2 class="text-sm font-semibold text-slate-200">当前活跃分发配置</h2>
         </div>
         <button
           onclick={() => (store.currentTab = 'profiles')}
@@ -295,7 +295,7 @@
             class="mt-2 inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white"
           >
             <Plus size={12} />
-            <span>组装 Profile</span>
+            <span>组装配置</span>
           </button>
         </div>
       {:else}

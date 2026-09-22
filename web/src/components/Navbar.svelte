@@ -90,17 +90,6 @@
       </button>
 
       <button
-        onclick={() => (store.currentTab = 'templates')}
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab === 'templates' ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
-      >
-        <FileCode2 size={15} />
-        <span>配置模板</span>
-        <span class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono">
-          {store.templates.length}
-        </span>
-      </button>
-
-      <button
         onclick={() => (store.currentTab = 'sources')}
         class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab === 'sources' ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
       >
@@ -112,11 +101,22 @@
       </button>
 
       <button
+        onclick={() => (store.currentTab = 'templates')}
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab === 'templates' ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+      >
+        <FileCode2 size={15} />
+        <span>配置模板</span>
+        <span class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono">
+          {store.templates.length}
+        </span>
+      </button>
+
+      <button
         onclick={() => (store.currentTab = 'profiles')}
         class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab === 'profiles' ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
       >
         <Boxes size={15} />
-        <span>分发 Profile</span>
+        <span>分发配置</span>
         <span class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono">
           {store.profiles.length}
         </span>
