@@ -26,17 +26,23 @@ pub fn expand_profile(template_content: &Value, nodes: &[Value]) -> Expansion {
     }
     let total_nodes = tag_order.len();
 
-    let mut config = template_content.clone();
-    let Some(outbounds) = config.get_mut("outbounds").and_then(Value::as_array_mut) else {
-        return Expansion {
-            config,
-            matched_map: BTreeMap::new(),
-            total_nodes,
-            used_count: 0,
-        };
-    };
+    let policy_groups = template_content
+        .get("policy_groups")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let node_groups = template_content
+        .get("node_groups")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut base_outbounds = template_content
+        .get("outbounds")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
 
-    let fallback_tag = outbounds.iter().find_map(|outbound| {
+    let fallback_tag = base_outbounds.iter().find_map(|outbound| {
         if outbound.get("type").and_then(Value::as_str) == Some("direct") {
             node_tag(outbound).map(str::to_string)
         } else {
@@ -48,29 +54,20 @@ pub fn expand_profile(template_content: &Value, nodes: &[Value]) -> Expansion {
     let mut regex_hits: HashSet<String> = HashSet::new();
     let mut referenced_tags: HashSet<String> = HashSet::new();
     let mut needs_synthetic_direct = false;
+    let mut expanded_node_groups: Vec<Value> = Vec::with_capacity(node_groups.len());
 
-    for outbound in outbounds.iter_mut() {
-        let kind = outbound
-            .get("type")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-        if !matches!(kind.as_str(), "selector" | "urltest") {
-            continue;
-        }
-        let group_tag = outbound
-            .get("tag")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-        let Some(targets) = outbound.get("outbounds").and_then(Value::as_array) else {
-            continue;
-        };
-        let targets: Vec<String> = targets
-            .iter()
-            .filter_map(Value::as_str)
-            .map(str::to_string)
-            .collect();
+    for mut group in node_groups {
+        let group_tag = node_tag(&group).unwrap_or("").to_string();
+        let targets: Vec<String> = group
+            .get("outbounds")
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
 
         let mut new_targets: Vec<String> = Vec::new();
         let mut group_hits: Vec<String> = Vec::new();
@@ -111,20 +108,26 @@ pub fn expand_profile(template_content: &Value, nodes: &[Value]) -> Expansion {
 
         group_hits.sort();
         matched_map.insert(group_tag, group_hits);
-        if let Some(obj) = outbound.as_object_mut() {
+        if let Some(obj) = group.as_object_mut() {
             obj.insert(
                 "outbounds".to_string(),
                 Value::Array(new_targets.into_iter().map(Value::String).collect()),
             );
         }
+        expanded_node_groups.push(group);
     }
 
     if needs_synthetic_direct {
-        ensure_direct_outbound(outbounds);
+        ensure_direct_outbound(&mut base_outbounds);
     }
 
+    let mut assembled_outbounds: Vec<Value> = Vec::new();
+    assembled_outbounds.extend(policy_groups);
+    assembled_outbounds.extend(expanded_node_groups);
+    assembled_outbounds.extend(base_outbounds);
+
     let mut existing_tags: HashSet<String> = HashSet::new();
-    for outbound in outbounds.iter() {
+    for outbound in &assembled_outbounds {
         if let Some(tag) = node_tag(outbound) {
             existing_tags.insert(tag.to_string());
         }
@@ -137,9 +140,16 @@ pub fn expand_profile(template_content: &Value, nodes: &[Value]) -> Expansion {
             continue;
         }
         if let Some(node) = nodes_by_tag.get(&tag) {
-            outbounds.push(node.clone());
+            assembled_outbounds.push(node.clone());
             existing_tags.insert(tag);
         }
+    }
+
+    let mut config = template_content.clone();
+    if let Some(obj) = config.as_object_mut() {
+        obj.remove("policy_groups");
+        obj.remove("node_groups");
+        obj.insert("outbounds".to_string(), Value::Array(assembled_outbounds));
     }
 
     Expansion {
@@ -217,8 +227,10 @@ mod tests {
     #[test]
     fn test_expands_case_insensitive_region_placeholder() {
         let template = json!({
+            "node_groups": [
+                { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|hk)}"] }
+            ],
             "outbounds": [
-                { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|hk)}"] },
                 { "type": "direct", "tag": "直连" }
             ]
         });
@@ -253,9 +265,11 @@ mod tests {
     #[test]
     fn test_expands_wildcard_and_prefix_placeholders() {
         let template = json!({
-            "outbounds": [
+            "node_groups": [
                 { "type": "selector", "tag": "My 节点", "outbounds": ["{My-}"] },
-                { "type": "urltest", "tag": "ALL", "outbounds": ["{.*}"] },
+                { "type": "urltest", "tag": "ALL", "outbounds": ["{.*}"] }
+            ],
+            "outbounds": [
                 { "type": "direct", "tag": "直连" }
             ]
         });
@@ -273,8 +287,10 @@ mod tests {
     #[test]
     fn test_falls_back_to_existing_direct_tag_when_regex_matches_nothing() {
         let template = json!({
+            "node_groups": [
+                { "type": "selector", "tag": "香港节点", "outbounds": ["{(?i)hk}"] }
+            ],
             "outbounds": [
-                { "type": "selector", "tag": "香港节点", "outbounds": ["{(?i)hk}"] },
                 { "type": "direct", "tag": "直连" }
             ]
         });
@@ -290,7 +306,7 @@ mod tests {
     #[test]
     fn test_synthesizes_direct_when_no_direct_outbound_exists() {
         let template = json!({
-            "outbounds": [
+            "node_groups": [
                 { "type": "selector", "tag": "g", "outbounds": ["{nomatch}"] }
             ]
         });
@@ -303,8 +319,10 @@ mod tests {
     #[test]
     fn test_invalid_regex_is_treated_as_zero_matches() {
         let template = json!({
+            "node_groups": [
+                { "type": "urltest", "tag": "g", "outbounds": ["{[}"] }
+            ],
             "outbounds": [
-                { "type": "urltest", "tag": "g", "outbounds": ["{[}"] },
                 { "type": "direct", "tag": "直连" }
             ]
         });
@@ -316,19 +334,25 @@ mod tests {
     #[test]
     fn test_keeps_literals_and_appends_referenced_source_nodes() {
         let template = json!({
+            "policy_groups": [
+                { "type": "selector", "tag": "默认策略", "outbounds": ["香港节点", "直连"] }
+            ],
+            "node_groups": [
+                { "type": "selector", "tag": "香港节点", "outbounds": ["HK-01"] }
+            ],
             "outbounds": [
-                { "type": "selector", "tag": "默认策略", "outbounds": ["HK-01", "直连"] },
                 { "type": "direct", "tag": "直连" }
             ]
         });
         let expansion = expand_profile(&template, &[vless("HK-01"), vless("JP-01")]);
         assert_eq!(
             tags_of(&expansion.config["outbounds"][0]),
-            vec!["HK-01", "直连"]
+            vec!["香港节点", "直连"]
         );
+        assert_eq!(tags_of(&expansion.config["outbounds"][1]), vec!["HK-01"]);
         assert_eq!(
             outbound_tags(&expansion.config),
-            vec!["默认策略", "直连", "HK-01"]
+            vec!["默认策略", "香港节点", "直连", "HK-01"]
         );
         assert_eq!(expansion.used_count, 0);
     }
@@ -336,8 +360,10 @@ mod tests {
     #[test]
     fn test_does_not_overwrite_existing_outbound_with_same_tag() {
         let template = json!({
+            "node_groups": [
+                { "type": "selector", "tag": "HK-01", "outbounds": ["{(?i)hk}"] }
+            ],
             "outbounds": [
-                { "type": "selector", "tag": "HK-01", "outbounds": ["{(?i)hk}"] },
                 { "type": "direct", "tag": "直连" }
             ]
         });
@@ -350,8 +376,10 @@ mod tests {
     #[test]
     fn test_mixed_placeholder_keeps_literal_without_extra_fallback() {
         let template = json!({
+            "node_groups": [
+                { "type": "selector", "tag": "g", "outbounds": ["{(?i)hk}", "直连"] }
+            ],
             "outbounds": [
-                { "type": "selector", "tag": "g", "outbounds": ["{(?i)hk}", "直连"] },
                 { "type": "direct", "tag": "直连" }
             ]
         });
@@ -362,7 +390,7 @@ mod tests {
     #[test]
     fn test_first_seen_node_tag_wins() {
         let template = json!({
-            "outbounds": [
+            "node_groups": [
                 { "type": "urltest", "tag": "ALL", "outbounds": ["{.*}"] }
             ]
         });

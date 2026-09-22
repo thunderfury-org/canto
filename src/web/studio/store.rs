@@ -567,10 +567,19 @@ mod tests {
             description: "tproxy".to_string(),
             updated_at: Some("2026-01-01T00:00:00Z".to_string()),
             content: json!({
-                "outbounds": [{
+                "node_groups": [{
                     "type": "urltest",
                     "tag": "香港节点",
                     "outbounds": ["{(?i)(港|hk)}"]
+                }],
+                "policy_groups": [{
+                    "type": "selector",
+                    "tag": "默认策略",
+                    "outbounds": ["香港节点", "direct"]
+                }],
+                "outbounds": [{
+                    "type": "direct",
+                    "tag": "direct"
                 }]
             }),
         }

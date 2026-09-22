@@ -90,9 +90,13 @@ impl StudioServer {
             "content": {
                 "log": { "level": "warn" },
                 "inbounds": [{ "type": "tun", "tag": "tun-in" }],
+                "policy_groups": [
+                    { "type": "selector", "tag": "默认策略", "outbounds": ["香港节点", "直连"] }
+                ],
+                "node_groups": [
+                    { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|hk)}"] }
+                ],
                 "outbounds": [
-                    { "type": "selector", "tag": "默认策略", "outbounds": ["香港节点", "直连"] },
-                    { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|hk)}"] },
                     { "type": "direct", "tag": "直连" }
                 ]
             }

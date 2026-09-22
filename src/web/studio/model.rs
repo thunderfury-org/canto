@@ -156,24 +156,137 @@ pub fn validate_template_content(content: &Value) -> std::result::Result<(), Str
     validate_optional_object(obj, "route")?;
     validate_optional_array_of_objects(obj, "inbounds")?;
     validate_optional_array_of_objects(obj, "endpoints")?;
+    validate_optional_array_of_objects(obj, "outbounds")?;
+    validate_optional_array_of_objects(obj, "node_groups")?;
+    validate_optional_array_of_objects(obj, "policy_groups")?;
 
-    if let Some(outbounds) = obj.get("outbounds") {
-        let Some(arr) = outbounds.as_array() else {
-            return Err("content.outbounds must be an array".to_string());
-        };
-        for outbound in arr {
+    let mut base_tags: std::collections::HashSet<String> = std::collections::HashSet::new();
+    if let Some(outbounds) = obj.get("outbounds").and_then(Value::as_array) {
+        for outbound in outbounds {
             let Some(item) = outbound.as_object() else {
                 return Err("content.outbounds entries must be objects".to_string());
             };
-            let kind = item.get("type").and_then(Value::as_str).unwrap_or("");
-            if matches!(kind, "selector" | "urltest")
-                && let Some(targets) = item.get("outbounds")
-            {
-                let Some(targets) = targets.as_array() else {
-                    return Err("strategy group outbounds must be an array of strings".to_string());
+            let tag = item
+                .get("tag")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or("");
+            if tag.is_empty() {
+                return Err("content.outbounds entries must have non-empty tag".to_string());
+            }
+            let typ = item
+                .get("type")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or("");
+            if typ.is_empty() {
+                return Err("content.outbounds entries must have non-empty type".to_string());
+            }
+            if matches!(typ, "selector" | "urltest") {
+                return Err(
+                    "selector and urltest groups must be defined in policy_groups or node_groups"
+                        .to_string(),
+                );
+            }
+            base_tags.insert(tag.to_string());
+        }
+    }
+
+    let mut node_group_tags: std::collections::HashSet<String> = std::collections::HashSet::new();
+    if let Some(node_groups) = obj.get("node_groups").and_then(Value::as_array) {
+        for group in node_groups {
+            let Some(item) = group.as_object() else {
+                return Err("content.node_groups entries must be objects".to_string());
+            };
+            let tag = item
+                .get("tag")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or("");
+            if tag.is_empty() {
+                return Err("node group must have a non-empty tag".to_string());
+            }
+            if !node_group_tags.insert(tag.to_string()) {
+                return Err(format!("duplicate node group tag '{tag}'"));
+            }
+            let typ = item
+                .get("type")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or("");
+            if typ.is_empty() {
+                return Err(format!("node group '{tag}' must have a non-empty type"));
+            }
+            let Some(targets) = item.get("outbounds").and_then(Value::as_array) else {
+                return Err(format!(
+                    "node group '{tag}' outbounds must be an array of strings"
+                ));
+            };
+            if targets.iter().any(|target| !target.is_string()) {
+                return Err(format!(
+                    "node group '{tag}' outbounds must be an array of strings"
+                ));
+            }
+        }
+    }
+
+    if let Some(policy_groups) = obj.get("policy_groups").and_then(Value::as_array) {
+        let mut policy_group_tags: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        for group in policy_groups {
+            let Some(item) = group.as_object() else {
+                return Err("content.policy_groups entries must be objects".to_string());
+            };
+            let tag = item
+                .get("tag")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or("");
+            if tag.is_empty() {
+                return Err("policy group must have a non-empty tag".to_string());
+            }
+            if node_group_tags.contains(tag) {
+                return Err(format!(
+                    "policy group tag '{tag}' collides with node group tag"
+                ));
+            }
+            if !policy_group_tags.insert(tag.to_string()) {
+                return Err(format!("duplicate policy group tag '{tag}'"));
+            }
+            let typ = item
+                .get("type")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or("");
+            if typ.is_empty() {
+                return Err(format!("policy group '{tag}' must have a non-empty type"));
+            }
+            let Some(targets) = item.get("outbounds").and_then(Value::as_array) else {
+                return Err(format!(
+                    "policy group '{tag}' outbounds must be an array of strings"
+                ));
+            };
+            if targets.is_empty() {
+                return Err(format!("policy group '{tag}' outbounds cannot be empty"));
+            }
+            for target_val in targets {
+                let Some(target) = target_val.as_str() else {
+                    return Err(format!(
+                        "policy group '{tag}' outbounds must be an array of strings"
+                    ));
                 };
-                if targets.iter().any(|target| !target.is_string()) {
-                    return Err("strategy group outbounds must be an array of strings".to_string());
+                if target.starts_with('{') && target.ends_with('}') {
+                    return Err(format!(
+                        "policy group '{tag}' cannot contain regex pattern '{target}'; candidates must be node groups or basic outbounds"
+                    ));
+                }
+                let is_allowed = node_group_tags.contains(target)
+                    || base_tags.contains(target)
+                    || matches!(target, "直连" | "direct" | "reject" | "block");
+                if !is_allowed {
+                    return Err(format!(
+                        "policy group '{tag}' references unknown target '{target}'; candidates must be node groups or basic outbounds"
+                    ));
                 }
             }
         }
@@ -270,17 +383,53 @@ mod tests {
         assert!(
             validate_template_content(&json!({
                 "log": { "level": "warn" },
-                "outbounds": [{
+                "node_groups": [{
                     "type": "urltest",
                     "tag": "香港节点",
                     "outbounds": ["{(?i)(港|hk)}"]
-                }]
+                }],
+                "policy_groups": [{
+                    "type": "selector",
+                    "tag": "默认策略",
+                    "outbounds": ["香港节点", "直连"]
+                }],
+                "outbounds": [{ "type": "direct", "tag": "直连" }]
             }))
             .is_ok()
         );
+        // selector in base outbounds must be rejected
         assert!(
             validate_template_content(&json!({
-                "outbounds": [{ "type": "selector", "tag": "g", "outbounds": [1] }]
+                "outbounds": [{ "type": "selector", "tag": "g", "outbounds": ["direct"] }]
+            }))
+            .is_err()
+        );
+        // policy group with non-string target must be rejected
+        assert!(
+            validate_template_content(&json!({
+                "policy_groups": [{ "type": "selector", "tag": "g", "outbounds": [1] }]
+            }))
+            .is_err()
+        );
+        // policy group with regex pattern must be rejected
+        assert!(
+            validate_template_content(&json!({
+                "policy_groups": [{ "type": "selector", "tag": "g", "outbounds": ["{(?i)hk}"] }]
+            }))
+            .is_err()
+        );
+        // policy group referencing unknown node group must be rejected
+        assert!(
+            validate_template_content(&json!({
+                "policy_groups": [{ "type": "selector", "tag": "g", "outbounds": ["unknown_group"] }]
+            }))
+            .is_err()
+        );
+        // tag collision between policy group and node group must be rejected
+        assert!(
+            validate_template_content(&json!({
+                "node_groups": [{ "type": "urltest", "tag": "hk", "outbounds": ["hk-01"] }],
+                "policy_groups": [{ "type": "selector", "tag": "hk", "outbounds": ["direct"] }]
             }))
             .is_err()
         );

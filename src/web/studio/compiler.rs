@@ -177,10 +177,17 @@ mod tests {
             description: "Test".to_string(),
             updated_at: None,
             content: json!({
-                "outbounds": [
+                "policy_groups": [
                     {
                         "type": "selector",
                         "tag": "select",
+                        "outbounds": ["all"]
+                    }
+                ],
+                "node_groups": [
+                    {
+                        "type": "selector",
+                        "tag": "all",
                         "outbounds": ["{.*}"]
                     }
                 ]
@@ -226,8 +233,9 @@ mod tests {
         assert_eq!(compiled.used_count, 2);
         assert!(!compiled.etag.is_empty());
         assert!(!compiled.raw_bytes.is_empty());
+        assert_eq!(compiled.config["outbounds"][0]["outbounds"], json!(["all"]));
         assert_eq!(
-            compiled.config["outbounds"][0]["outbounds"],
+            compiled.config["outbounds"][1]["outbounds"],
             json!(["HK-Node", "US-Node"])
         );
 
