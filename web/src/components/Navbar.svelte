@@ -5,16 +5,11 @@
   import FileCode2 from 'lucide-svelte/icons/file-code-2';
   import Network from 'lucide-svelte/icons/network';
   import Boxes from 'lucide-svelte/icons/boxes';
-  import Download from 'lucide-svelte/icons/download';
-  import RotateCcw from 'lucide-svelte/icons/rotate-ccw';
   import ShieldCheck from 'lucide-svelte/icons/shield-check';
   import ShieldAlert from 'lucide-svelte/icons/shield-alert';
-  import Copy from 'lucide-svelte/icons/copy';
-  import Check from 'lucide-svelte/icons/check';
   import Key from 'lucide-svelte/icons/key';
   import X from 'lucide-svelte/icons/x';
 
-  let copied = $state(false);
   let showAuthModal = $state(false);
   let tokenInput = $state(store.adminToken);
   let isChecking = $state(false);
@@ -22,30 +17,6 @@
   onMount(() => {
     store.verifyAuth();
   });
-
-  function copyActiveUrl() {
-    if (store.isAuthenticated && store.selectedProfile) {
-      navigator.clipboard.writeText(store.selectedProfile.publicUrl);
-      copied = true;
-      setTimeout(() => (copied = false), 2000);
-    }
-  }
-
-  function handleExport() {
-    const data = {
-      templates: store.templates,
-      sources: store.sources,
-      profiles: store.profiles,
-      exportedAt: new Date().toISOString()
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `canto-studio-backup-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
 
   async function handleVerifyToken() {
     isChecking = true;
@@ -125,40 +96,6 @@
 
     <!-- Top Right Status & Utilities -->
     <div class="flex items-center gap-2.5">
-      {#if store.isAuthenticated && store.selectedProfile}
-        <button
-          onclick={copyActiveUrl}
-          title="复制当前激活 Profile 订阅链接"
-          class="hidden md:flex items-center gap-1.5 text-xs bg-slate-950 border border-slate-800 hover:border-slate-700 px-2.5 py-1.5 rounded-md text-slate-300 transition-colors"
-        >
-          {#if copied}
-            <Check size={13} class="text-emerald-400" />
-            <span class="text-emerald-400">已复制订阅</span>
-          {:else}
-            <Copy size={13} class="text-slate-400" />
-            <span class="font-mono text-slate-400 truncate max-w-[140px]">{store.selectedProfile.token}</span>
-          {/if}
-        </button>
-      {/if}
-
-      <button
-        onclick={handleExport}
-        title="导出配置中心全部状态 JSON"
-        class="p-1.5 rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-700"
-      >
-        <Download size={16} />
-      </button>
-
-      <button
-        onclick={() => store.resetData()}
-        title="重置为初始数据"
-        class="p-1.5 rounded-md text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-700"
-      >
-        <RotateCcw size={16} />
-      </button>
-
-      <div class="h-4 w-px bg-slate-800"></div>
-
       <!-- Admin Auth Trigger Button -->
       <button
         onclick={() => { tokenInput = store.adminToken; showAuthModal = true; }}
