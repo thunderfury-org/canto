@@ -617,7 +617,7 @@ async fn test_templates_crud_persist_and_schema_validation() {
     let bad_targets = json!({
         "name": "坏策略组",
         "content": {
-            "outbounds": [{
+            "policy_groups": [{
                 "type": "selector",
                 "tag": "默认策略",
                 "outbounds": [1, 2]
@@ -653,9 +653,13 @@ async fn test_templates_crud_persist_and_schema_validation() {
             },
             "inbounds": [{ "type": "tproxy", "tag": "tproxy-in", "listen_port": 7893 }],
             "endpoints": [{ "type": "tailscale", "tag": "ts-ep", "auth_key": "" }],
+            "policy_groups": [
+                { "type": "selector", "tag": "默认策略", "outbounds": ["香港节点", "直连"] }
+            ],
+            "node_groups": [
+                { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|hk)}"] }
+            ],
             "outbounds": [
-                { "type": "selector", "tag": "默认策略", "outbounds": ["香港节点", "直连"] },
-                { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|hk)}"] },
                 { "type": "direct", "tag": "直连" }
             ],
             "route": {
@@ -690,7 +694,7 @@ async fn test_templates_crud_persist_and_schema_validation() {
     assert_eq!(created["content"]["route"]["final"], "默认策略");
     assert_eq!(created["content"]["route"]["rule_set"][0]["tag"], "cn");
     assert_eq!(
-        created["content"]["outbounds"][1]["outbounds"][0],
+        created["content"]["node_groups"][0]["outbounds"][0],
         "{(?i)(港|hk)}"
     );
     let id = created["id"].as_str().unwrap().to_string();
@@ -705,7 +709,7 @@ async fn test_templates_crud_persist_and_schema_validation() {
     let persisted_json: Value = serde_json::from_str(&persisted).unwrap();
     assert_eq!(persisted_json["id"], id);
     assert_eq!(
-        persisted_json["content"]["outbounds"][1]["outbounds"][0],
+        persisted_json["content"]["node_groups"][0]["outbounds"][0],
         "{(?i)(港|hk)}"
     );
 
@@ -731,7 +735,7 @@ async fn test_templates_crud_persist_and_schema_validation() {
         "name": "网关模板-改",
         "content": {
             "log": { "level": "info" },
-            "outbounds": [
+            "node_groups": [
                 { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|香港|hk)}", "直连"] }
             ],
             "route": { "final": "香港节点" }
@@ -752,7 +756,7 @@ async fn test_templates_crud_persist_and_schema_validation() {
     assert_eq!(updated["name"], "网关模板-改");
     assert_eq!(updated["content"]["log"]["level"], "info");
     assert_eq!(
-        updated["content"]["outbounds"][0]["outbounds"][0],
+        updated["content"]["node_groups"][0]["outbounds"][0],
         "{(?i)(港|香港|hk)}"
     );
 
@@ -769,7 +773,7 @@ async fn test_templates_crud_persist_and_schema_validation() {
     assert_eq!(listed.as_array().unwrap().len(), 1);
     assert_eq!(listed[0]["name"], "网关模板-改");
     assert_eq!(
-        listed[0]["content"]["outbounds"][0]["outbounds"][0],
+        listed[0]["content"]["node_groups"][0]["outbounds"][0],
         "{(?i)(港|香港|hk)}"
     );
 
@@ -838,9 +842,13 @@ async fn test_profiles_crud_preview_and_public_subscription() {
         "name": "网关模板",
         "content": {
             "log": { "level": "warn" },
+            "policy_groups": [
+                { "type": "selector", "tag": "默认策略", "outbounds": ["香港节点", "直连"] }
+            ],
+            "node_groups": [
+                { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|hk)}"] }
+            ],
             "outbounds": [
-                { "type": "selector", "tag": "默认策略", "outbounds": ["香港节点", "直连"] },
-                { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|hk)}"] },
                 { "type": "direct", "tag": "直连" }
             ]
         }

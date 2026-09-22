@@ -114,164 +114,8 @@
   ],
   "outbounds": [
     {
-      "tag": "默认策略",
-      "type": "selector",
-      "outbounds": [
-        "香港节点",
-        "台湾节点",
-        "日本节点",
-        "新加坡节点",
-        "美国节点",
-        "My 节点",
-        "World 节点",
-        "良心云节点",
-        "ALL",
-        "直连"
-      ],
-      "default": "香港节点",
-      "interrupt_exist_connections": false
-    },
-    {
-      "tag": "DNS",
-      "type": "selector",
-      "outbounds": [
-        "香港节点",
-        "台湾节点",
-        "日本节点",
-        "新加坡节点",
-        "美国节点",
-        "My 节点",
-        "World 节点",
-        "良心云节点",
-        "ALL",
-        "直连"
-      ],
-      "default": "ALL",
-      "interrupt_exist_connections": false
-    },
-    {
-      "tag": "AI",
-      "type": "selector",
-      "outbounds": [
-        "香港节点",
-        "台湾节点",
-        "日本节点",
-        "新加坡节点",
-        "美国节点",
-        "My 节点",
-        "World 节点",
-        "良心云节点"
-      ],
-      "default": "台湾节点",
-      "interrupt_exist_connections": false
-    },
-    {
-      "tag": "Netflix",
-      "type": "selector",
-      "outbounds": [
-        "香港节点",
-        "台湾节点",
-        "日本节点",
-        "新加坡节点",
-        "美国节点",
-        "My 节点",
-        "World 节点",
-        "良心云节点"
-      ],
-      "default": "香港节点",
-      "interrupt_exist_connections": false
-    },
-    {
-      "tag": "YouTube",
-      "type": "selector",
-      "outbounds": [
-        "香港节点",
-        "台湾节点",
-        "日本节点",
-        "新加坡节点",
-        "美国节点",
-        "My 节点",
-        "World 节点",
-        "良心云节点"
-      ],
-      "default": "香港节点",
-      "interrupt_exist_connections": false
-    },
-    {
       "tag": "直连",
       "type": "direct"
-    },
-    {
-      "tag": "My 节点",
-      "type": "selector",
-      "outbounds": [
-        "{My-}"
-      ],
-      "interrupt_exist_connections": false
-    },
-    {
-      "tag": "World 节点",
-      "type": "selector",
-      "outbounds": [
-        "{World-}"
-      ],
-      "interrupt_exist_connections": false
-    },
-    {
-      "tag": "良心云节点",
-      "type": "selector",
-      "outbounds": [
-        "{良心云-}"
-      ],
-      "interrupt_exist_connections": false
-    },
-    {
-      "tag": "ALL",
-      "type": "urltest",
-      "outbounds": [
-        "{.*}"
-      ],
-      "interrupt_exist_connections": false
-    },
-    {
-      "tag": "香港节点",
-      "type": "urltest",
-      "outbounds": [
-        "{(?i)(港|香港|hk|hongkong|hong kong)}"
-      ],
-      "interrupt_exist_connections": false
-    },
-    {
-      "tag": "台湾节点",
-      "type": "urltest",
-      "outbounds": [
-        "{(?i)(台|台湾|tw|taiwan)}"
-      ],
-      "interrupt_exist_connections": false
-    },
-    {
-      "tag": "日本节点",
-      "type": "urltest",
-      "outbounds": [
-        "{(?i)(日本|jp|japan)}"
-      ],
-      "interrupt_exist_connections": false
-    },
-    {
-      "tag": "新加坡节点",
-      "type": "urltest",
-      "outbounds": [
-        "{(?i)(新加坡|新|sg|singapore)}"
-      ],
-      "interrupt_exist_connections": false
-    },
-    {
-      "tag": "美国节点",
-      "type": "urltest",
-      "outbounds": [
-        "{(?i)(美国|美|\\bus\\b|unitedstates|united states)}"
-      ],
-      "interrupt_exist_connections": false
     }
   ],
   "route": {
@@ -443,6 +287,166 @@
       "tag": "ts-ep",
       "auth_key": "",
       "accept_routes": true
+    }
+  ],
+  "policy_groups": [
+    {
+      "tag": "默认策略",
+      "type": "selector",
+      "outbounds": [
+        "香港节点",
+        "台湾节点",
+        "日本节点",
+        "新加坡节点",
+        "美国节点",
+        "My 节点",
+        "World 节点",
+        "良心云节点",
+        "ALL",
+        "直连"
+      ],
+      "default": "香港节点",
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "DNS",
+      "type": "selector",
+      "outbounds": [
+        "香港节点",
+        "台湾节点",
+        "日本节点",
+        "新加坡节点",
+        "美国节点",
+        "My 节点",
+        "World 节点",
+        "良心云节点",
+        "ALL",
+        "直连"
+      ],
+      "default": "ALL",
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "AI",
+      "type": "selector",
+      "outbounds": [
+        "香港节点",
+        "台湾节点",
+        "日本节点",
+        "新加坡节点",
+        "美国节点",
+        "My 节点",
+        "World 节点",
+        "良心云节点"
+      ],
+      "default": "台湾节点",
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "Netflix",
+      "type": "selector",
+      "outbounds": [
+        "香港节点",
+        "台湾节点",
+        "日本节点",
+        "新加坡节点",
+        "美国节点",
+        "My 节点",
+        "World 节点",
+        "良心云节点"
+      ],
+      "default": "香港节点",
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "YouTube",
+      "type": "selector",
+      "outbounds": [
+        "香港节点",
+        "台湾节点",
+        "日本节点",
+        "新加坡节点",
+        "美国节点",
+        "My 节点",
+        "World 节点",
+        "良心云节点"
+      ],
+      "default": "香港节点",
+      "interrupt_exist_connections": false
+    }
+  ],
+  "node_groups": [
+    {
+      "tag": "My 节点",
+      "type": "selector",
+      "outbounds": [
+        "{My-}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "World 节点",
+      "type": "selector",
+      "outbounds": [
+        "{World-}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "良心云节点",
+      "type": "selector",
+      "outbounds": [
+        "{良心云-}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "ALL",
+      "type": "urltest",
+      "outbounds": [
+        "{.*}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "香港节点",
+      "type": "urltest",
+      "outbounds": [
+        "{(?i)(港|香港|hk|hongkong|hong kong)}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "台湾节点",
+      "type": "urltest",
+      "outbounds": [
+        "{(?i)(台|台湾|tw|taiwan)}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "日本节点",
+      "type": "urltest",
+      "outbounds": [
+        "{(?i)(日本|jp|japan)}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "新加坡节点",
+      "type": "urltest",
+      "outbounds": [
+        "{(?i)(新加坡|新|sg|singapore)}"
+      ],
+      "interrupt_exist_connections": false
+    },
+    {
+      "tag": "美国节点",
+      "type": "urltest",
+      "outbounds": [
+        "{(?i)(美国|美|\\bus\\b|unitedstates|united states)}"
+      ],
+      "interrupt_exist_connections": false
     }
   ]
 }

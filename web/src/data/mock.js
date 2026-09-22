@@ -27,8 +27,13 @@ export const initialTemplates = [
       inbounds: [
         { type: "tun", tag: "tun-in", interface_name: "utun", inet4_address: "172.19.0.1/30", auto_route: true, strict_route: true }
       ],
+      policy_groups: [
+        { type: "selector", tag: "默认策略", outbounds: ["全部节点", "直连"] }
+      ],
+      node_groups: [
+        { type: "urltest", tag: "全部节点", outbounds: ["{.*}"] }
+      ],
       outbounds: [
-        { type: "selector", tag: "默认策略", outbounds: ["{.*}"] },
         { type: "direct", tag: "直连" }
       ],
       route: {
@@ -227,51 +232,71 @@ export function compileProfile(template, boundSources) {
   const matchedMap = {}; // groupTag -> list of matched node tags
   const usedNodeTags = new Set();
 
-  if (Array.isArray(compiled.outbounds)) {
-    for (const outbound of compiled.outbounds) {
-      if (['selector', 'urltest'].includes(outbound.type) && Array.isArray(outbound.outbounds)) {
-        const newTargets = [];
-        matchedMap[outbound.tag] = [];
+  const policy_groups = Array.isArray(compiled.policy_groups) ? compiled.policy_groups : [];
+  const node_groups = Array.isArray(compiled.node_groups) ? compiled.node_groups : [];
+  const base_outbounds = Array.isArray(compiled.outbounds) ? compiled.outbounds : [];
 
-        for (const target of outbound.outbounds) {
-          if (typeof target === 'string' && target.startsWith('{') && target.endsWith('}')) {
-            const pattern = target.slice(1, -1);
-            const matchedTags = allNodes
-              .filter(n => testRegexMatch(pattern, n.tag))
-              .map(n => n.tag);
+  const fallbackTag = base_outbounds.find(o => o.type === 'direct')?.tag || 'direct';
 
-            if (matchedTags.length > 0) {
-              for (const mt of matchedTags) {
-                if (!newTargets.includes(mt)) {
-                  newTargets.push(mt);
-                  matchedMap[outbound.tag].push(mt);
-                  usedNodeTags.add(mt);
-                }
+  const expanded_node_groups = [];
+  for (const group of node_groups) {
+    if (Array.isArray(group.outbounds)) {
+      const newTargets = [];
+      matchedMap[group.tag] = [];
+
+      for (const target of group.outbounds) {
+        if (typeof target === 'string' && target.startsWith('{') && target.endsWith('}')) {
+          const pattern = target.slice(1, -1);
+          const matchedTags = allNodes
+            .filter(n => testRegexMatch(pattern, n.tag))
+            .map(n => n.tag);
+
+          if (matchedTags.length > 0) {
+            for (const mt of matchedTags) {
+              if (!newTargets.includes(mt)) {
+                newTargets.push(mt);
+                matchedMap[group.tag].push(mt);
+                usedNodeTags.add(mt);
               }
             }
-          } else {
-            newTargets.push(target);
+          }
+        } else {
+          newTargets.push(target);
+          if (allNodes.some(n => n.tag === target)) {
+            usedNodeTags.add(target);
           }
         }
-
-        // If all patterns expanded to empty and list became empty, keep direct fallback
-        if (newTargets.length === 0) {
-          newTargets.push('direct');
-        }
-
-        outbound.outbounds = newTargets;
       }
-    }
 
-    // 3. Append all actual matched proxy nodes to root outbounds
-    const nodesToAppend = allNodes.filter(n => usedNodeTags.has(n.tag));
-    for (const node of nodesToAppend) {
-      // make sure tag doesn't collide with existing outbounds
-      if (!compiled.outbounds.some(o => o.tag === node.tag)) {
-        compiled.outbounds.push(node);
+      if (newTargets.length === 0) {
+        newTargets.push(fallbackTag);
       }
+
+      const g = JSON.parse(JSON.stringify(group));
+      g.outbounds = newTargets;
+      expanded_node_groups.push(g);
     }
   }
+
+  // 3. Assemble root outbounds: policy_groups + expanded_node_groups + base_outbounds + matched nodes
+  const assembledOutbounds = [
+    ...policy_groups,
+    ...expanded_node_groups,
+    ...base_outbounds
+  ];
+
+  const existingTags = new Set(assembledOutbounds.map(o => o.tag).filter(Boolean));
+  const nodesToAppend = allNodes.filter(n => usedNodeTags.has(n.tag));
+  for (const node of nodesToAppend) {
+    if (!existingTags.has(node.tag)) {
+      assembledOutbounds.push(node);
+      existingTags.add(node.tag);
+    }
+  }
+
+  delete compiled.policy_groups;
+  delete compiled.node_groups;
+  compiled.outbounds = assembledOutbounds;
 
   return {
     config: compiled,

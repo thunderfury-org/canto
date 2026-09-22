@@ -45,7 +45,7 @@ canto 是基于 Rust (Edition 2024) 构建的 sing-box 透明代理与配置编�
 
 ## Commit & Pull Request Guidelines
 
-- **分支规范**：功能分支采用 `dev/<feature-description>` 格式（例如 `dev/initial-scaffold-and-design`）。
+- **分支规范**：严禁直接在 `main` 分支上进行任何修改或直接提交。所有变更必须从最新 `main` 切出功能分支进行开发；功能分支采用 `dev/<feature-description>` 格式（例如 `dev/initial-scaffold-and-design`），经由 Pull Request 合并。
 - **Commit 规范**：遵循 Conventional Commits 格式，提交信息为 `<type>: <description>`：
   - 常用类型：`feat:`、`fix:`、`refactor:`、`docs:`、`test:`、`chore:`。
   - 描述需准确明了，动词开头。
