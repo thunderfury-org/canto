@@ -14,7 +14,7 @@
   import ArrowUp from 'lucide-svelte/icons/arrow-up';
   import ArrowDown from 'lucide-svelte/icons/arrow-down';
 
-  let currentSubTab = $state('node_groups'); // 'node_groups' | 'policy_groups' | 'dns' | 'route' | 'inbounds' | 'experimental'
+  let currentSubTab = $state('node_groups'); // 'node_groups' | 'policy_groups' | 'route' | 'dns' | 'inbounds' | 'experimental'
   let editMode = $state('visual'); // 'visual' | 'raw'
   let rawJsonText = $state('');
   let rawJsonError = $state(null);
@@ -547,21 +547,21 @@
         </button>
 
         <button
-          onclick={() => (currentSubTab = 'dns')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'dns' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
-        >
-          <Radio size={13} />
-          <span>DNS 服务器与分流</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.dns?.servers?.length || 0}</span>
-        </button>
-
-        <button
           onclick={() => (currentSubTab = 'route')}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'route' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
           <Layers size={13} />
           <span>路由分流规则</span>
           <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.route?.rules?.length || 0}</span>
+        </button>
+
+        <button
+          onclick={() => (currentSubTab = 'dns')}
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'dns' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+        >
+          <Radio size={13} />
+          <span>DNS 服务器与分流</span>
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.dns?.servers?.length || 0}</span>
         </button>
 
         <button
@@ -871,162 +871,6 @@
         </div>
       {/if}
 
-      <!-- 2. DNS Module View -->
-      {#if currentSubTab === 'dns'}
-        <div class="space-y-4">
-          <!-- Upstream Servers Card -->
-          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
-              <div>
-                <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
-                  <Radio size={15} class="text-indigo-400" />
-                  <span>上游 DNS 服务器 (DNS Servers)</span>
-                </h3>
-                <span class="text-xs text-slate-400">配置各 DNS 服务协议、上游地址与前置代理 detour</span>
-              </div>
-              <button
-                onclick={addDnsServer}
-                class="px-2.5 py-1 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 text-xs font-medium flex items-center gap-1"
-              >
-                <Plus size={13} />
-                <span>添加 DNS 服务器</span>
-              </button>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {#each store.selectedTemplate.content?.dns?.servers || [] as srv, sIdx}
-                <div class="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2 text-xs">
-                  <div class="flex items-center justify-between gap-1">
-                    <input
-                      type="text"
-                      bind:value={srv.tag}
-                      oninput={triggerUpdate}
-                      placeholder="标签名"
-                      class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-100 font-mono font-bold w-full"
-                    />
-                    <button
-                      onclick={() => removeDnsServer(sIdx)}
-                      title="删除此 DNS 服务器"
-                      class="text-slate-500 hover:text-rose-400 p-1"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-
-                  <div class="space-y-1.5">
-                    <div class="flex items-center gap-1.5">
-                      <span class="text-slate-500 text-[11px] w-12">协议:</span>
-                      <select
-                        bind:value={srv.type}
-                        onchange={triggerUpdate}
-                        class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
-                      >
-                        <option value="https">https (DoH)</option>
-                        <option value="tcp">tcp</option>
-                        <option value="udp">udp</option>
-                        <option value="tls">tls (DoT)</option>
-                        <option value="quic">quic (DoQ)</option>
-                      </select>
-                    </div>
-
-                    <div class="flex items-center gap-1.5">
-                      <span class="text-slate-500 text-[11px] w-12">地址:</span>
-                      <input
-                        type="text"
-                        bind:value={srv.server}
-                        oninput={triggerUpdate}
-                        placeholder="1.1.1.1"
-                        class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
-                      />
-                    </div>
-
-                    <div class="flex items-center gap-1.5">
-                      <span class="text-slate-500 text-[11px] w-12">Detour:</span>
-                      <select
-                        bind:value={srv.detour}
-                        onchange={triggerUpdate}
-                        class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
-                      >
-                        <option value="">(无)</option>
-                        <option value="直连">直连 (direct)</option>
-                        {#each availableRouteOutboundTags as oTag}
-                          <option value={oTag}>{oTag}</option>
-                        {/each}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-
-          <!-- DNS Rules Table -->
-          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-              <h3 class="text-sm font-semibold text-slate-200">DNS 规则列表 (DNS Rules)</h3>
-              <button
-                onclick={addDnsRule}
-                class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700"
-              >
-                <Plus size={13} />
-                <span>添加规则</span>
-              </button>
-            </div>
-
-            <div class="overflow-x-auto">
-              <table class="w-full text-xs text-left text-slate-300">
-                <thead class="bg-slate-950/80 text-slate-400 uppercase font-mono border-b border-slate-800">
-                  <tr>
-                    <th class="py-2 px-3">匹配条件</th>
-                    <th class="py-2 px-3">指定 DNS 服务器</th>
-                    <th class="py-2 px-3">操作</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-800/60 font-mono">
-                  {#each store.selectedTemplate.content?.dns?.rules || [] as r, rIdx}
-                    <tr class="hover:bg-slate-950/40">
-                      <td class="py-2 px-3">
-                        <input
-                          type="text"
-                          value={r.domain_keyword ? r.domain_keyword.join(', ') : r.rule_set ? r.rule_set.join(', ') : r.outbound || r.clash_mode || '规则条件'}
-                          onchange={(e) => {
-                            if (r.domain_keyword) r.domain_keyword = e.target.value.split(',').map(s => s.trim());
-                            else if (r.rule_set) r.rule_set = e.target.value.split(',').map(s => s.trim());
-                            else r.outbound = e.target.value;
-                            triggerUpdate();
-                          }}
-                          class="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
-                        />
-                      </td>
-                      <td class="py-2 px-3">
-                        <select
-                          bind:value={r.server}
-                          onchange={triggerUpdate}
-                          class="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-indigo-300 font-mono"
-                        >
-                          <option value="">(继承 final)</option>
-                          {#each (store.selectedTemplate.content?.dns?.servers || []) as srv}
-                            <option value={srv.tag}>{srv.tag}</option>
-                          {/each}
-                        </select>
-                      </td>
-                      <td class="py-2 px-3">
-                        <button
-                          onclick={() => removeDnsRule(rIdx)}
-                          class="text-slate-500 hover:text-rose-400 p-1"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      {/if}
-
       <!-- 3. Route Rules Module View -->
       {#if currentSubTab === 'route'}
         <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-4">
@@ -1239,6 +1083,162 @@
                   </button>
                 </div>
               {/each}
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      <!-- 4. DNS Module View -->
+      {#if currentSubTab === 'dns'}
+        <div class="space-y-4">
+          <!-- Upstream Servers Card -->
+          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <div>
+                <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
+                  <Radio size={15} class="text-indigo-400" />
+                  <span>上游 DNS 服务器 (DNS Servers)</span>
+                </h3>
+                <span class="text-xs text-slate-400">配置各 DNS 服务协议、上游地址与前置代理 detour</span>
+              </div>
+              <button
+                onclick={addDnsServer}
+                class="px-2.5 py-1 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 text-xs font-medium flex items-center gap-1"
+              >
+                <Plus size={13} />
+                <span>添加 DNS 服务器</span>
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {#each store.selectedTemplate.content?.dns?.servers || [] as srv, sIdx}
+                <div class="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2 text-xs">
+                  <div class="flex items-center justify-between gap-1">
+                    <input
+                      type="text"
+                      bind:value={srv.tag}
+                      oninput={triggerUpdate}
+                      placeholder="标签名"
+                      class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-100 font-mono font-bold w-full"
+                    />
+                    <button
+                      onclick={() => removeDnsServer(sIdx)}
+                      title="删除此 DNS 服务器"
+                      class="text-slate-500 hover:text-rose-400 p-1"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+
+                  <div class="space-y-1.5">
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-slate-500 text-[11px] w-12">协议:</span>
+                      <select
+                        bind:value={srv.type}
+                        onchange={triggerUpdate}
+                        class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
+                      >
+                        <option value="https">https (DoH)</option>
+                        <option value="tcp">tcp</option>
+                        <option value="udp">udp</option>
+                        <option value="tls">tls (DoT)</option>
+                        <option value="quic">quic (DoQ)</option>
+                      </select>
+                    </div>
+
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-slate-500 text-[11px] w-12">地址:</span>
+                      <input
+                        type="text"
+                        bind:value={srv.server}
+                        oninput={triggerUpdate}
+                        placeholder="1.1.1.1"
+                        class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
+                      />
+                    </div>
+
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-slate-500 text-[11px] w-12">Detour:</span>
+                      <select
+                        bind:value={srv.detour}
+                        onchange={triggerUpdate}
+                        class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
+                      >
+                        <option value="">(无)</option>
+                        <option value="直连">直连 (direct)</option>
+                        {#each availableRouteOutboundTags as oTag}
+                          <option value={oTag}>{oTag}</option>
+                        {/each}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+
+          <!-- DNS Rules Table -->
+          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+              <h3 class="text-sm font-semibold text-slate-200">DNS 规则列表 (DNS Rules)</h3>
+              <button
+                onclick={addDnsRule}
+                class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700"
+              >
+                <Plus size={13} />
+                <span>添加规则</span>
+              </button>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-left text-slate-300">
+                <thead class="bg-slate-950/80 text-slate-400 uppercase font-mono border-b border-slate-800">
+                  <tr>
+                    <th class="py-2 px-3">匹配条件</th>
+                    <th class="py-2 px-3">指定 DNS 服务器</th>
+                    <th class="py-2 px-3">操作</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60 font-mono">
+                  {#each store.selectedTemplate.content?.dns?.rules || [] as r, rIdx}
+                    <tr class="hover:bg-slate-950/40">
+                      <td class="py-2 px-3">
+                        <input
+                          type="text"
+                          value={r.domain_keyword ? r.domain_keyword.join(', ') : r.rule_set ? r.rule_set.join(', ') : r.outbound || r.clash_mode || '规则条件'}
+                          onchange={(e) => {
+                            if (r.domain_keyword) r.domain_keyword = e.target.value.split(',').map(s => s.trim());
+                            else if (r.rule_set) r.rule_set = e.target.value.split(',').map(s => s.trim());
+                            else r.outbound = e.target.value;
+                            triggerUpdate();
+                          }}
+                          class="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
+                        />
+                      </td>
+                      <td class="py-2 px-3">
+                        <select
+                          bind:value={r.server}
+                          onchange={triggerUpdate}
+                          class="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-indigo-300 font-mono"
+                        >
+                          <option value="">(继承 final)</option>
+                          {#each (store.selectedTemplate.content?.dns?.servers || []) as srv}
+                            <option value={srv.tag}>{srv.tag}</option>
+                          {/each}
+                        </select>
+                      </td>
+                      <td class="py-2 px-3">
+                        <button
+                          onclick={() => removeDnsRule(rIdx)}
+                          class="text-slate-500 hover:text-rose-400 p-1"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
