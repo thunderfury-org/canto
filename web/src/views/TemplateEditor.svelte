@@ -272,41 +272,35 @@
     }
   }
 
-  function normalizePattern(input) {
-    let s = (input || "").trim();
-    if (!s) return null;
+  function getDisplayPattern(outbounds) {
+    if (!Array.isArray(outbounds) || outbounds.length === 0) return "";
+    const first = outbounds[0];
+    if (typeof first === "string" && first.startsWith("{") && first.endsWith("}") && first.length >= 2) {
+      return first.slice(1, -1);
+    }
+    return typeof first === "string" ? first : "";
+  }
+
+  function checkRegexValid(pattern) {
+    if (!pattern) return true;
+    try {
+      new RegExp(pattern);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function updateNodeGroupPattern(ngIdx, rawInput) {
+    const tpl = store.selectedTemplate;
+    const ng = tpl.content.node_groups?.[ngIdx];
+    if (!ng) return;
+    let s = (rawInput || "").trim();
     if (s.startsWith("{") && s.endsWith("}") && s.length >= 2) {
       s = s.slice(1, -1).trim();
     }
-    if (!s) return null;
-    try {
-      new RegExp(s);
-    } catch (e) {
-      alert(`正则表达式格式错误: ${e.message}`);
-      return null;
-    }
-    return `{${s}}`;
-  }
-
-  function addTargetToNodeGroup(ngIdx, targetStr) {
-    const tpl = store.selectedTemplate;
-    const ng = tpl.content.node_groups?.[ngIdx];
-    if (ng && Array.isArray(ng.outbounds)) {
-      const normalized = normalizePattern(targetStr);
-      if (normalized && !ng.outbounds.includes(normalized)) {
-        ng.outbounds.push(normalized);
-        triggerUpdate();
-      }
-    }
-  }
-
-  function removeTargetFromNodeGroup(ngIdx, targetIdx) {
-    const tpl = store.selectedTemplate;
-    const ng = tpl.content.node_groups?.[ngIdx];
-    if (ng && Array.isArray(ng.outbounds)) {
-      ng.outbounds.splice(targetIdx, 1);
-      triggerUpdate();
-    }
+    ng.outbounds = s ? [`{${s}}`] : [];
+    triggerUpdate();
   }
 
   // --- DNS operations ---
@@ -616,6 +610,9 @@
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
             {#each store.selectedTemplate.content?.node_groups || [] as ng, ngIdx}
+              {@const currentPattern = getDisplayPattern(ng.outbounds)}
+              {@const matchedNodes = getMatchedNodesForPattern(ng.outbounds?.[0] || "")}
+              {@const isValidRegex = checkRegexValid(currentPattern)}
               <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-3.5 space-y-3">
                 <!-- Group Header: Type + Tag + Delete -->
                 <div class="flex items-center justify-between gap-2">
@@ -625,8 +622,8 @@
                       onchange={triggerUpdate}
                       class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold {ng.type === 'urltest' ? 'text-amber-300' : 'text-cyan-300'}"
                     >
-                      <option value="urltest">urltest (自动测速)</option>
-                      <option value="selector">selector (手动切换)</option>
+                      <option value="urltest">urltest</option>
+                      <option value="selector">selector</option>
                     </select>
 
                     <input
@@ -651,7 +648,7 @@
                 {#if ng.type === 'urltest'}
                   <div class="grid grid-cols-2 gap-2 bg-slate-950/60 p-2 rounded border border-slate-800/80 text-xs">
                     <div>
-                      <span class="text-slate-400 text-[11px] block">容差 (Tolerance)</span>
+                      <span class="text-slate-400 text-[11px] block">容差</span>
                       <input
                         type="number"
                         bind:value={ng.tolerance}
@@ -661,7 +658,7 @@
                       />
                     </div>
                     <div>
-                      <span class="text-slate-400 text-[11px] block">测速间隔 (Interval)</span>
+                      <span class="text-slate-400 text-[11px] block">测速间隔</span>
                       <input
                         type="text"
                         bind:value={ng.interval}
@@ -673,78 +670,36 @@
                   </div>
                 {/if}
 
-                <!-- Targets list -->
-                {#if Array.isArray(ng.outbounds)}
-                  <div class="space-y-2 pt-1">
-                    <div class="flex items-center justify-between text-xs text-slate-400">
-                      <span class="font-medium">匹配正则模式:</span>
-                      <span class="text-[11px] text-slate-500">共 {ng.outbounds.length} 项</span>
-                    </div>
-
-                    <div class="flex flex-wrap gap-1.5 min-h-[30px] p-1.5 bg-slate-950/40 rounded border border-slate-800/60">
-                      {#each ng.outbounds as target, tIdx}
-                        {@const isPattern = typeof target === 'string' && target.startsWith('{') && target.endsWith('}')}
-                        {@const displayPattern = isPattern ? target.slice(1, -1) : target}
-                        {@const matchedTags = getMatchedNodesForPattern(target)}
-
-                        <div class="flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-amber-950/70 border border-amber-800/70 text-amber-300">
-                          <span class="font-mono text-amber-400 font-semibold">{displayPattern}</span>
-                          <span class="text-[10px] px-1 py-0.2 rounded bg-amber-900/60 text-amber-200 border border-amber-700/50" title={matchedTags.join(', ')}>
-                            命中 {matchedTags.length}
-                          </span>
-                          <button
-                            onclick={() => removeTargetFromNodeGroup(ngIdx, tIdx)}
-                            title="从组中移除"
-                            class="text-slate-500 hover:text-rose-300 font-bold ml-0.5"
-                          >
-                            &times;
-                          </button>
-                        </div>
-                      {/each}
-                    </div>
-
-                    <!-- Input and Quick suggestions -->
-                    <div class="space-y-1.5 pt-1">
-                      <div class="flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          placeholder="输入正则表达式（如 (?i)(港|hk)、.*），无需输入 &#123;&#125;"
-                          id={`ng-target-input-${ngIdx}`}
-                          onkeydown={(e) => {
-                            if (e.key === 'Enter') {
-                              addTargetToNodeGroup(ngIdx, e.currentTarget.value);
-                              e.currentTarget.value = '';
-                            }
-                          }}
-                          class="bg-slate-950 text-xs px-2.5 py-1 rounded border border-slate-800 text-slate-200 focus:outline-none focus:border-amber-500/80 flex-1 font-mono"
-                        />
-                        <button
-                          onclick={() => {
-                            const input = document.getElementById(`ng-target-input-${ngIdx}`);
-                            if (input) {
-                              addTargetToNodeGroup(ngIdx, input.value);
-                              input.value = '';
-                            }
-                          }}
-                          class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs shrink-0 font-medium"
-                        >
-                          添加
-                        </button>
-                      </div>
-
-                      <div class="flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
-                        <span>快捷正则:</span>
-                        <button onclick={() => addTargetToNodeGroup(ngIdx, '.*')} class="px-1.5 py-0.5 bg-amber-950/40 hover:bg-amber-900/40 rounded border border-amber-800/40 text-amber-300 font-mono">.* (全部)</button>
-                        <button onclick={() => addTargetToNodeGroup(ngIdx, '(?i)(港|hk)')} class="px-1.5 py-0.5 bg-amber-950/40 hover:bg-amber-900/40 rounded border border-amber-800/40 text-amber-300 font-mono">香港</button>
-                        <button onclick={() => addTargetToNodeGroup(ngIdx, '(?i)(台|tw)')} class="px-1.5 py-0.5 bg-amber-950/40 hover:bg-amber-900/40 rounded border border-amber-800/40 text-amber-300 font-mono">台湾</button>
-                        <button onclick={() => addTargetToNodeGroup(ngIdx, '(?i)(日本|jp)')} class="px-1.5 py-0.5 bg-amber-950/40 hover:bg-amber-900/40 rounded border border-amber-800/40 text-amber-300 font-mono">日本</button>
-                        <button onclick={() => addTargetToNodeGroup(ngIdx, '(?i)(新加坡|sg)')} class="px-1.5 py-0.5 bg-amber-950/40 hover:bg-amber-900/40 rounded border border-amber-800/40 text-amber-300 font-mono">新加坡</button>
-                        <button onclick={() => addTargetToNodeGroup(ngIdx, '(?i)(美国|us)')} class="px-1.5 py-0.5 bg-amber-950/40 hover:bg-amber-900/40 rounded border border-amber-800/40 text-amber-300 font-mono">美国</button>
-                        <button onclick={() => addTargetToNodeGroup(ngIdx, 'My-')} class="px-1.5 py-0.5 bg-amber-950/40 hover:bg-amber-900/40 rounded border border-amber-800/40 text-amber-300 font-mono">My-</button>
-                      </div>
-                    </div>
+                <!-- Single Regex Pattern Section -->
+                <div class="space-y-1.5 pt-1">
+                  <div class="flex items-center justify-between text-xs text-slate-400">
+                    <span class="font-medium">节点筛选正则:</span>
+                    {#if !isValidRegex}
+                      <span class="text-rose-400 font-medium">正则格式错误</span>
+                    {:else}
+                      <span class="text-[11px] {matchedNodes.length > 0 ? "text-amber-400 font-medium" : "text-slate-500"}" title={matchedNodes.join(", ")}>
+                        命中 {matchedNodes.length} 个节点
+                      </span>
+                    {/if}
                   </div>
-                {/if}
+
+                  <div class="relative flex items-center">
+                    <input
+                      type="text"
+                      value={currentPattern}
+                      oninput={(e) => updateNodeGroupPattern(ngIdx, e.currentTarget.value)}
+                      placeholder="例如：(?i)(港|hk) 或 .*"
+                      class="w-full bg-slate-950 text-xs px-3 py-2 rounded border {isValidRegex ? "border-slate-800 focus:border-amber-500/80" : "border-rose-800 text-rose-200"} text-slate-200 focus:outline-none font-mono"
+                    />
+                    {#if isValidRegex && matchedNodes.length > 0}
+                      <span
+                        class="absolute right-2.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60 font-mono pointer-events-none"
+                      >
+                        {matchedNodes.length} 节点
+                      </span>
+                    {/if}
+                  </div>
+                </div>
               </div>
             {/each}
           </div>
