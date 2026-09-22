@@ -639,8 +639,8 @@
                       onchange={triggerUpdate}
                       class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold {ng.type === 'urltest' ? 'text-amber-300' : 'text-cyan-300'}"
                     >
-                      <option value="urltest">urltest</option>
-                      <option value="selector">selector</option>
+                      <option value="urltest">URLTest</option>
+                      <option value="selector">Selector</option>
                     </select>
 
                     <input
@@ -750,8 +750,8 @@
                       onchange={triggerUpdate}
                       class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-cyan-300"
                     >
-                      <option value="selector">selector</option>
-                      <option value="urltest">urltest</option>
+                      <option value="selector">Selector</option>
+                      <option value="urltest">URLTest</option>
                     </select>
 
                     <input
