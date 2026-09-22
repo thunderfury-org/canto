@@ -736,7 +736,7 @@ async fn test_templates_crud_persist_and_schema_validation() {
         "content": {
             "log": { "level": "info" },
             "node_groups": [
-                { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|香港|hk)}", "直连"] }
+                { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|香港|hk)}", "{.*}"] }
             ],
             "route": { "final": "香港节点" }
         }
