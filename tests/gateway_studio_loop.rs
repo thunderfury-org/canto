@@ -1,8 +1,7 @@
 use axum::http::StatusCode;
 use canto::config::WebSettings;
 use canto::config::{
-    HttpFetcher, NetworkSettings, RefreshOutcome, SourceLocator, apply_runtime_overlay,
-    obtain_source, refresh_source, source_cache_path, write_runtime_config, write_source_cache,
+    HttpFetcher, NetworkSettings, NoopValidator, RefreshOutcome, RuntimeConfigEngine, SourceLocator,
 };
 use canto::supervisor::ProcessSupervisor;
 use canto::web::WebServer;
@@ -156,10 +155,14 @@ async fn wait_for_http(client: &reqwest::Client, url: &str) {
     }
 }
 
+static DIR_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn temp_work_dir() -> PathBuf {
+    let count = DIR_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(
-        "canto_loop_{}_{}",
+        "canto_loop_{}_{}_{}",
         std::process::id(),
+        count,
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -182,24 +185,30 @@ async fn test_gateway_fetches_studio_source_and_overlays_tproxy() {
     let (_source_id, token) = studio.seed_profile().await;
     let url = format!("{}/sub/{token}", studio.base());
     let locator = SourceLocator::parse(&url).unwrap();
-    let cache = source_cache_path(&studio.work_dir);
+    let runtime_path = studio.work_dir.join("config.json");
 
-    let raw = obtain_source(&locator, &cache, &HttpFetcher::default())
+    let engine = RuntimeConfigEngine::new(
+        locator,
+        gateway_network(),
+        studio.work_dir.clone(),
+        runtime_path.clone(),
+        HttpFetcher::default(),
+        NoopValidator,
+    );
+
+    engine
+        .prepare_initial()
         .await
-        .expect("fetch studio source");
-    assert_eq!(raw["inbounds"][0]["tag"], "tun-in");
-    assert_eq!(raw["outbounds"][3]["tag"], "HK-01");
-    assert_eq!(raw["outbounds"][1]["outbounds"][0], "HK-01");
+        .expect("prepare studio config");
 
-    let overlayed = apply_runtime_overlay(raw, &gateway_network()).unwrap();
+    let overlayed: Value =
+        serde_json::from_str(&std::fs::read_to_string(&runtime_path).unwrap()).unwrap();
     assert_eq!(overlayed["inbounds"][0]["tag"], "mixed-in");
     assert_eq!(overlayed["inbounds"][1]["tag"], "tproxy-in");
     assert_eq!(overlayed["inbounds"][2]["tag"], "dns-in");
     assert_eq!(overlayed["outbounds"][3]["tag"], "HK-01");
     assert_eq!(overlayed["route"]["auto_detect_interface"], false);
 
-    let runtime_path = studio.work_dir.join("config.json");
-    write_runtime_config(&overlayed, &runtime_path).unwrap();
     let supervisor = ProcessSupervisor::new(
         PathBuf::from("sing-box"),
         runtime_path.clone(),
@@ -218,18 +227,20 @@ async fn test_gateway_refresh_applies_studio_updates_and_skips_unchanged() {
     let (source_id, token) = studio.seed_profile().await;
     let url = format!("{}/sub/{token}", studio.base());
     let locator = SourceLocator::parse(&url).unwrap();
-    let fetcher = HttpFetcher::default();
-    let network = gateway_network();
+    let runtime_path = studio.work_dir.join("config.json");
 
-    let first = refresh_source(&locator, &fetcher, &network, None, |_| Ok(())).await;
-    let RefreshOutcome::Apply { overlayed, .. } = first else {
-        panic!("expected Apply on first studio fetch");
-    };
-    assert_eq!(overlayed["outbounds"][3]["tag"], "HK-01");
-    assert_eq!(overlayed["inbounds"][0]["tag"], "mixed-in");
+    let engine = RuntimeConfigEngine::new(
+        locator,
+        gateway_network(),
+        studio.work_dir.clone(),
+        runtime_path.clone(),
+        HttpFetcher::default(),
+        NoopValidator,
+    );
 
-    let unchanged =
-        refresh_source(&locator, &fetcher, &network, Some(&overlayed), |_| Ok(())).await;
+    engine.prepare_initial().await.unwrap();
+
+    let unchanged = engine.refresh().await.unwrap();
     assert!(
         matches!(unchanged, RefreshOutcome::KeepCurrent),
         "identical studio source should not restart"
@@ -251,7 +262,7 @@ async fn test_gateway_refresh_applies_studio_updates_and_skips_unchanged() {
     assert_eq!(status, StatusCode::OK, "{updated}");
     assert_eq!(updated["nodeCount"], 2);
 
-    let applied = refresh_source(&locator, &fetcher, &network, Some(&overlayed), |_| Ok(())).await;
+    let applied = engine.refresh().await.unwrap();
     let RefreshOutcome::Apply {
         overlayed: next, ..
     } = applied
@@ -274,27 +285,29 @@ async fn test_gateway_refresh_keeps_current_for_invalid_profile_token() {
     let (_source_id, token) = studio.seed_profile().await;
     let good_url = format!("{}/sub/{token}", studio.base());
     let bad_url = format!("{}/sub/tok_does_not_exist", studio.base());
-    let fetcher = HttpFetcher::default();
-    let cache = studio.work_dir.join("source-cache.json");
+    let runtime_path = studio.work_dir.join("config.json");
 
-    let raw = obtain_source(&SourceLocator::parse(&good_url).unwrap(), &cache, &fetcher)
-        .await
-        .unwrap();
-    write_source_cache(&cache, &raw).unwrap();
+    let engine_good = RuntimeConfigEngine::new(
+        SourceLocator::parse(&good_url).unwrap(),
+        gateway_network(),
+        studio.work_dir.clone(),
+        runtime_path.clone(),
+        HttpFetcher::default(),
+        NoopValidator,
+    );
+    engine_good.prepare_initial().await.unwrap();
+    let engine_bad = RuntimeConfigEngine::new(
+        SourceLocator::parse(&bad_url).unwrap(),
+        gateway_network(),
+        studio.work_dir.clone(),
+        runtime_path.clone(),
+        HttpFetcher::default(),
+        |_: &std::path::Path| panic!("check should not run for invalid token"),
+    );
 
-    let overlayed = apply_runtime_overlay(raw, &gateway_network()).unwrap();
-    let outcome = refresh_source(
-        &SourceLocator::parse(&bad_url).unwrap(),
-        &fetcher,
-        &gateway_network(),
-        Some(&overlayed),
-        |_| panic!("check should not run for invalid token"),
-    )
-    .await;
+    let outcome = engine_bad.refresh().await.unwrap();
     assert!(matches!(outcome, RefreshOutcome::KeepCurrent));
 
-    let fallback = obtain_source(&SourceLocator::parse(&bad_url).unwrap(), &cache, &fetcher)
-        .await
-        .unwrap();
+    let fallback = engine_bad.obtain_raw_source().await.unwrap();
     assert_eq!(fallback["outbounds"][3]["tag"], "HK-01");
 }

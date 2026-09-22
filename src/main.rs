@@ -1,16 +1,11 @@
 use clap::Parser;
 use std::fs;
-use std::path::Path;
 use std::time::Duration;
 use tracing::{Level, error, info, warn};
 use tracing_subscriber::FmtSubscriber;
 
 use canto::cli::{Cli, Commands, ConfigCommands, RunArgs};
-use canto::config::{
-    HttpFetcher, PortsFilter, RefreshOutcome, Settings, SourceLocator, apply_runtime_overlay,
-    obtain_source, prepare_runtime_config, refresh_source, source_cache_path, write_runtime_config,
-    write_source_cache,
-};
+use canto::config::{HttpFetcher, PortsFilter, RuntimeConfigEngine, Settings};
 use canto::error::{CantoError, Result};
 use canto::network::{
     NetworkGuard, NftablesManager, cn_ip_path, load_cn_ip, read_cn_ip_file, resolve_lan_cidrs,
@@ -75,34 +70,22 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
 
     let apply_network = settings.network.should_apply_capture(args.no_network)?;
     let fetcher = HttpFetcher::default();
-    let locator = SourceLocator::parse(&settings.singbox.source)?;
-    let cache_path = source_cache_path(&settings.canto.work_dir);
-    let runtime_path = settings.singbox.config_path.clone();
 
-    info!("Loading source config from {locator}");
-    let raw = obtain_source(&locator, &cache_path, &fetcher).await?;
-    let runtime = apply_runtime_overlay(raw.clone(), &settings.network)?;
-    write_runtime_config(&runtime, &runtime_path)?;
+    let supervisor = ProcessSupervisor::new(
+        settings.singbox.binary.clone(),
+        settings.singbox.config_path.clone(),
+        settings.canto.work_dir.clone(),
+    );
+    supervisor.verify_binary()?;
+
+    let config_engine = RuntimeConfigEngine::from_settings(&settings)?;
+    config_engine.prepare_initial().await?;
 
     let cnip = if apply_network && settings.network.bypass_cn {
         load_cn_ip(&settings.canto.work_dir, &fetcher).await?
     } else {
         Vec::new()
     };
-
-    let supervisor = ProcessSupervisor::new(
-        settings.singbox.binary.clone(),
-        runtime_path.clone(),
-        settings.canto.work_dir.clone(),
-    );
-
-    supervisor.verify_binary()?;
-    supervisor.check_config(None)?;
-    if locator.is_url()
-        && let Err(e) = write_source_cache(&cache_path, &raw)
-    {
-        warn!("Failed to write source cache: {e}");
-    }
 
     let _network_guard = if apply_network {
         Some(NetworkGuard::setup(settings.network.clone(), &cnip)?)
@@ -128,22 +111,22 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
     };
 
     let supervisor_fut = async {
-        if locator.is_url() && settings.singbox.refresh_interval_secs > 0 {
+        if config_engine.is_url_source() && settings.singbox.refresh_interval_secs > 0 {
             let interval = Duration::from_secs(settings.singbox.refresh_interval_secs);
             info!(
                 "Refreshing URL source every {} seconds",
                 settings.singbox.refresh_interval_secs
             );
             supervisor
-                .run_supervised_with_refresh(interval, || {
-                    apply_url_refresh(
-                        &locator,
-                        &fetcher,
-                        &settings,
-                        &supervisor,
-                        &runtime_path,
-                        &cache_path,
-                    )
+                .run_supervised_with_refresh(interval, || async {
+                    match config_engine.refresh().await {
+                        Ok(outcome) if outcome.is_applied() => true,
+                        Ok(_) => false,
+                        Err(e) => {
+                            warn!("Refresh failed: {e}");
+                            false
+                        }
+                    }
                 })
                 .await
         } else {
@@ -179,68 +162,14 @@ async fn handle_run(args: RunArgs, settings: Settings) -> Result<()> {
     Ok(())
 }
 
-fn read_runtime_json(path: &Path) -> Option<serde_json::Value> {
-    let text = fs::read_to_string(path).ok()?;
-    serde_json::from_str(&text)
-        .ok()
-        .filter(serde_json::Value::is_object)
-}
-
-async fn apply_url_refresh(
-    locator: &SourceLocator,
-    fetcher: &HttpFetcher,
-    settings: &Settings,
-    supervisor: &ProcessSupervisor,
-    runtime_path: &Path,
-    cache_path: &Path,
-) -> bool {
-    let next = runtime_path.with_extension("json.next");
-    let current = read_runtime_json(runtime_path);
-    match refresh_source(
-        locator,
-        fetcher,
-        &settings.network,
-        current.as_ref(),
-        |overlayed| {
-            write_runtime_config(overlayed, &next)?;
-            supervisor.check_config(Some(&next))
-        },
-    )
-    .await
-    {
-        RefreshOutcome::KeepCurrent => {
-            let _ = fs::remove_file(&next);
-            info!("Source refresh kept the current configuration");
-            false
-        }
-        RefreshOutcome::Apply { raw, .. } => match fs::rename(&next, runtime_path) {
-            Ok(()) => {
-                if let Err(e) = write_source_cache(cache_path, &raw) {
-                    warn!("Failed to write source cache: {e}");
-                }
-                true
-            }
-            Err(e) => {
-                warn!("Failed to install refreshed runtime config: {e}");
-                let _ = fs::remove_file(&next);
-                false
-            }
-        },
-    }
-}
-
 async fn handle_status(settings: Settings) -> Result<()> {
     info!("Checking canto environment status...");
 
-    match SourceLocator::parse(&settings.singbox.source) {
-        Ok(locator) => {
-            let fetcher = HttpFetcher::default();
-            let cache_path = source_cache_path(&settings.canto.work_dir);
-            match obtain_source(&locator, &cache_path, &fetcher).await {
-                Ok(_) => info!("sing-box source: Available ({locator})"),
-                Err(e) => error!("sing-box source: Unavailable ({locator}: {e})"),
-            }
-        }
+    match RuntimeConfigEngine::from_settings(&settings) {
+        Ok(engine) => match engine.obtain_raw_source().await {
+            Ok(_) => info!("sing-box source: Available ({})", engine.locator()),
+            Err(e) => error!("sing-box source: Unavailable ({}: {e})", engine.locator()),
+        },
         Err(e) => error!("sing-box source: {e}"),
     }
 
@@ -330,19 +259,24 @@ async fn handle_status(settings: Settings) -> Result<()> {
 async fn handle_config(cmd: ConfigCommands, settings: Settings) -> Result<()> {
     match cmd {
         ConfigCommands::Generate { output } => {
-            write_overlay(&settings, output.as_deref()).await?;
+            let engine = RuntimeConfigEngine::from_settings(&settings)?;
+            let path = engine.export_overlay(output.as_deref()).await?;
+            info!("Generated runtime configuration at: {}", path.display());
             Ok(())
         }
         ConfigCommands::Check { config } => {
-            if config.is_none() {
-                write_overlay(&settings, None).await?;
-            }
             let supervisor = ProcessSupervisor::new(
                 settings.singbox.binary.clone(),
                 settings.singbox.config_path.clone(),
                 settings.canto.work_dir.clone(),
             );
-            supervisor.check_config(config.as_deref())
+            if let Some(target) = config.as_deref() {
+                supervisor.check_config(Some(target))
+            } else {
+                let engine = RuntimeConfigEngine::from_settings(&settings)?;
+                engine.export_overlay(None).await?;
+                supervisor.check_config(None)
+            }
         }
         ConfigCommands::Init { path } => {
             let toml_str = settings.to_toml_string()?;
@@ -385,13 +319,4 @@ async fn handle_config(cmd: ConfigCommands, settings: Settings) -> Result<()> {
 
 fn handle_clean_network(settings: Settings) -> Result<()> {
     NetworkGuard::teardown_manual(&settings.network)
-}
-
-async fn write_overlay(settings: &Settings, output: Option<&Path>) -> Result<std::path::PathBuf> {
-    let out_path = output.unwrap_or(&settings.singbox.config_path);
-    let fetcher = HttpFetcher::default();
-    info!("Loading source config from {}", settings.singbox.source);
-    let runtime = prepare_runtime_config(settings, &fetcher).await?;
-    write_runtime_config(&runtime, out_path)?;
-    Ok(out_path.to_path_buf())
 }

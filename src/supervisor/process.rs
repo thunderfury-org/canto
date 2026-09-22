@@ -1,3 +1,4 @@
+use crate::config::validator::ConfigValidator;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -50,31 +51,8 @@ impl ProcessSupervisor {
     /// Runs `sing-box check -c <config_path>` to validate configuration syntax
     pub fn check_config(&self, config: Option<&Path>) -> Result<()> {
         let target_config = config.unwrap_or(&self.config_path);
-        let config_arg = target_config.to_str().ok_or_else(|| {
-            CantoError::Config(format!(
-                "Config path is not valid UTF-8: {}",
-                target_config.display()
-            ))
-        })?;
-
-        info!("Validating sing-box configuration syntax: {config_arg}");
-
-        let output = std::process::Command::new(&self.binary)
-            .args(["check", "-c", config_arg])
-            .output()
-            .map_err(|e| CantoError::Process(format!("Failed to invoke sing-box check: {e}")))?;
-
-        if output.status.success() {
-            info!("Configuration check passed successfully");
-            Ok(())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let msg = if !stderr.is_empty() { stderr } else { stdout };
-            Err(CantoError::Config(format!(
-                "sing-box config validation failed:\n{msg}"
-            )))
-        }
+        crate::config::validator::SingBoxValidator::new(self.binary.clone())
+            .validate_config(target_config)
     }
 
     /// Spawns sing-box and supervises its lifecycle until interrupt or exit.
@@ -296,5 +274,11 @@ impl ProcessSupervisor {
         }
         let _ = child.wait().await;
         info!("sing-box process terminated");
+    }
+}
+
+impl crate::config::validator::ConfigValidator for ProcessSupervisor {
+    fn validate_config(&self, path: &Path) -> Result<()> {
+        self.check_config(Some(path))
     }
 }
