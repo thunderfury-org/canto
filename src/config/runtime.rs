@@ -157,6 +157,7 @@ where
             Ok(body) => body,
             Err(e) => {
                 warn!("Source refresh fetch failed: {e}; keeping current config");
+                info!("Source refresh kept the current configuration");
                 return Ok(RefreshOutcome::KeepCurrent);
             }
         };
@@ -165,6 +166,7 @@ where
             Ok(raw) => raw,
             Err(e) => {
                 warn!("Source refresh JSON parse failed: {e}; keeping current config");
+                info!("Source refresh kept the current configuration");
                 return Ok(RefreshOutcome::KeepCurrent);
             }
         };
@@ -173,6 +175,7 @@ where
             Ok(val) => val,
             Err(e) => {
                 warn!("Source refresh overlay failed: {e}; keeping current config");
+                info!("Source refresh kept the current configuration");
                 return Ok(RefreshOutcome::KeepCurrent);
             }
         };
@@ -180,7 +183,7 @@ where
         if let Some(current) = self.read_current_runtime_json()
             && current == overlayed
         {
-            info!("Source refresh kept current configuration (no changes)");
+            info!("Source refresh kept the current configuration");
             return Ok(RefreshOutcome::KeepCurrent);
         }
 
@@ -188,18 +191,21 @@ where
         if let Err(e) = write_runtime_config(&overlayed, &next) {
             warn!("Failed to write staging config: {e}");
             let _ = fs::remove_file(&next);
+            info!("Source refresh kept the current configuration");
             return Ok(RefreshOutcome::KeepCurrent);
         }
 
         if let Err(e) = self.validator.validate_config(&next) {
             warn!("Refreshed config failed validation: {e}; keeping current config");
             let _ = fs::remove_file(&next);
+            info!("Source refresh kept the current configuration");
             return Ok(RefreshOutcome::KeepCurrent);
         }
 
         if let Err(e) = fs::rename(&next, &self.runtime_path) {
             warn!("Failed to install refreshed runtime config: {e}");
             let _ = fs::remove_file(&next);
+            info!("Source refresh kept the current configuration");
             return Ok(RefreshOutcome::KeepCurrent);
         }
 
