@@ -1,43 +1,86 @@
+use std::path::Path;
 #[cfg(target_os = "linux")]
 use tracing::warn;
 use tracing::{error, info};
 
 use crate::config::NetworkSettings;
+use crate::config::source::SourceFetcher;
 use crate::error::{CantoError, Result};
+use crate::network::cnip::{cn_ip_path, load_cn_ip, read_cn_ip_file};
 use crate::network::lan::resolve_lan_cidrs;
 use crate::network::nftables::NftablesManager;
-use crate::network::route::RouteManager;
 
 pub const SING_BOX_TABLE: &str = "sing-box";
-pub const TUN_IFACE: &str = "canto";
+const ROUTING_TABLE_ID: u32 = 167;
 
 pub struct NetworkGuard {
     settings: NetworkSettings,
 }
 
 impl NetworkGuard {
-    /// Applies network rules and returns a guard that will clean them up when dropped
-    pub fn setup(mut settings: NetworkSettings, cnip: &[String]) -> Result<Self> {
+    /// Starts transparent proxy network capture asynchronously:
+    /// loads assets (CN IP list & LAN CIDRs), prepares kernel tproxy,
+    /// configures policy routing table 167, and applies nftables rules.
+    pub async fn start(
+        mut settings: NetworkSettings,
+        work_dir: &Path,
+        fetcher: &impl SourceFetcher,
+    ) -> Result<Self> {
         settings.validate()?;
+        let cnip = if settings.bypass_cn {
+            load_cn_ip(work_dir, fetcher).await?
+        } else {
+            Vec::new()
+        };
+
         if settings.bypass_cn && cnip.is_empty() {
             return Err(CantoError::Config(
                 "network.bypass_cn is true but cn_ip.txt has no IPv4 CIDRs".to_string(),
             ));
         }
+
         settings.lan_cidrs = resolve_lan_cidrs(&settings.lan_cidrs)?;
         prepare_kernel_tproxy()?;
 
-        let route = RouteManager::new(&settings);
-        let nft = NftablesManager::new(&settings).with_cnip(cnip);
-
         info!("Initializing transparent proxy network rules");
-        route.setup()?;
+        setup_policy_routing(settings.fwmark)?;
+        let nft = NftablesManager::new(&settings).with_cnip(&cnip);
         nft.apply()?;
 
         Ok(Self { settings })
     }
 
-    /// Manually triggers teardown of all network rules
+    /// Generates the complete nftables ruleset string for inspection or dumping.
+    pub fn dump_ruleset(settings: &NetworkSettings, work_dir: &Path) -> Result<String> {
+        let mut network = settings.clone();
+        network.lan_cidrs = resolve_lan_cidrs(&network.lan_cidrs)?;
+        info!("LAN CIDRs: {}", network.lan_cidrs.join(", "));
+
+        let cnip = match read_cn_ip_file(work_dir) {
+            Ok(Some(cidrs)) => {
+                info!(
+                    "CN CIDRs: {} prefixes from {}",
+                    cidrs.len(),
+                    cn_ip_path(work_dir).display()
+                );
+                cidrs
+            }
+            Ok(None) => {
+                if network.bypass_cn {
+                    tracing::warn!(
+                        "bypass_cn is true but {} is missing; dump omits set cnip",
+                        cn_ip_path(work_dir).display()
+                    );
+                }
+                Vec::new()
+            }
+            Err(e) => return Err(e),
+        };
+
+        Ok(NftablesManager::new(&network).with_cnip(&cnip).dump())
+    }
+
+    /// Manually triggers teardown of all network rules and policy routing
     pub fn teardown_manual(settings: &NetworkSettings) -> Result<()> {
         info!("Flushing transparent proxy network rules and route policies");
         leftover_cleanup(settings);
@@ -45,18 +88,86 @@ impl NetworkGuard {
     }
 }
 
+fn setup_policy_routing(fwmark: u32) -> Result<()> {
+    let mark_hex = format!("{:#x}", fwmark);
+    let table = ROUTING_TABLE_ID.to_string();
+
+    #[cfg(target_os = "linux")]
+    {
+        info!("Configuring policy routing: fwmark {mark_hex} -> table {table}");
+        let _ = teardown_policy_routing(fwmark);
+
+        let rule_status = std::process::Command::new("ip")
+            .args(["rule", "add", "fwmark", &mark_hex, "table", &table])
+            .status()
+            .map_err(|e| CantoError::Network(format!("Failed to execute 'ip rule': {e}")))?;
+
+        if !rule_status.success() {
+            tracing::warn!("'ip rule add' returned non-zero exit status");
+        }
+
+        let route_status = std::process::Command::new("ip")
+            .args([
+                "route", "add", "local", "default", "dev", "lo", "table", &table,
+            ])
+            .status()
+            .map_err(|e| CantoError::Network(format!("Failed to execute 'ip route': {e}")))?;
+
+        if !route_status.success() {
+            tracing::warn!("'ip route add' returned non-zero exit status");
+        }
+
+        info!("Policy routing configured successfully");
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        tracing::debug!(
+            "Skipping policy routing configuration (mark {mark_hex}, table {table}) on non-Linux OS"
+        );
+        Ok(())
+    }
+}
+
+fn teardown_policy_routing(fwmark: u32) -> Result<()> {
+    let mark_hex = format!("{:#x}", fwmark);
+    let table = ROUTING_TABLE_ID.to_string();
+
+    #[cfg(target_os = "linux")]
+    {
+        tracing::debug!("Removing policy routing rules for table {table}");
+
+        let _ = std::process::Command::new("ip")
+            .args(["route", "flush", "table", &table])
+            .output();
+
+        let _ = std::process::Command::new("ip")
+            .args(["rule", "del", "fwmark", &mark_hex, "table", &table])
+            .output();
+
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        tracing::debug!(
+            "Skipping policy routing teardown (mark {mark_hex}, table {table}) on non-Linux OS"
+        );
+        Ok(())
+    }
+}
+
 fn leftover_cleanup(settings: &NetworkSettings) {
     let nft = NftablesManager::new(settings);
-    let route = RouteManager::new(settings);
 
     if let Err(e) = nft.flush() {
         error!("Error flushing nftables: {e}");
     }
-    if let Err(e) = route.teardown() {
+    if let Err(e) = teardown_policy_routing(settings.fwmark) {
         error!("Error tearing down routes: {e}");
     }
     delete_sing_box_table();
-    delete_tun_iface();
 }
 
 fn prepare_kernel_tproxy() -> Result<()> {
@@ -123,21 +234,6 @@ fn delete_sing_box_table() {
         match output {
             Ok(out) if out.status.success() => {
                 info!("Removed leftover nftables table inet {SING_BOX_TABLE}");
-            }
-            _ => {}
-        }
-    }
-}
-
-fn delete_tun_iface() {
-    #[cfg(target_os = "linux")]
-    {
-        let output = std::process::Command::new("ip")
-            .args(["link", "del", TUN_IFACE])
-            .output();
-        match output {
-            Ok(out) if out.status.success() => {
-                info!("Removed leftover TUN interface {TUN_IFACE}");
             }
             _ => {}
         }

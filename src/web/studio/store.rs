@@ -247,6 +247,28 @@ impl ProfileStore {
         }
         Ok(())
     }
+
+    pub async fn find_by_template(&self, template_id: &str) -> Vec<Profile> {
+        self.inner
+            .read()
+            .await
+            .iter()
+            .filter(|profile| profile.template_id == template_id)
+            .cloned()
+            .collect()
+    }
+
+    pub async fn check_source_removal(&self, source_id: &str) -> Vec<Profile> {
+        self.inner
+            .read()
+            .await
+            .iter()
+            .filter(|profile| {
+                profile.source_ids.contains(&source_id.to_string()) && profile.source_ids.len() <= 1
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 fn load_profiles(path: &Path) -> Result<Vec<Profile>> {

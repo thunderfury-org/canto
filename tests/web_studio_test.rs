@@ -1279,3 +1279,190 @@ proxies:
     assert_eq!(disk["sources"][0]["nodes"][0]["tag"], "Clash-Only-One");
     assert_eq!(disk["sources"][0]["status"], "error");
 }
+
+#[tokio::test]
+async fn test_relational_guards_prevent_dangling_template_and_empty_profile_sources() {
+    let (state, dir) = test_state(test_settings());
+    let app = create_app(state);
+
+    // 1. Create template
+    let tpl_payload = json!({
+        "name": "基准模板",
+        "content": {
+            "inbounds": [{ "type": "tun", "tag": "tun-in" }],
+            "outbounds": [{ "type": "direct", "tag": "direct" }]
+        }
+    });
+    let (status, tpl) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/templates",
+                Body::from(tpl_payload.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let template_id = tpl["id"].as_str().unwrap().to_string();
+
+    // 2. Create source 1 & source 2
+    let src1_payload = json!({
+        "name": "节点源1",
+        "type": "manual",
+        "nodes": [{ "type": "direct", "tag": "node-1" }]
+    });
+    let (status, src1) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/sources",
+                Body::from(src1_payload.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let source1_id = src1["id"].as_str().unwrap().to_string();
+
+    let src2_payload = json!({
+        "name": "节点源2",
+        "type": "manual",
+        "nodes": [{ "type": "direct", "tag": "node-2" }]
+    });
+    let (status, src2) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/sources",
+                Body::from(src2_payload.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let source2_id = src2["id"].as_str().unwrap().to_string();
+
+    // 3. Create profile referencing template and both sources
+    let prof_payload = json!({
+        "name": "生产档案",
+        "templateId": template_id,
+        "sourceIds": [source1_id, source2_id]
+    });
+    let (status, prof) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/profiles",
+                Body::from(prof_payload.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let profile_id = prof["id"].as_str().unwrap().to_string();
+
+    // 4. Deleting template must be rejected with 409 Conflict
+    let (status, err) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "DELETE",
+                &format!("/api/templates/{template_id}"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(
+        err["error"]
+            .as_str()
+            .unwrap()
+            .contains("currently in use by profile")
+    );
+
+    // 5. Deleting source 1 when 2 sources exist should succeed
+    let delete_res = app
+        .clone()
+        .oneshot(auth_req(
+            "DELETE",
+            &format!("/api/sources/{source1_id}"),
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(delete_res.status(), StatusCode::NO_CONTENT);
+
+    // Verify profile now only has source 2
+    let (status, prof_after) = json_body(
+        app.clone()
+            .oneshot(auth_req("GET", "/api/profiles", Body::empty()))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(prof_after[0]["sourceIds"].as_array().unwrap().len(), 1);
+
+    // 6. Deleting source 2 (the only remaining source) must be rejected with 409 Conflict
+    let (status, err) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "DELETE",
+                &format!("/api/sources/{source2_id}"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(
+        err["error"]
+            .as_str()
+            .unwrap()
+            .contains("would leave profile(s) with no sources")
+    );
+
+    // 7. Delete profile
+    let del_prof_res = app
+        .clone()
+        .oneshot(auth_req(
+            "DELETE",
+            &format!("/api/profiles/{profile_id}"),
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(del_prof_res.status(), StatusCode::NO_CONTENT);
+
+    // 8. Now deleting template and source 2 succeeds
+    let del_tpl_res = app
+        .clone()
+        .oneshot(auth_req(
+            "DELETE",
+            &format!("/api/templates/{template_id}"),
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(del_tpl_res.status(), StatusCode::NO_CONTENT);
+
+    let del_src_res = app
+        .clone()
+        .oneshot(auth_req(
+            "DELETE",
+            &format!("/api/sources/{source2_id}"),
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(del_src_res.status(), StatusCode::NO_CONTENT);
+
+    let _ = std::fs::remove_dir_all(dir);
+}

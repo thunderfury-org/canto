@@ -5,9 +5,6 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing::info;
 
-use crate::config::NetworkSettings;
-use crate::config::Settings;
-use crate::config::overlay::{apply_runtime_overlay, load_source};
 use crate::error::{CantoError, Result};
 
 const MAX_SOURCE_BYTES: u64 = 10 * 1024 * 1024;
@@ -47,7 +44,7 @@ impl fmt::Display for SourceLocator {
     }
 }
 
-pub trait SourceFetcher {
+pub trait SourceFetcher: Send + Sync {
     fn fetch(&self, url: &str) -> impl Future<Output = Result<String>> + Send;
 }
 
@@ -98,6 +95,18 @@ impl SourceFetcher for HttpFetcher {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum RefreshOutcome {
+    KeepCurrent,
+    Apply { raw: Value, overlayed: Value },
+}
+
+impl RefreshOutcome {
+    pub fn is_applied(&self) -> bool {
+        matches!(self, Self::Apply { .. })
+    }
+}
+
 pub fn source_cache_path(work_dir: &Path) -> PathBuf {
     work_dir.join("source-cache.json")
 }
@@ -118,83 +127,12 @@ pub fn write_source_cache(cache_path: &Path, source: &Value) -> Result<()> {
     Ok(())
 }
 
-pub async fn obtain_source(
-    locator: &SourceLocator,
-    cache_path: &Path,
-    fetcher: &impl SourceFetcher,
-) -> Result<Value> {
-    match locator {
-        SourceLocator::Url(url) => {
-            let live = match fetcher.fetch(url).await {
-                Ok(body) => parse_source_object(&body, url),
-                Err(err) => Err(err),
-            };
-            match live {
-                Ok(value) => Ok(value),
-                Err(err) => read_source_cache(cache_path).ok_or(err),
-            }
-        }
-        SourceLocator::File(path) => load_source(path),
-    }
-}
-
-pub async fn prepare_runtime_config(
-    settings: &Settings,
-    fetcher: &impl SourceFetcher,
-) -> Result<Value> {
-    let locator = SourceLocator::parse(&settings.singbox.source)?;
-    let cache = source_cache_path(&settings.canto.work_dir);
-    let source = obtain_source(&locator, &cache, fetcher).await?;
-    apply_runtime_overlay(source, &settings.network)
-}
-
-pub enum RefreshOutcome {
-    KeepCurrent,
-    Apply { raw: Value, overlayed: Value },
-}
-
-pub async fn refresh_source(
-    locator: &SourceLocator,
-    fetcher: &impl SourceFetcher,
-    network: &NetworkSettings,
-    current_overlayed: Option<&Value>,
-    check: impl Fn(&Value) -> Result<()>,
-) -> RefreshOutcome {
-    let live = match live_source(locator, fetcher).await {
-        Ok(value) => value,
-        Err(_) => return RefreshOutcome::KeepCurrent,
-    };
-    let overlayed = match apply_runtime_overlay(live.clone(), network) {
-        Ok(value) => value,
-        Err(_) => return RefreshOutcome::KeepCurrent,
-    };
-    match check(&overlayed) {
-        Ok(()) => {
-            if current_overlayed == Some(&overlayed) {
-                return RefreshOutcome::KeepCurrent;
-            }
-            RefreshOutcome::Apply {
-                raw: live,
-                overlayed,
-            }
-        }
-        Err(_) => RefreshOutcome::KeepCurrent,
-    }
-}
-
-async fn live_source(locator: &SourceLocator, fetcher: &impl SourceFetcher) -> Result<Value> {
-    match locator {
-        SourceLocator::Url(url) => parse_source_object(&fetcher.fetch(url).await?, url),
-        SourceLocator::File(path) => load_source(path),
-    }
-}
-
-fn read_source_cache(cache_path: &Path) -> Option<Value> {
+pub(crate) fn read_source_cache(cache_path: &Path) -> Option<Value> {
     let content = std::fs::read_to_string(cache_path).ok()?;
     parse_source_object(&content, &cache_path.display().to_string()).ok()
 }
 
-fn parse_source_object(content: &str, origin: &str) -> Result<Value> {
+pub(crate) fn parse_source_object(content: &str, origin: &str) -> Result<Value> {
     let value: Value = serde_json::from_str(content).map_err(|e| {
         CantoError::Config(format!("Source config '{origin}' is not valid JSON: {e}"))
     })?;
@@ -209,24 +147,8 @@ fn parse_source_object(content: &str, origin: &str) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::CantoError;
     use serde_json::json;
-    use std::collections::HashMap;
     use std::fs;
-
-    struct FakeFetcher {
-        responses: HashMap<String, std::result::Result<String, String>>,
-    }
-
-    impl SourceFetcher for FakeFetcher {
-        async fn fetch(&self, url: &str) -> Result<String> {
-            match self.responses.get(url) {
-                Some(Ok(body)) => Ok(body.clone()),
-                Some(Err(message)) => Err(CantoError::Config(message.clone())),
-                None => Err(CantoError::Config(format!("unexpected fetch of {url}"))),
-            }
-        }
-    }
 
     fn temp_cache(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -239,230 +161,34 @@ mod tests {
         ))
     }
 
-    #[tokio::test]
-    async fn test_obtains_json_object_from_url() {
-        let url = "https://config.example/source.json";
-        let fetcher = FakeFetcher {
-            responses: HashMap::from([(
-                url.to_string(),
-                Ok(r#"{"outbounds":[{"tag":"直连","type":"direct"}]}"#.to_string()),
-            )]),
-        };
-        let cache = temp_cache("url_ok");
-        let locator = SourceLocator::parse(url).unwrap();
-        let source = obtain_source(&locator, &cache, &fetcher).await.unwrap();
+    #[test]
+    fn test_parse_source_locator() {
+        assert!(SourceLocator::parse("").is_err());
+        assert!(matches!(
+            SourceLocator::parse("https://example.com/sub").unwrap(),
+            SourceLocator::Url(_)
+        ));
+        assert!(matches!(
+            SourceLocator::parse("/etc/sing-box/config.json").unwrap(),
+            SourceLocator::File(_)
+        ));
+    }
+
+    #[test]
+    fn test_parse_source_object_valid_and_invalid() {
+        assert!(parse_source_object(r#"{"inbounds":[]}"#, "test").is_ok());
+        assert!(parse_source_object(r#"[1, 2, 3]"#, "test").is_err());
+        assert!(parse_source_object(r#"not json"#, "test").is_err());
+    }
+
+    #[test]
+    fn test_write_source_cache_and_read_roundtrip() {
+        let cache = temp_cache("roundtrip");
+        let sample = json!({"outbounds":[{"tag":"direct","type":"direct"}]});
+        write_source_cache(&cache, &sample).unwrap();
+
+        let read = read_source_cache(&cache).unwrap();
+        assert_eq!(read, sample);
         fs::remove_file(&cache).ok();
-
-        assert_eq!(
-            source,
-            json!({"outbounds":[{"tag":"直连","type":"direct"}]})
-        );
-    }
-
-    #[tokio::test]
-    async fn test_url_fetch_failure_uses_cache() {
-        let url = "https://config.example/source.json";
-        let fetcher = FakeFetcher {
-            responses: HashMap::from([(url.to_string(), Err("connection refused".to_string()))]),
-        };
-        let cache = temp_cache("url_cache");
-        fs::write(
-            &cache,
-            r#"{"outbounds":[{"tag":"缓存节点","type":"direct"}]}"#,
-        )
-        .unwrap();
-        let locator = SourceLocator::parse(url).unwrap();
-        let source = obtain_source(&locator, &cache, &fetcher).await.unwrap();
-        fs::remove_file(&cache).ok();
-
-        assert_eq!(
-            source,
-            json!({"outbounds":[{"tag":"缓存节点","type":"direct"}]})
-        );
-    }
-
-    #[tokio::test]
-    async fn test_url_fetch_failure_without_cache_errors() {
-        let url = "https://config.example/source.json";
-        let fetcher = FakeFetcher {
-            responses: HashMap::from([(url.to_string(), Err("connection refused".to_string()))]),
-        };
-        let cache = temp_cache("url_nocache");
-        let locator = SourceLocator::parse(url).unwrap();
-        let err = obtain_source(&locator, &cache, &fetcher)
-            .await
-            .unwrap_err()
-            .to_string();
-        fs::remove_file(&cache).ok();
-        assert!(err.contains("connection refused"), "{err}");
-    }
-
-    #[tokio::test]
-    async fn test_file_source_loads_local_json() {
-        let path = temp_cache("file_source");
-        fs::write(
-            &path,
-            r#"{"outbounds":[{"tag":"文件节点","type":"direct"}]}"#,
-        )
-        .unwrap();
-        let fetcher = FakeFetcher {
-            responses: HashMap::new(),
-        };
-        let locator = SourceLocator::parse(path.to_str().unwrap()).unwrap();
-        let source = obtain_source(&locator, &temp_cache("unused"), &fetcher)
-            .await
-            .unwrap();
-        fs::remove_file(&path).ok();
-        assert_eq!(
-            source,
-            json!({"outbounds":[{"tag":"文件节点","type":"direct"}]})
-        );
-    }
-
-    #[tokio::test]
-    async fn test_refresh_keeps_current_when_fetch_fails() {
-        let url = "https://config.example/source.json";
-        let fetcher = FakeFetcher {
-            responses: HashMap::from([(url.to_string(), Err("timeout".to_string()))]),
-        };
-        let locator = SourceLocator::parse(url).unwrap();
-        let outcome = refresh_source(
-            &locator,
-            &fetcher,
-            &NetworkSettings::default(),
-            None,
-            |_| panic!("check should not run when fetch fails"),
-        )
-        .await;
-        assert!(matches!(outcome, RefreshOutcome::KeepCurrent));
-    }
-
-    #[tokio::test]
-    async fn test_refresh_keeps_current_when_check_fails() {
-        let url = "https://config.example/source.json";
-        let fetcher = FakeFetcher {
-            responses: HashMap::from([(
-                url.to_string(),
-                Ok(r#"{"outbounds":[{"tag":"直连","type":"direct"}]}"#.to_string()),
-            )]),
-        };
-        let locator = SourceLocator::parse(url).unwrap();
-        let outcome = refresh_source(
-            &locator,
-            &fetcher,
-            &NetworkSettings::default(),
-            None,
-            |_| Err(CantoError::Config("sing-box check failed".to_string())),
-        )
-        .await;
-        assert!(matches!(outcome, RefreshOutcome::KeepCurrent));
-    }
-
-    #[tokio::test]
-    async fn test_refresh_applies_overlayed_config_when_check_passes() {
-        let url = "https://config.example/source.json";
-        let fetcher = FakeFetcher {
-            responses: HashMap::from([(
-                url.to_string(),
-                Ok(r#"{"inbounds":[{"type":"tun","tag":"tun-in"}],"outbounds":[{"tag":"直连","type":"direct"}]}"#.to_string()),
-            )]),
-        };
-        let locator = SourceLocator::parse(url).unwrap();
-        let outcome = refresh_source(
-            &locator,
-            &fetcher,
-            &NetworkSettings {
-                bypass_cn: false,
-                ..NetworkSettings::default()
-            },
-            None,
-            |_| Ok(()),
-        )
-        .await;
-        let RefreshOutcome::Apply { raw, overlayed } = outcome else {
-            panic!("expected Apply, got KeepCurrent");
-        };
-        assert_eq!(raw["inbounds"][0]["tag"], "tun-in");
-        assert_eq!(overlayed["inbounds"][0]["tag"], "mixed-in");
-        assert_eq!(overlayed["inbounds"][1]["tag"], "tproxy-in");
-        assert_eq!(overlayed["outbounds"][0]["tag"], "直连");
-        assert_eq!(overlayed["route"]["default_mark"], 0x67890);
-    }
-
-    #[tokio::test]
-    async fn test_refresh_keeps_current_when_overlayed_config_unchanged() {
-        let url = "https://config.example/source.json";
-        let fetcher = FakeFetcher {
-            responses: HashMap::from([(
-                url.to_string(),
-                Ok(r#"{"inbounds":[{"type":"tun","tag":"tun-in"}],"outbounds":[{"tag":"直连","type":"direct"}]}"#.to_string()),
-            )]),
-        };
-        let locator = SourceLocator::parse(url).unwrap();
-        let network = NetworkSettings {
-            bypass_cn: false,
-            ..NetworkSettings::default()
-        };
-        let first = refresh_source(&locator, &fetcher, &network, None, |_| Ok(())).await;
-        let RefreshOutcome::Apply { overlayed, .. } = first else {
-            panic!("expected Apply on first refresh");
-        };
-
-        let second =
-            refresh_source(&locator, &fetcher, &network, Some(&overlayed), |_| Ok(())).await;
-        assert!(
-            matches!(second, RefreshOutcome::KeepCurrent),
-            "unchanged overlayed config should not restart"
-        );
-
-        let mut changed = overlayed.clone();
-        changed["outbounds"][0]["tag"] = json!("新节点");
-        let third = refresh_source(&locator, &fetcher, &network, Some(&changed), |_| Ok(())).await;
-        assert!(
-            matches!(third, RefreshOutcome::Apply { .. }),
-            "changed overlayed config should apply"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_write_source_cache_roundtrips_for_fetch_fallback() {
-        let url = "https://config.example/source.json";
-        let fetcher = FakeFetcher {
-            responses: HashMap::from([(url.to_string(), Err("offline".to_string()))]),
-        };
-        let cache = temp_cache("written_cache");
-        write_source_cache(
-            &cache,
-            &json!({"outbounds":[{"tag":"上次成功","type":"direct"}]}),
-        )
-        .unwrap();
-        let locator = SourceLocator::parse(url).unwrap();
-        let source = obtain_source(&locator, &cache, &fetcher).await.unwrap();
-        fs::remove_file(&cache).ok();
-        assert_eq!(
-            source,
-            json!({"outbounds":[{"tag":"上次成功","type":"direct"}]})
-        );
-    }
-
-    #[tokio::test]
-    async fn test_url_invalid_json_uses_cache() {
-        let url = "https://config.example/source.json";
-        let fetcher = FakeFetcher {
-            responses: HashMap::from([(url.to_string(), Ok("not-json".to_string()))]),
-        };
-        let cache = temp_cache("bad_json_cache");
-        fs::write(
-            &cache,
-            r#"{"outbounds":[{"tag":"缓存节点","type":"direct"}]}"#,
-        )
-        .unwrap();
-        let locator = SourceLocator::parse(url).unwrap();
-        let source = obtain_source(&locator, &cache, &fetcher).await.unwrap();
-        fs::remove_file(&cache).ok();
-        assert_eq!(
-            source,
-            json!({"outbounds":[{"tag":"缓存节点","type":"direct"}]})
-        );
     }
 }

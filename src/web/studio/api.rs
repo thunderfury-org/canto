@@ -1,5 +1,9 @@
-use std::time::Duration;
-
+use crate::web::state::WebState;
+use crate::web::studio::compiler::CompileError;
+use crate::web::studio::model::{
+    NodeSource, Profile, SourceKind, Template, new_profile_id, new_source_id, new_template_id,
+    now_rfc3339, validate_template_content,
+};
 use axum::Json;
 use axum::body::Body;
 use axum::extract::{Path, State};
@@ -7,15 +11,6 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use tracing::warn;
-
-use crate::web::state::WebState;
-use crate::web::studio::compiler::CompileError;
-use crate::web::studio::model::{
-    NodeSource, Profile, SourceKind, Template, new_profile_id, new_source_id, new_template_id,
-    now_rfc3339, validate_template_content,
-};
-use crate::web::studio::parser::parse_subscription;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -72,43 +67,10 @@ pub async fn create_source(
         nodes: Vec::new(),
     };
 
-    match source.kind {
-        SourceKind::Subscription => {
-            let Some(url) = source.url.clone() else {
-                return json_error(
-                    StatusCode::BAD_REQUEST,
-                    "subscription source requires a url",
-                );
-            };
-            if !is_http_url(&url) {
-                return json_error(
-                    StatusCode::BAD_REQUEST,
-                    "subscription url must start with http:// or https://",
-                );
-            }
-            apply_fetched_nodes(&state, &mut source, &url).await;
-        }
-        SourceKind::Manual => {
-            if let Some(nodes) = req.nodes.filter(|nodes| !nodes.is_empty()) {
-                source.mark_active(nodes);
-            } else {
-                let Some(content) = source.content.clone() else {
-                    return json_error(
-                        StatusCode::BAD_REQUEST,
-                        "manual source requires content or nodes",
-                    );
-                };
-                match parse_subscription(&content) {
-                    Ok(nodes) => source.mark_active(nodes),
-                    Err(err) => {
-                        return json_error(
-                            StatusCode::BAD_REQUEST,
-                            &format!("failed to parse node definitions: {err}"),
-                        );
-                    }
-                }
-            }
-        }
+    if let Some(nodes) = req.nodes.filter(|nodes| !nodes.is_empty()) {
+        source.mark_active(nodes);
+    } else if let Err(err) = state.source_manager.ingest(&mut source).await {
+        return json_error(StatusCode::BAD_REQUEST, &err);
     }
 
     match state.sources.insert(source).await {
@@ -146,29 +108,10 @@ pub async fn update_source(
 
     if let Some(nodes) = req.nodes {
         source.mark_active(nodes);
-    } else if source.kind == SourceKind::Manual
-        && let Some(content) = source.content.clone()
-        && content_updated
+    } else if (content_updated || source.kind == SourceKind::Subscription)
+        && let Err(err) = state.source_manager.ingest(&mut source).await
     {
-        match parse_subscription(&content) {
-            Ok(nodes) => source.mark_active(nodes),
-            Err(err) => {
-                return json_error(
-                    StatusCode::BAD_REQUEST,
-                    &format!("failed to parse node definitions: {err}"),
-                );
-            }
-        }
-    }
-
-    if source.kind == SourceKind::Subscription
-        && let Some(url) = source.url.as_deref()
-        && !is_http_url(url)
-    {
-        return json_error(
-            StatusCode::BAD_REQUEST,
-            "subscription url must start with http:// or https://",
-        );
+        return json_error(StatusCode::BAD_REQUEST, &err);
     }
 
     match state.sources.replace(source).await {
@@ -179,6 +122,21 @@ pub async fn update_source(
 }
 
 pub async fn delete_source(State(state): State<WebState>, Path(id): Path<String>) -> Response {
+    let empty_risk = state.profiles.check_source_removal(&id).await;
+    if !empty_risk.is_empty() {
+        let names: Vec<String> = empty_risk
+            .into_iter()
+            .map(|p| format!("\"{}\"", p.name))
+            .collect();
+        return json_error(
+            StatusCode::CONFLICT,
+            &format!(
+                "cannot delete source: would leave profile(s) with no sources: {}",
+                names.join(", ")
+            ),
+        );
+    }
+
     match state.sources.delete(&id).await {
         Ok(true) => {
             if let Err(err) = state.profiles.unbind_source(&id).await {
@@ -192,88 +150,11 @@ pub async fn delete_source(State(state): State<WebState>, Path(id): Path<String>
 }
 
 pub async fn refresh_source(State(state): State<WebState>, Path(id): Path<String>) -> Response {
-    let Some(mut source) = state.sources.get(&id).await else {
-        return json_error(StatusCode::NOT_FOUND, "source not found");
-    };
-
-    match source.kind {
-        SourceKind::Subscription => {
-            let Some(url) = source.url.clone() else {
-                return json_error(
-                    StatusCode::BAD_REQUEST,
-                    "subscription source requires a url",
-                );
-            };
-            apply_fetched_nodes(&state, &mut source, &url).await;
-        }
-        SourceKind::Manual => {
-            if let Some(content) = source.content.clone() {
-                match parse_subscription(&content) {
-                    Ok(nodes) => source.mark_active(nodes),
-                    Err(err) => source.mark_error(err),
-                }
-            } else if source.nodes.is_empty() {
-                source.mark_error("manual source has no content to refresh".to_string());
-            } else {
-                source.mark_active(source.nodes.clone());
-            }
-        }
-    }
-
-    match state.sources.replace(source).await {
+    match state.source_manager.refresh(&id).await {
         Ok(Some(saved)) => (StatusCode::OK, Json(saved)).into_response(),
         Ok(None) => json_error(StatusCode::NOT_FOUND, "source not found"),
         Err(err) => json_error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
     }
-}
-
-async fn apply_fetched_nodes(state: &WebState, source: &mut NodeSource, url: &str) {
-    match fetch_subscription(&state.http, url).await {
-        Ok(body) => match parse_subscription(&body) {
-            Ok(nodes) => source.mark_active(nodes),
-            Err(err) => {
-                warn!("Failed to parse subscription from '{url}': {err}");
-                source.mark_error(err);
-            }
-        },
-        Err(err) => {
-            warn!("{err}");
-            source.mark_error(err);
-        }
-    }
-}
-
-async fn fetch_subscription(client: &reqwest::Client, url: &str) -> Result<String, String> {
-    let response = client
-        .get(url)
-        .header(
-            "User-Agent",
-            format!("canto/{} (sing-box)", env!("CARGO_PKG_VERSION")),
-        )
-        .timeout(Duration::from_secs(30))
-        .send()
-        .await
-        .map_err(|err| format!("failed to fetch '{url}': {err}"))?;
-
-    let status = response.status();
-    if !status.is_success() {
-        return Err(format!("failed to fetch '{url}': HTTP {status}"));
-    }
-
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|err| format!("failed to read '{url}': {err}"))?;
-    if bytes.len() > 10 * 1024 * 1024 {
-        return Err(format!("subscription from '{url}' exceeds 10MB"));
-    }
-    String::from_utf8(bytes.to_vec())
-        .map_err(|err| format!("subscription from '{url}' is not valid UTF-8: {err}"))
-}
-
-fn is_http_url(url: &str) -> bool {
-    let lower = url.trim().to_ascii_lowercase();
-    lower.starts_with("http://") || lower.starts_with("https://")
 }
 
 fn normalize_optional(value: Option<String>) -> Option<String> {
@@ -376,6 +257,21 @@ pub async fn update_template(
 }
 
 pub async fn delete_template(State(state): State<WebState>, Path(id): Path<String>) -> Response {
+    let used_by = state.profiles.find_by_template(&id).await;
+    if !used_by.is_empty() {
+        let names: Vec<String> = used_by
+            .into_iter()
+            .map(|p| format!("\"{}\"", p.name))
+            .collect();
+        return json_error(
+            StatusCode::CONFLICT,
+            &format!(
+                "cannot delete template: currently in use by profile(s): {}",
+                names.join(", ")
+            ),
+        );
+    }
+
     match state.templates.delete(&id).await {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
         Ok(false) => json_error(StatusCode::NOT_FOUND, "template not found"),
