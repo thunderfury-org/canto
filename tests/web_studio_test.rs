@@ -1472,5 +1472,234 @@ async fn test_relational_guards_prevent_dangling_template_and_empty_profile_sour
         .unwrap();
     assert_eq!(del_src_res.status(), StatusCode::NO_CONTENT);
 
+    // 6. Test multi-provider template with tag prefixes
+    let multi_provider_payload = json!({
+        "name": "多规则源模板",
+        "content": {
+            "outbounds": [{ "type": "direct", "tag": "直连" }],
+            "rule_sets": [
+                {
+                    "name": "SagerNet GeoSite",
+                    "type": "remote",
+                    "tag_prefix": "geosite-",
+                    "tag": ["geosite-cn", "geosite-openai"],
+                    "format": "binary",
+                    "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/{tag}.srs",
+                    "download_detour": "ALL"
+                },
+                {
+                    "name": "MetaCubeX GeoIP",
+                    "type": "remote",
+                    "tag_prefix": "geoip-",
+                    "tag": ["geoip-cn", "geoip-telegram"],
+                    "format": "binary",
+                    "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/{tag}.srs",
+                    "download_detour": "ALL"
+                }
+            ],
+            "route": {
+                "rules": [
+                    { "rule_set": ["geosite-cn"], "outbound": "直连" },
+                    { "rule_set": ["geoip-cn"], "outbound": "直连" }
+                ]
+            }
+        }
+    });
+
+    let (status, created_multi) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/templates",
+                Body::from(multi_provider_payload.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created_multi}");
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn test_ruleset_presets_and_template_rule_sets_flow() {
+    let (state, dir) = test_state(test_settings());
+    let app = create_app(state);
+
+    // 1. Presets endpoint
+    let (status, presets) = json_body(
+        app.clone()
+            .oneshot(auth_req("GET", "/api/rulesets/presets", Body::empty()))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let arr = presets.as_array().expect("presets array");
+    assert!(
+        arr.iter()
+            .any(|p| p["tag"] == "sing-box-ruleset" && p["repo"] == "DustinWin/ruleset_geodata")
+    );
+    assert!(
+        arr.iter()
+            .all(|p| p["repo"] != "Loyalsoldier/sing-box-rules")
+    );
+    assert!(arr.iter().any(|p| p["id"] == "sagernet-geosite"));
+    assert!(arr.iter().any(|p| p["id"] == "sagernet-geoip"));
+    assert!(arr.iter().any(|p| p["id"] == "metacubex-geosite"));
+    assert!(arr.iter().any(|p| p["id"] == "metacubex-geoip"));
+
+    // 2. Inspect release empty input check
+    let (status, err) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/rulesets/inspect-release",
+                Body::from(json!({ "url": "" }).to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(err["error"].as_str().unwrap().contains("url is required"));
+
+    // 3. Create template with top-level rule_sets & route reference
+    let valid_tpl_payload = json!({
+        "name": "规则集解耦模板",
+        "content": {
+            "outbounds": [{ "type": "direct", "tag": "直连" }],
+            "rule_sets": [
+                {
+                    "type": "remote",
+                    "tag": ["cn", "ai", "netflix"],
+                    "format": "binary",
+                    "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs",
+                    "download_detour": "ALL"
+                }
+            ],
+            "route": {
+                "rules": [
+                    { "rule_set": ["cn", "ai"], "outbound": "直连" }
+                ]
+            }
+        }
+    });
+
+    let (status, created_tpl) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/templates",
+                Body::from(valid_tpl_payload.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created_tpl}");
+    let tpl_id = created_tpl["id"].as_str().unwrap();
+
+    // 4. Undefined rule_set reference must be rejected
+    let invalid_tpl_payload = json!({
+        "name": "非法规则集模板",
+        "content": {
+            "outbounds": [{ "type": "direct", "tag": "直连" }],
+            "rule_sets": [
+                {
+                    "type": "remote",
+                    "tag": ["cn"],
+                    "format": "binary",
+                    "url": "https://example.com/{tag}.srs"
+                }
+            ],
+            "route": {
+                "rules": [
+                    { "rule_set": ["unknown_tag"], "outbound": "直连" }
+                ]
+            }
+        }
+    });
+    let (status, bad_res) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/templates",
+                Body::from(invalid_tpl_payload.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        bad_res["error"]
+            .as_str()
+            .unwrap()
+            .contains("references undefined rule_set 'unknown_tag'")
+    );
+
+    // 5. Create source and profile to test expansion into route.rule_set
+    let source_body = json!({
+        "name": "测试源",
+        "type": "manual",
+        "nodes": [{ "type": "direct", "tag": "direct" }]
+    });
+    let (status, source) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/sources",
+                Body::from(source_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let source_id = source["id"].as_str().unwrap();
+
+    let profile_body = json!({
+        "name": "测试Profile",
+        "templateId": tpl_id,
+        "sourceIds": [source_id]
+    });
+    let (status, profile) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/profiles",
+                Body::from(profile_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let prof_id = profile["id"].as_str().unwrap();
+
+    let (status, preview) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "GET",
+                &format!("/api/profiles/{prof_id}/preview"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(preview["config"].get("rule_sets").is_none());
+    assert_eq!(
+        preview["config"]["route"]["rule_set"][0]["tag"],
+        json!(["cn", "ai", "netflix"])
+    );
+    assert_eq!(
+        preview["config"]["route"]["rule_set"][0]["format"],
+        "binary"
+    );
+
     let _ = std::fs::remove_dir_all(dir);
 }

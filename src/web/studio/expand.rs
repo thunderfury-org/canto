@@ -150,6 +150,35 @@ pub fn expand_profile(template_content: &Value, nodes: &[Value]) -> Expansion {
         obj.remove("policy_groups");
         obj.remove("node_groups");
         obj.insert("outbounds".to_string(), Value::Array(assembled_outbounds));
+
+        if let Some(mut rule_sets_val) = obj.remove("rule_sets") {
+            if let Some(rule_sets_arr) = rule_sets_val.as_array_mut() {
+                rule_sets_arr.retain(|rs| {
+                    if let Some(arr) = rs.get("tag").and_then(Value::as_array) {
+                        !arr.is_empty()
+                    } else if let Some(s) = rs.get("tag").and_then(Value::as_str) {
+                        !s.trim().is_empty()
+                    } else {
+                        false
+                    }
+                });
+                for rs in rule_sets_arr.iter_mut() {
+                    if let Some(rs_obj) = rs.as_object_mut() {
+                        rs_obj.remove("name");
+                        rs_obj.remove("source_url");
+                        rs_obj.remove("tag_prefix");
+                        rs_obj.remove("category");
+                        rs_obj.remove("preset_id");
+                    }
+                }
+            }
+            let route_entry = obj
+                .entry("route".to_string())
+                .or_insert_with(|| Value::Object(serde_json::Map::new()));
+            if let Some(route_obj) = route_entry.as_object_mut() {
+                route_obj.insert("rule_set".to_string(), rule_sets_val);
+            }
+        }
     }
 
     Expansion {
@@ -406,5 +435,33 @@ mod tests {
         assert_eq!(appended["type"], "vless");
         assert_eq!(appended["server"], "first.example");
         assert_eq!(expansion.total_nodes, 1);
+    }
+
+    #[test]
+    fn test_expands_rule_sets_into_route_rule_set() {
+        let template = json!({
+            "outbounds": [{ "type": "direct", "tag": "直连" }],
+            "rule_sets": [
+                {
+                    "type": "remote",
+                    "tag": ["cn", "ai", "netflix"],
+                    "format": "binary",
+                    "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs",
+                    "download_detour": "ALL"
+                }
+            ],
+            "route": {
+                "rules": [
+                    { "rule_set": ["cn"], "outbound": "直连" }
+                ]
+            }
+        });
+        let expansion = expand_profile(&template, &[]);
+        assert!(expansion.config.get("rule_sets").is_none());
+        assert_eq!(
+            expansion.config["route"]["rule_set"][0]["tag"],
+            json!(["cn", "ai", "netflix"])
+        );
+        assert_eq!(expansion.config["route"]["rule_set"][0]["format"], "binary");
     }
 }
