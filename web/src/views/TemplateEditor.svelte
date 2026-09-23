@@ -831,7 +831,6 @@
                 <thead class="bg-slate-950/90 text-slate-400 uppercase font-mono border-b border-slate-800 text-[11px]">
                   <tr>
                     <th class="py-2.5 px-3.5 w-[220px]">策略组标签 (Tag)</th>
-                    <th class="py-2.5 px-3 w-[90px]">类型</th>
                     <th class="py-2.5 px-3 min-w-[320px]">包含节点分组 (多选下拉)</th>
                     <th class="py-2.5 px-3 w-[180px]">默认选中 (Default)</th>
                     <th class="py-2.5 px-3 w-[60px] text-center">操作</th>
@@ -849,13 +848,6 @@
                           placeholder="策略组标签"
                           class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-100 font-semibold focus:border-cyan-500 focus:outline-none font-mono"
                         />
-                      </td>
-
-                      <!-- Fixed Type: Selector -->
-                      <td class="py-2.5 px-3">
-                        <span class="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-cyan-950/80 border border-cyan-800/60 text-cyan-300">
-                          Selector
-                        </span>
                       </td>
 
                       <!-- MultiSelect Node Groups -->
@@ -897,7 +889,7 @@
                   {/each}
                   {#if !store.selectedTemplate.content?.policy_groups || store.selectedTemplate.content.policy_groups.length === 0}
                     <tr>
-                      <td colspan="5" class="py-8 text-center text-slate-500 text-xs font-mono">
+                      <td colspan="4" class="py-8 text-center text-slate-500 text-xs font-mono">
                         暂无出站策略组，点击右上角「添加出站策略组」进行创建
                       </td>
                     </tr>
