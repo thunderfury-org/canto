@@ -26,10 +26,23 @@
   import ChevronRight from 'lucide-svelte/icons/chevron-right';
   import X from 'lucide-svelte/icons/x';
 
-  let currentSubTab = $state('node_groups'); // 'node_groups' | 'policy_groups' | 'route' | 'dns' | 'inbounds' | 'experimental'
+  let currentSubTab = $derived(store.templateSubTab);
   let saveError = $state('');
   let creating = $state(false);
   let savedNotice = $state(false);
+
+  function switchSubTab(subTab) {
+    if (subTab === 'rule_sets') ensureRuleSets();
+    if (subTab === 'experimental') ensureExperimentalDefaults();
+    store.templateSubTab = subTab;
+  }
+
+  $effect(() => {
+    const tpl = store.selectedTemplate;
+    if (!tpl) return;
+    if (store.templateSubTab === 'rule_sets') ensureRuleSets();
+    if (store.templateSubTab === 'experimental') ensureExperimentalDefaults();
+  });
 
   onMount(() => {
     if (store.isAuthenticated) {
@@ -830,7 +843,7 @@
       <!-- Sub-module Navigation -->
       <div class="flex flex-wrap items-center gap-1.5 bg-slate-900/60 p-1 rounded-lg border border-slate-800 text-xs">
         <button
-          onclick={() => (currentSubTab = 'node_groups')}
+          onclick={() => switchSubTab('node_groups')}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'node_groups' ? 'bg-slate-800 text-amber-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
           <Layers size={13} class="text-amber-400" />
@@ -839,7 +852,7 @@
         </button>
 
         <button
-          onclick={() => (currentSubTab = 'policy_groups')}
+          onclick={() => switchSubTab('policy_groups')}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'policy_groups' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
           <Sparkles size={13} class="text-cyan-400" />
@@ -848,7 +861,7 @@
         </button>
 
         <button
-          onclick={() => { ensureRuleSets(); currentSubTab = 'rule_sets'; }}
+          onclick={() => switchSubTab('rule_sets')}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'rule_sets' ? 'bg-slate-800 text-emerald-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
           <Bookmark size={13} class="text-emerald-400" />
@@ -857,7 +870,7 @@
         </button>
 
         <button
-          onclick={() => (currentSubTab = 'route')}
+          onclick={() => switchSubTab('route')}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'route' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
           <Layers size={13} />
@@ -866,7 +879,7 @@
         </button>
 
         <button
-          onclick={() => (currentSubTab = 'dns')}
+          onclick={() => switchSubTab('dns')}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'dns' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
           <Radio size={13} />
@@ -875,7 +888,7 @@
         </button>
 
         <button
-          onclick={() => (currentSubTab = 'inbounds')}
+          onclick={() => switchSubTab('inbounds')}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'inbounds' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
           <span>入站与端点</span>
@@ -885,7 +898,7 @@
         </button>
 
         <button
-          onclick={() => { ensureExperimentalDefaults(); currentSubTab = 'experimental'; }}
+          onclick={() => switchSubTab('experimental')}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'experimental' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
           <span>日志与 Clash API</span>

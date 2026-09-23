@@ -1,10 +1,33 @@
 <script>
+  import { onMount } from 'svelte';
   import { store } from './data/store.svelte.js';
+  import { initRouter, syncHash } from './data/router.js';
   import Navbar from './components/Navbar.svelte';
   import DashboardView from './views/DashboardView.svelte';
   import TemplateEditor from './views/TemplateEditor.svelte';
   import SourceManager from './views/SourceManager.svelte';
   import ProfileView from './views/ProfileView.svelte';
+
+  onMount(() => {
+    const cleanup = initRouter(store);
+    return cleanup;
+  });
+
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const tab = store.currentTab;
+    const tplId = store.selectedTemplateId;
+    const subTab = store.templateSubTab;
+    const profId = store.selectedProfileId;
+
+    if (tab === 'templates') {
+      syncHash({ tab, id: tplId, subtab: subTab });
+    } else if (tab === 'profiles') {
+      syncHash({ tab, id: profId });
+    } else {
+      syncHash({ tab });
+    }
+  });
 </script>
 
 <div class="min-h-screen bg-[#090d16] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200">

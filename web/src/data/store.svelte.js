@@ -1,13 +1,29 @@
 import { initialTemplates, initialSources, initialProfiles, compileProfile } from './mock.js';
 import defaultTemplateRaw from './defaultTemplate.json';
+import { getInitialRoute, navigate } from './router.js';
+
+const initialRoute = getInitialRoute();
 
 class StudioStore {
-  currentTab = $state('dashboard');
+  currentTab = $state(initialRoute.tab);
   templates = $state(JSON.parse(JSON.stringify(initialTemplates)));
   sources = $state(JSON.parse(JSON.stringify(initialSources)));
   profiles = $state(JSON.parse(JSON.stringify(initialProfiles)));
-  selectedTemplateId = $state('tpl_tailscale_gateway');
-  selectedProfileId = $state('prof_home_router');
+  selectedTemplateId = $state(
+    initialRoute.tab === 'templates' && initialRoute.id
+      ? initialRoute.id
+      : 'tpl_tailscale_gateway'
+  );
+  selectedProfileId = $state(
+    initialRoute.tab === 'profiles' && initialRoute.id
+      ? initialRoute.id
+      : 'prof_home_router'
+  );
+  templateSubTab = $state(
+    initialRoute.tab === 'templates' && initialRoute.subtab
+      ? initialRoute.subtab
+      : 'node_groups'
+  );
   adminToken = $state(
     typeof window !== 'undefined' && localStorage.getItem('canto_admin_token')
       ? localStorage.getItem('canto_admin_token')
@@ -48,6 +64,18 @@ class StudioStore {
     const boundSources = this.sources.filter(s => prof.sourceIds.includes(s.id));
     return compileProfile(tpl, boundSources);
   });
+
+  navigate(tab, params = {}, options = {}) {
+    navigate(tab, params, options);
+    this.currentTab = tab;
+    if (params.id) {
+      if (tab === 'templates') this.selectedTemplateId = params.id;
+      if (tab === 'profiles') this.selectedProfileId = params.id;
+    }
+    if (params.subtab && tab === 'templates') {
+      this.templateSubTab = params.subtab;
+    }
+  }
 
   async verifyAuth(tokenToTest) {
     const token = tokenToTest ?? this.adminToken;
@@ -101,6 +129,7 @@ class StudioStore {
   resetData() {
     this.profiles = JSON.parse(JSON.stringify(initialProfiles));
     this.selectedProfileId = 'prof_home_router';
+    this.templateSubTab = 'node_groups';
     if (this.isAuthenticated) {
       this.loadSources();
       this.loadTemplates();
