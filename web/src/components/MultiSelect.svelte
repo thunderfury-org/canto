@@ -15,6 +15,7 @@
   let searchTerm = $state("");
   let openUpward = $state(false);
   let containerRef = $state(null);
+  const instanceId = Math.random().toString(36).slice(2);
 
   // Normalize options to { value, label, type }
   let normalizedOptions = $derived(
@@ -43,10 +44,13 @@
 
   function toggleOpen(e) {
     e.stopPropagation();
-    if (!isOpen && containerRef) {
-      const rect = containerRef.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      openUpward = spaceBelow < 280 && rect.top > 280;
+    if (!isOpen) {
+      window.dispatchEvent(new CustomEvent("close-multiselect", { detail: { id: instanceId } }));
+      if (containerRef) {
+        const rect = containerRef.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        openUpward = spaceBelow < 420 && rect.top > 320;
+      }
     }
     isOpen = !isOpen;
     if (isOpen) {
@@ -61,10 +65,20 @@
   }
 
   $effect(() => {
+    const handleCloseOthers = (e) => {
+      if (e.detail?.id !== instanceId) {
+        isOpen = false;
+      }
+    };
+    window.addEventListener("close-multiselect", handleCloseOthers);
+
     if (isOpen) {
       document.addEventListener("click", handleDocumentClick);
-      return () => document.removeEventListener("click", handleDocumentClick);
     }
+    return () => {
+      window.removeEventListener("close-multiselect", handleCloseOthers);
+      document.removeEventListener("click", handleDocumentClick);
+    };
   });
 
   function toggleOption(val, e) {
@@ -112,41 +126,33 @@
     tabindex="0"
     onclick={toggleOpen}
     onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { toggleOpen(e); } }}
-    class="w-full min-h-[34px] bg-slate-950 border border-slate-800 hover:border-slate-700 rounded px-2.5 py-1 text-left flex items-center justify-between gap-1.5 focus:outline-none focus:border-cyan-500 transition-colors cursor-pointer"
+    class="w-full min-h-[38px] bg-slate-950 border border-slate-800 hover:border-slate-700 rounded px-2.5 py-1.5 text-left flex items-start justify-between gap-2 focus:outline-none focus:border-cyan-500 transition-colors cursor-pointer"
   >
-    <div class="flex flex-wrap items-center gap-1 overflow-hidden flex-1 py-0.5">
+    <div class="flex flex-wrap items-center gap-1.5 overflow-hidden flex-1 py-0.5">
       {#if !selected || selected.length === 0}
-        <span class="text-xs text-slate-500 select-none">{placeholder}</span>
+        <span class="text-xs text-slate-500 select-none py-0.5">{placeholder}</span>
       {:else}
-        {#each selected.slice(0, 3) as item}
+        {#each selected as item}
           <span
-            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono bg-slate-900 border border-slate-800 text-slate-200"
+            class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono bg-slate-900 border border-slate-800 text-slate-200 hover:border-slate-700 transition-colors"
           >
-            <span class="truncate max-w-[100px]">{item}</span>
+            <span class="truncate max-w-[150px] {item === '直连' ? 'text-emerald-400 font-semibold' : item === 'block' ? 'text-rose-400 font-semibold' : 'text-cyan-300'}">{item}</span>
             <button
               type="button"
               onclick={(e) => removeSingleTag(item, e)}
-              class="text-slate-500 hover:text-rose-400 font-bold leading-none cursor-pointer bg-transparent border-0 p-0"
-              title="移除"
+              class="text-slate-500 hover:text-rose-400 font-bold leading-none cursor-pointer bg-transparent border-0 p-0 ml-0.5"
+              title="移除此分组"
             >
               &times;
             </button>
           </span>
         {/each}
-        {#if selected.length > 3}
-          <span
-            class="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-950/80 border border-cyan-800/60 text-cyan-300"
-            title={selected.slice(3).join(", ")}
-          >
-            +{selected.length - 3}
-          </span>
-        {/if}
       {/if}
     </div>
 
-    <div class="flex items-center gap-1.5 shrink-0 ml-1 text-slate-500">
+    <div class="flex items-center gap-1.5 shrink-0 ml-1 mt-1 text-slate-500">
       {#if selected && selected.length > 0}
-        <span class="text-[10px] font-mono text-slate-500">共 {selected.length} 项</span>
+        <span class="text-[10px] font-mono text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">共 {selected.length} 项</span>
       {/if}
       <ChevronDown size={13} class="transition-transform duration-150 {isOpen ? "rotate-180 text-cyan-400" : ""}" />
     </div>
@@ -156,7 +162,7 @@
   {#if isOpen}
     <div
       tabindex="-1"
-      class="absolute left-0 z-50 w-72 bg-slate-900 border border-slate-700/80 rounded-lg shadow-2xl p-2.5 space-y-2 {openUpward ? "bottom-full mb-1" : "top-full mt-1"}"
+      class="absolute left-0 z-50 w-full min-w-[340px] max-w-lg bg-slate-900 border border-slate-700/90 rounded-lg shadow-2xl p-2.5 space-y-2 {openUpward ? "bottom-full mb-1.5" : "top-full mt-1.5"}"
     >
       <!-- Search Input -->
       <div class="relative">
@@ -192,7 +198,7 @@
       </div>
 
       <!-- Options List -->
-      <div class="max-h-56 overflow-y-auto space-y-0.5 pr-0.5">
+      <div class="max-h-[420px] overflow-y-auto space-y-0.5 pr-1 [scrollbar-width:thin] [scrollbar-color:#475569_transparent]">
         {#each filteredOptions as opt}
           {@const isChecked = selected.includes(opt.value)}
           <div

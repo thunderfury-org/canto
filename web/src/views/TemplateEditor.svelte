@@ -826,12 +826,12 @@
 
           <!-- Section 2: Policy Groups List (Table) -->
           <div class="bg-slate-900/80 border border-slate-800 rounded-lg overflow-visible">
-            <div class="overflow-x-auto min-h-[300px]">
+            <div class="overflow-x-auto md:overflow-visible min-h-[420px] pb-16">
               <table class="w-full text-xs text-left text-slate-300">
                 <thead class="bg-slate-950/90 text-slate-400 uppercase font-mono border-b border-slate-800 text-[11px]">
                   <tr>
-                    <th class="py-2.5 px-3.5 w-[220px]">策略组标签 (Tag)</th>
-                    <th class="py-2.5 px-3 min-w-[320px]">包含节点分组 (多选下拉)</th>
+                    <th class="py-2.5 px-3.5 w-[200px]">策略组标签 (Tag)</th>
+                    <th class="py-2.5 px-3 min-w-[340px]">包含节点分组 (多选下拉)</th>
                     <th class="py-2.5 px-3 w-[180px]">默认选中 (Default)</th>
                     <th class="py-2.5 px-3 w-[60px] text-center">操作</th>
                   </tr>
