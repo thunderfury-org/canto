@@ -2,6 +2,9 @@
   import { onMount } from 'svelte';
   import { store } from '../data/store.svelte.js';
   import { testRegexMatch } from '../data/mock.js';
+  import MultiSelect from '../components/MultiSelect.svelte';
+  import Lock from 'lucide-svelte/icons/lock';
+  import Shield from 'lucide-svelte/icons/shield';
   import FileCode2 from 'lucide-svelte/icons/file-code-2';
   import Plus from 'lucide-svelte/icons/plus';
   import Trash2 from 'lucide-svelte/icons/trash-2';
@@ -29,13 +32,31 @@
     }
   });
 
+  function ensureBaseOutbounds(content) {
+    if (!content) return;
+    if (!Array.isArray(content.outbounds)) {
+      content.outbounds = [];
+    }
+    const hasDirect = content.outbounds.some(o => o && o.type === "direct");
+    if (!hasDirect) {
+      content.outbounds.unshift({ tag: "直连", type: "direct" });
+    }
+    const hasBlock = content.outbounds.some(o => o && o.type === "block");
+    if (!hasBlock) {
+      content.outbounds.push({ tag: "block", type: "block" });
+    }
+  }
+
   $effect(() => {
     const tpl = store.selectedTemplate;
-    if (tpl && (lastSyncedTplId !== tpl.id || editMode === 'raw')) {
-      if (lastSyncedTplId !== tpl.id) {
-        rawJsonText = JSON.stringify(tpl.content, null, 2);
-        rawJsonError = null;
-        lastSyncedTplId = tpl.id;
+    if (tpl) {
+      ensureBaseOutbounds(tpl.content);
+      if (lastSyncedTplId !== tpl.id || editMode === "raw") {
+        if (lastSyncedTplId !== tpl.id) {
+          rawJsonText = JSON.stringify(tpl.content, null, 2);
+          rawJsonError = null;
+          lastSyncedTplId = tpl.id;
+        }
       }
     }
   });
@@ -92,6 +113,14 @@
     (store.selectedTemplate?.content?.policy_groups || []).map(p => p.tag).filter(Boolean)
   );
 
+  // Built-in base outbounds
+  let directOutbound = $derived(
+    store.selectedTemplate?.content?.outbounds?.find(o => o?.type === "direct")
+  );
+  let blockOutbound = $derived(
+    store.selectedTemplate?.content?.outbounds?.find(o => o?.type === "block")
+  );
+
   // Collect base outbound tags
   let availableBaseOutboundTags = $derived(
     (store.selectedTemplate?.content?.outbounds || []).map(o => o.tag).filter(Boolean)
@@ -99,17 +128,23 @@
 
   // Candidates that a policy group can select from (node groups + base outbounds)
   let availablePolicyCandidates = $derived(
-    Array.from(new Set([...availableNodeGroupTags, ...availableBaseOutboundTags, "直连", "direct", "reject", "block"]))
+    Array.from(new Set([...availableNodeGroupTags, ...availableBaseOutboundTags]))
   );
+
+  let policyCandidateOptions = $derived([
+    ...(directOutbound?.tag ? [{ value: directOutbound.tag, label: directOutbound.tag, type: "direct" }] : []),
+    ...(blockOutbound?.tag ? [{ value: blockOutbound.tag, label: blockOutbound.tag, type: "block" }] : []),
+    ...availableNodeGroupTags.map(tag => ({ value: tag, label: tag, type: "node_group" }))
+  ]);
 
   // Outbounds available for route rules and DNS detour
   let availableRouteOutboundTags = $derived(
-    Array.from(new Set([...availablePolicyGroupTags, ...availableBaseOutboundTags, "直连"]))
+    Array.from(new Set([...availablePolicyGroupTags, ...availableBaseOutboundTags]))
   );
 
   // All outbounds (including node groups) for rule_set download_detour
   let allOutboundTags = $derived(
-    Array.from(new Set([...availablePolicyGroupTags, ...availableNodeGroupTags, ...availableBaseOutboundTags, "直连"]))
+    Array.from(new Set([...availablePolicyGroupTags, ...availableNodeGroupTags, ...availableBaseOutboundTags]))
   );
 
   let saveError = $state('');
@@ -214,11 +249,12 @@
   function addPolicyGroup() {
     const tpl = store.selectedTemplate;
     if (!tpl.content.policy_groups) tpl.content.policy_groups = [];
-    const firstCand = availableNodeGroupTags[0] || '直连';
+    const firstCand = availableNodeGroupTags[0] || directOutbound?.tag || "直连";
     tpl.content.policy_groups.push({
-      tag: '新策略组 ' + (tpl.content.policy_groups.length + 1),
-      type: 'selector',
-      outbounds: [firstCand]
+      tag: "新策略组 " + (tpl.content.policy_groups.length + 1),
+      type: "selector",
+      outbounds: [firstCand],
+      default: firstCand
     });
     triggerUpdate();
   }
@@ -231,25 +267,11 @@
     }
   }
 
-  function addCandidateToPolicyGroup(pgIdx, candidate) {
-    const tpl = store.selectedTemplate;
-    const pg = tpl.content.policy_groups?.[pgIdx];
-    if (pg && Array.isArray(pg.outbounds) && candidate?.trim()) {
-      const val = candidate.trim();
-      if (!pg.outbounds.includes(val)) {
-        pg.outbounds.push(val);
-        triggerUpdate();
-      }
+  function handlePolicyGroupOutboundsChange(pg) {
+    if (pg.default && (!pg.outbounds || !pg.outbounds.includes(pg.default))) {
+      pg.default = pg.outbounds?.[0] || "";
     }
-  }
-
-  function removeCandidateFromPolicyGroup(pgIdx, targetIdx) {
-    const tpl = store.selectedTemplate;
-    const pg = tpl.content.policy_groups?.[pgIdx];
-    if (pg && Array.isArray(pg.outbounds)) {
-      pg.outbounds.splice(targetIdx, 1);
-      triggerUpdate();
-    }
+    triggerUpdate();
   }
 
   // --- Node Groups operations ---
@@ -724,134 +746,165 @@
       {/if}
 
       <!-- 2. Policy Groups View -->
-      {#if currentSubTab === 'policy_groups'}
-        <div class="space-y-3">
-          <div class="flex items-center justify-between px-1">
+      {#if currentSubTab === "policy_groups"}
+        <div class="space-y-4">
+          <!-- Subtab Header & Action -->
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
             <div class="text-xs text-slate-400">
-              出站策略组用于业务分流（如默认策略、AI、流媒体），其候选目标<strong>只能从已定义的节点分组与基础直连/拒绝出站中选择</strong>。
+              管理业务分流策略组与系统基础出站。策略组均为 <strong class="text-cyan-300 font-mono">Selector</strong> 类型，候选目标由节点分组及内置直连/阻断组成。
             </div>
             <button
+              type="button"
               onclick={addPolicyGroup}
-              class="px-2.5 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium flex items-center gap-1 shadow-sm"
+              class="px-2.5 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium flex items-center gap-1 shadow-sm shrink-0 self-start sm:self-auto cursor-pointer"
             >
               <Plus size={13} />
               <span>添加出站策略组</span>
             </button>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {#each store.selectedTemplate.content?.policy_groups || [] as pg, pgIdx}
-              <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-3.5 space-y-3">
-                <!-- Group Header: Type + Tag + Delete -->
-                <div class="flex items-center justify-between gap-2">
-                  <div class="flex items-center gap-2 flex-1">
-                    <select
-                      bind:value={pg.type}
-                      onchange={triggerUpdate}
-                      class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-cyan-300"
-                    >
-                      <option value="selector">Selector</option>
-                      <option value="urltest">URLTest</option>
-                    </select>
+          <!-- Section 1: System Built-in Base Outbounds -->
+          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-3.5 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5 text-xs text-slate-200 font-semibold">
+                <Shield size={14} class="text-emerald-400" />
+                <span>系统内置基础出站 (Base Outbounds)</span>
+              </div>
+              <span class="text-[11px] text-slate-500">内置出站不可删除；支持编辑标签名称以对接路由规则</span>
+            </div>
 
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <!-- Direct outbound -->
+              {#if directOutbound}
+                <div class="flex items-center gap-2.5 bg-slate-950/70 border border-slate-800/90 rounded-lg p-2.5">
+                  <span class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-950/80 border border-emerald-800/60 text-emerald-400 shrink-0">
+                    direct
+                  </span>
+                  <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                    <span class="text-slate-400 text-xs shrink-0">标签:</span>
                     <input
                       type="text"
-                      bind:value={pg.tag}
+                      bind:value={directOutbound.tag}
                       oninput={triggerUpdate}
-                      placeholder="策略组标签"
-                      class="bg-slate-950 text-slate-100 text-sm font-semibold px-2 py-0.5 rounded border border-slate-800 focus:border-cyan-500 focus:outline-none flex-1 font-mono"
+                      placeholder="直连"
+                      title="编辑直连出站标签"
+                      class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-100 font-mono font-medium focus:border-cyan-500 focus:outline-none flex-1 text-xs"
                     />
                   </div>
-
-                  <button
-                    onclick={() => removePolicyGroup(pgIdx)}
-                    title="删除此策略组"
-                    class="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-
-                <!-- Default selection option if present -->
-                <div class="flex items-center gap-2 text-xs bg-slate-950/60 p-2 rounded border border-slate-800/80">
-                  <span class="text-slate-400 text-[11px] whitespace-nowrap">默认选中 (Default):</span>
-                  <select
-                    bind:value={pg.default}
-                    onchange={triggerUpdate}
-                    class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-cyan-200 font-mono flex-1"
-                  >
-                    <option value="">(第一项)</option>
-                    {#each pg.outbounds || [] as t}
-                      <option value={t}>{t}</option>
-                    {/each}
-                  </select>
-                </div>
-
-                <!-- Targets list -->
-                <div class="space-y-2 pt-1">
-                  <div class="flex items-center justify-between text-xs text-slate-400">
-                    <span class="font-medium">已包含节点分组:</span>
-                    <span class="text-[11px] text-slate-500">共 {pg.outbounds?.length || 0} 项</span>
+                  <div class="flex items-center gap-1 text-[11px] text-slate-500 shrink-0 font-mono" title="系统核心直连出站，不可删除">
+                    <Lock size={12} class="text-slate-500" />
+                    <span>内置不可删</span>
                   </div>
+                </div>
+              {/if}
 
-                  <div class="flex flex-wrap gap-1.5 min-h-[30px] p-1.5 bg-slate-950/40 rounded border border-slate-800/60">
-                    {#each pg.outbounds || [] as target, tIdx}
-                      <div class="flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-slate-950 border border-slate-800 text-slate-200">
-                        <span class="font-medium {target === '直连' ? 'text-emerald-400' : 'text-cyan-300'}">{target}</span>
-                        <button
-                          onclick={() => removeCandidateFromPolicyGroup(pgIdx, tIdx)}
-                          title="从策略组中移除"
-                          class="text-slate-500 hover:text-rose-300 font-bold ml-0.5"
+              <!-- Block outbound -->
+              {#if blockOutbound}
+                <div class="flex items-center gap-2.5 bg-slate-950/70 border border-slate-800/90 rounded-lg p-2.5">
+                  <span class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-rose-950/80 border border-rose-800/60 text-rose-400 shrink-0">
+                    block
+                  </span>
+                  <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                    <span class="text-slate-400 text-xs shrink-0">标签:</span>
+                    <input
+                      type="text"
+                      bind:value={blockOutbound.tag}
+                      oninput={triggerUpdate}
+                      placeholder="block"
+                      title="编辑阻断出站标签"
+                      class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-100 font-mono font-medium focus:border-cyan-500 focus:outline-none flex-1 text-xs"
+                    />
+                  </div>
+                  <div class="flex items-center gap-1 text-[11px] text-slate-500 shrink-0 font-mono" title="系统核心阻断出站，不可删除">
+                    <Lock size={12} class="text-slate-500" />
+                    <span>内置不可删</span>
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </div>
+
+          <!-- Section 2: Policy Groups List (Table) -->
+          <div class="bg-slate-900/80 border border-slate-800 rounded-lg overflow-visible">
+            <div class="overflow-x-auto min-h-[300px]">
+              <table class="w-full text-xs text-left text-slate-300">
+                <thead class="bg-slate-950/90 text-slate-400 uppercase font-mono border-b border-slate-800 text-[11px]">
+                  <tr>
+                    <th class="py-2.5 px-3.5 w-[220px]">策略组标签 (Tag)</th>
+                    <th class="py-2.5 px-3 w-[90px]">类型</th>
+                    <th class="py-2.5 px-3 min-w-[320px]">包含节点分组 (多选下拉)</th>
+                    <th class="py-2.5 px-3 w-[180px]">默认选中 (Default)</th>
+                    <th class="py-2.5 px-3 w-[60px] text-center">操作</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60 font-mono">
+                  {#each store.selectedTemplate.content?.policy_groups || [] as pg, pgIdx}
+                    <tr class="hover:bg-slate-950/30 transition-colors align-middle">
+                      <!-- Tag Name -->
+                      <td class="py-2.5 px-3.5">
+                        <input
+                          type="text"
+                          bind:value={pg.tag}
+                          oninput={triggerUpdate}
+                          placeholder="策略组标签"
+                          class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-100 font-semibold focus:border-cyan-500 focus:outline-none font-mono"
+                        />
+                      </td>
+
+                      <!-- Fixed Type: Selector -->
+                      <td class="py-2.5 px-3">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-cyan-950/80 border border-cyan-800/60 text-cyan-300">
+                          Selector
+                        </span>
+                      </td>
+
+                      <!-- MultiSelect Node Groups -->
+                      <td class="py-2.5 px-3">
+                        <MultiSelect
+                          options={policyCandidateOptions}
+                          bind:selected={pg.outbounds}
+                          placeholder="选择包含的节点分组..."
+                          onChange={() => handlePolicyGroupOutboundsChange(pg)}
+                        />
+                      </td>
+
+                      <!-- Default selection (Under/Next to node groups) -->
+                      <td class="py-2.5 px-3">
+                        <select
+                          bind:value={pg.default}
+                          onchange={triggerUpdate}
+                          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-cyan-200 font-mono focus:border-cyan-500 focus:outline-none"
                         >
-                          &times;
+                          <option value="">(首项: {pg.outbounds?.[0] || "空"})</option>
+                          {#each pg.outbounds || [] as cand}
+                            <option value={cand}>{cand}</option>
+                          {/each}
+                        </select>
+                      </td>
+
+                      <!-- Delete Action -->
+                      <td class="py-2.5 px-3 text-center">
+                        <button
+                          type="button"
+                          onclick={() => removePolicyGroup(pgIdx)}
+                          title="删除此策略组"
+                          class="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                        >
+                          <Trash2 size={13} />
                         </button>
-                      </div>
-                    {/each}
-                    {#if !pg.outbounds || pg.outbounds.length === 0}
-                      <span class="text-xs text-slate-500 italic p-1">请添加至少一个节点分组或直连</span>
-                    {/if}
-                  </div>
-
-                  <!-- Candidate Selection (Strictly Node Groups + Direct) -->
-                  <div class="space-y-1.5 pt-1">
-                    <div class="flex items-center gap-1.5">
-                      <select
-                        id={`candidate-select-${pgIdx}`}
-                        class="bg-slate-950 text-xs px-2.5 py-1 rounded border border-slate-800 text-slate-200 focus:outline-none focus:border-cyan-500/80 flex-1 font-mono"
-                      >
-                        {#each availablePolicyCandidates as cand}
-                          <option value={cand} disabled={pg.outbounds?.includes(cand)}>{cand}</option>
-                        {/each}
-                      </select>
-                      <button
-                        onclick={() => {
-                          const sel = document.getElementById(`candidate-select-${pgIdx}`);
-                          if (sel && sel.value) {
-                            addCandidateToPolicyGroup(pgIdx, sel.value);
-                          }
-                        }}
-                        class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs shrink-0 font-medium"
-                      >
-                        添加
-                      </button>
-                    </div>
-
-                    <!-- Quick Add suggestions for remaining node groups -->
-                    <div class="flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
-                      <span>快捷添加:</span>
-                      {#if !pg.outbounds?.includes('直连')}
-                        <button onclick={() => addCandidateToPolicyGroup(pgIdx, '直连')} class="px-1.5 py-0.5 bg-slate-950 hover:bg-slate-800 rounded border border-slate-800 text-slate-400">直连</button>
-                      {/if}
-                      {#each availableNodeGroupTags as ngTag}
-                        {#if !pg.outbounds?.includes(ngTag)}
-                          <button onclick={() => addCandidateToPolicyGroup(pgIdx, ngTag)} class="px-1.5 py-0.5 bg-slate-950 hover:bg-slate-800 rounded border border-slate-800 text-cyan-400">{ngTag}</button>
-                        {/if}
-                      {/each}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            {/each}
+                      </td>
+                    </tr>
+                  {/each}
+                  {#if !store.selectedTemplate.content?.policy_groups || store.selectedTemplate.content.policy_groups.length === 0}
+                    <tr>
+                      <td colspan="5" class="py-8 text-center text-slate-500 text-xs font-mono">
+                        暂无出站策略组，点击右上角「添加出站策略组」进行创建
+                      </td>
+                    </tr>
+                  {/if}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       {/if}
