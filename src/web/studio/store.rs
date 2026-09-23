@@ -430,6 +430,7 @@ fn module_filename(key: &str) -> Option<String> {
         "node_groups" => "canto.node_groups.json".to_string(),
         "policy_groups" => "canto.policy_groups.json".to_string(),
         "rule_sets" => "canto.rule_sets.json".to_string(),
+        "outbounds" => return None,
         other => format!("{other}.json"),
     };
     Some(filename)
@@ -709,15 +710,14 @@ mod tests {
                     "tag": "香港节点",
                     "outbounds": ["{(?i)(港|hk)}"]
                 }],
-                "policy_groups": [{
-                    "type": "selector",
-                    "tag": "默认策略",
-                    "outbounds": ["香港节点", "direct"]
-                }],
-                "outbounds": [{
-                    "type": "direct",
-                    "tag": "direct"
-                }]
+                "policy_groups": [
+                    { "type": "direct", "tag": "direct" },
+                    {
+                        "type": "selector",
+                        "tag": "默认策略",
+                        "outbounds": ["香港节点", "direct"]
+                    }
+                ]
             }),
         }
     }
@@ -734,7 +734,7 @@ mod tests {
         assert!(target_dir.join("meta.json").is_file());
         assert!(target_dir.join("canto.node_groups.json").is_file());
         assert!(target_dir.join("canto.policy_groups.json").is_file());
-        assert!(target_dir.join("outbounds.json").is_file());
+        assert!(!target_dir.join("outbounds.json").exists());
 
         let persisted = fs::read_to_string(target_dir.join("canto.node_groups.json")).unwrap();
         assert!(persisted.contains("{(?i)(港|hk)}"));

@@ -36,19 +36,22 @@ pub fn expand_profile(template_content: &Value, nodes: &[Value]) -> Expansion {
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    let mut base_outbounds = template_content
+    let base_outbounds = template_content
         .get("outbounds")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
 
-    let fallback_tag = base_outbounds.iter().find_map(|outbound| {
-        if outbound.get("type").and_then(Value::as_str) == Some("direct") {
-            node_tag(outbound).map(str::to_string)
-        } else {
-            None
-        }
-    });
+    let fallback_tag = policy_groups
+        .iter()
+        .chain(base_outbounds.iter())
+        .find_map(|outbound| {
+            if outbound.get("type").and_then(Value::as_str) == Some("direct") {
+                node_tag(outbound).map(str::to_string)
+            } else {
+                None
+            }
+        });
 
     let mut matched_map = BTreeMap::new();
     let mut regex_hits: HashSet<String> = HashSet::new();
@@ -117,14 +120,27 @@ pub fn expand_profile(template_content: &Value, nodes: &[Value]) -> Expansion {
         expanded_node_groups.push(group);
     }
 
-    if needs_synthetic_direct {
-        ensure_direct_outbound(&mut base_outbounds);
-    }
+    let (terminal_policies, selector_policies): (Vec<Value>, Vec<Value>) =
+        policy_groups.into_iter().partition(|o| {
+            matches!(
+                o.get("type").and_then(Value::as_str),
+                Some("direct" | "block")
+            )
+        });
 
     let mut assembled_outbounds: Vec<Value> = Vec::new();
-    assembled_outbounds.extend(policy_groups);
+    assembled_outbounds.extend(selector_policies);
     assembled_outbounds.extend(expanded_node_groups);
+    assembled_outbounds.extend(terminal_policies);
     assembled_outbounds.extend(base_outbounds);
+
+    if needs_synthetic_direct
+        || assembled_outbounds
+            .iter()
+            .all(|o| o.get("type").and_then(Value::as_str) != Some("direct"))
+    {
+        ensure_direct_outbound(&mut assembled_outbounds);
+    }
 
     let mut existing_tags: HashSet<String> = HashSet::new();
     for outbound in &assembled_outbounds {
@@ -463,5 +479,29 @@ mod tests {
             json!(["cn", "ai", "netflix"])
         );
         assert_eq!(expansion.config["route"]["rule_set"][0]["format"], "binary");
+    }
+    #[test]
+    fn test_expands_with_direct_in_policy_groups_and_no_base_outbounds() {
+        let template = json!({
+            "node_groups": [
+                { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|hk)}"] }
+            ],
+            "policy_groups": [
+                { "type": "direct", "tag": "直连" },
+                { "type": "block", "tag": "block" },
+                { "type": "selector", "tag": "默认策略", "outbounds": ["香港节点", "直连"] }
+            ]
+        });
+        let nodes = vec![vless("HK-01")];
+        let expansion = expand_profile(&template, &nodes);
+
+        assert_eq!(
+            outbound_tags(&expansion.config),
+            vec!["默认策略", "香港节点", "直连", "block", "HK-01"]
+        );
+        assert_eq!(expansion.config["outbounds"][0]["type"], "selector");
+        assert_eq!(expansion.config["outbounds"][1]["type"], "urltest");
+        assert_eq!(expansion.config["outbounds"][2]["type"], "direct");
+        assert_eq!(expansion.config["outbounds"][3]["type"], "block");
     }
 }

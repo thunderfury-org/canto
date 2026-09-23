@@ -265,6 +265,8 @@ pub fn validate_template_content(content: &Value) -> std::result::Result<(), Str
     if let Some(policy_groups) = obj.get("policy_groups").and_then(Value::as_array) {
         let mut policy_group_tags: std::collections::HashSet<String> =
             std::collections::HashSet::new();
+
+        // Pass 1: Validate tags, duplicate tags, types, and collect direct/block base tags
         for group in policy_groups {
             let Some(item) = group.as_object() else {
                 return Err("content.policy_groups entries must be objects".to_string());
@@ -293,6 +295,33 @@ pub fn validate_template_content(content: &Value) -> std::result::Result<(), Str
             if typ.is_empty() {
                 return Err(format!("policy group '{tag}' must have a non-empty type"));
             }
+            if matches!(typ, "direct" | "block") {
+                base_tags.insert(tag.to_string());
+            } else if !matches!(typ, "selector" | "urltest") {
+                return Err(format!(
+                    "policy group '{tag}' has unsupported type '{typ}'; must be selector, urltest, direct, or block"
+                ));
+            }
+        }
+
+        // Pass 2: Validate selector/urltest outbounds targets
+        for group in policy_groups {
+            let Some(item) = group.as_object() else {
+                continue;
+            };
+            let typ = item
+                .get("type")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or("");
+            if matches!(typ, "direct" | "block") {
+                continue;
+            }
+            let tag = item
+                .get("tag")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or("");
             let Some(targets) = item.get("outbounds").and_then(Value::as_array) else {
                 return Err(format!(
                     "policy group '{tag}' outbounds must be an array of strings"
@@ -539,6 +568,18 @@ mod tests {
                     "outbounds": ["香港节点", "直连"]
                 }],
                 "outbounds": [{ "type": "direct", "tag": "直连" }]
+            }))
+            .is_ok()
+        );
+        // policy_groups with direct and block and no outbounds field is also ok
+        assert!(
+            validate_template_content(&json!({
+                "log": { "level": "warn" },
+                "policy_groups": [
+                    { "type": "direct", "tag": "直连" },
+                    { "type": "block", "tag": "block" },
+                    { "type": "selector", "tag": "默认策略", "outbounds": ["直连"] }
+                ]
             }))
             .is_ok()
         );

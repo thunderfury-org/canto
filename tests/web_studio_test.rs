@@ -654,13 +654,11 @@ async fn test_templates_crud_persist_and_schema_validation() {
             "inbounds": [{ "type": "tproxy", "tag": "tproxy-in", "listen_port": 7893 }],
             "endpoints": [{ "type": "tailscale", "tag": "ts-ep", "auth_key": "" }],
             "policy_groups": [
-                { "type": "selector", "tag": "默认策略", "outbounds": ["香港节点", "直连"] }
+                { "type": "selector", "tag": "默认策略", "outbounds": ["香港节点", "直连"] },
+                { "type": "direct", "tag": "直连" }
             ],
             "node_groups": [
                 { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|hk)}"] }
-            ],
-            "outbounds": [
-                { "type": "direct", "tag": "直连" }
             ],
             "route": {
                 "final": "默认策略",
@@ -710,6 +708,7 @@ async fn test_templates_crud_persist_and_schema_validation() {
     let ng_file = dir_path.join("canto.node_groups.json");
     let ng_json: Value = serde_json::from_str(&std::fs::read_to_string(&ng_file).unwrap()).unwrap();
     assert_eq!(ng_json[0]["outbounds"][0], "{(?i)(港|hk)}");
+    assert!(!dir_path.join("outbounds.json").exists());
 
     let (status, fetched) = json_body(
         app.clone()
@@ -841,13 +840,11 @@ async fn test_profiles_crud_preview_and_public_subscription() {
         "content": {
             "log": { "level": "warn" },
             "policy_groups": [
-                { "type": "selector", "tag": "默认策略", "outbounds": ["香港节点", "直连"] }
+                { "type": "selector", "tag": "默认策略", "outbounds": ["香港节点", "直连"] },
+                { "type": "direct", "tag": "直连" }
             ],
             "node_groups": [
                 { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)(港|hk)}"] }
-            ],
-            "outbounds": [
-                { "type": "direct", "tag": "直连" }
             ]
         }
     });
@@ -1296,7 +1293,7 @@ async fn test_relational_guards_prevent_dangling_template_and_empty_profile_sour
         "name": "基准模板",
         "content": {
             "inbounds": [{ "type": "tun", "tag": "tun-in" }],
-            "outbounds": [{ "type": "direct", "tag": "direct" }]
+            "policy_groups": [{ "type": "direct", "tag": "direct" }]
         }
     });
     let (status, tpl) = json_body(
@@ -1474,7 +1471,7 @@ async fn test_relational_guards_prevent_dangling_template_and_empty_profile_sour
     let multi_provider_payload = json!({
         "name": "多规则源模板",
         "content": {
-            "outbounds": [{ "type": "direct", "tag": "直连" }],
+            "policy_groups": [{ "type": "direct", "tag": "直连" }],
             "rule_sets": [
                 {
                     "name": "SagerNet GeoSite",
@@ -1567,7 +1564,7 @@ async fn test_ruleset_presets_and_template_rule_sets_flow() {
     let valid_tpl_payload = json!({
         "name": "规则集解耦模板",
         "content": {
-            "outbounds": [{ "type": "direct", "tag": "直连" }],
+            "policy_groups": [{ "type": "direct", "tag": "直连" }],
             "rule_sets": [
                 {
                     "type": "remote",
@@ -1603,7 +1600,7 @@ async fn test_ruleset_presets_and_template_rule_sets_flow() {
     let invalid_tpl_payload = json!({
         "name": "非法规则集模板",
         "content": {
-            "outbounds": [{ "type": "direct", "tag": "直连" }],
+            "policy_groups": [{ "type": "direct", "tag": "直连" }],
             "rule_sets": [
                 {
                     "type": "remote",
