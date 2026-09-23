@@ -222,10 +222,30 @@ pub fn validate_template_content(content: &Value) -> std::result::Result<(), Str
                     "node group '{tag}' outbounds must be an array of strings"
                 ));
             };
-            if targets.iter().any(|target| !target.is_string()) {
-                return Err(format!(
-                    "node group '{tag}' outbounds must be an array of strings"
-                ));
+            for target_val in targets {
+                let Some(target) = target_val.as_str() else {
+                    return Err(format!(
+                        "node group '{tag}' outbounds must be an array of strings"
+                    ));
+                };
+                let trimmed = target.trim();
+                if !trimmed.starts_with('{') || !trimmed.ends_with('}') || trimmed.len() < 2 {
+                    return Err(format!(
+                        "node group '{tag}' outbound '{target}' must be a regex pattern enclosed in '{{...}}'"
+                    ));
+                }
+                let pattern = trimmed[1..trimmed.len() - 1].trim();
+                if pattern.is_empty() {
+                    return Err(format!(
+                        "node group '{tag}' outbound pattern cannot be empty"
+                    ));
+                }
+                regex::RegexBuilder::new(pattern)
+                    .case_insensitive(true)
+                    .build()
+                    .map_err(|err| {
+                        format!("node group '{tag}' has invalid regex pattern '{pattern}': {err}")
+                    })?;
             }
         }
     }
@@ -428,8 +448,29 @@ mod tests {
         // tag collision between policy group and node group must be rejected
         assert!(
             validate_template_content(&json!({
-                "node_groups": [{ "type": "urltest", "tag": "hk", "outbounds": ["hk-01"] }],
+                "node_groups": [{ "type": "urltest", "tag": "hk", "outbounds": ["{(?i)hk}"] }],
                 "policy_groups": [{ "type": "selector", "tag": "hk", "outbounds": ["direct"] }]
+            }))
+            .is_err()
+        );
+        // node group with non-braced target must be rejected
+        assert!(
+            validate_template_content(&json!({
+                "node_groups": [{ "type": "urltest", "tag": "hk", "outbounds": ["hk-01"] }]
+            }))
+            .is_err()
+        );
+        // node group with invalid regex pattern must be rejected
+        assert!(
+            validate_template_content(&json!({
+                "node_groups": [{ "type": "urltest", "tag": "hk", "outbounds": ["{[}"] }]
+            }))
+            .is_err()
+        );
+        // node group with empty pattern must be rejected
+        assert!(
+            validate_template_content(&json!({
+                "node_groups": [{ "type": "urltest", "tag": "hk", "outbounds": ["{}"] }]
             }))
             .is_err()
         );

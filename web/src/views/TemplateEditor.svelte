@@ -14,7 +14,7 @@
   import ArrowUp from 'lucide-svelte/icons/arrow-up';
   import ArrowDown from 'lucide-svelte/icons/arrow-down';
 
-  let currentSubTab = $state('policy_groups'); // 'policy_groups' | 'node_groups' | 'dns' | 'route' | 'inbounds' | 'experimental'
+  let currentSubTab = $state('node_groups'); // 'node_groups' | 'policy_groups' | 'route' | 'dns' | 'inbounds' | 'experimental'
   let editMode = $state('visual'); // 'visual' | 'raw'
   let rawJsonText = $state('');
   let rawJsonError = $state(null);
@@ -272,25 +272,52 @@
     }
   }
 
-  function addTargetToNodeGroup(ngIdx, targetStr) {
-    const tpl = store.selectedTemplate;
-    const ng = tpl.content.node_groups?.[ngIdx];
-    if (ng && Array.isArray(ng.outbounds) && targetStr?.trim()) {
-      const val = targetStr.trim();
-      if (!ng.outbounds.includes(val)) {
-        ng.outbounds.push(val);
-        triggerUpdate();
-      }
+  function getDisplayPattern(outbounds) {
+    if (!Array.isArray(outbounds) || outbounds.length === 0) return "";
+    const first = outbounds[0];
+    if (typeof first !== "string") return "";
+    let clean = first.trim();
+    if (clean.startsWith("{") && clean.endsWith("}") && clean.length >= 2) {
+      clean = clean.slice(1, -1).trim();
+    }
+    if (clean.startsWith("(?i)")) {
+      clean = clean.slice(4).trim();
+    }
+    return clean;
+  }
+
+  function checkRegexValid(pattern) {
+    if (!pattern) return true;
+    let clean = pattern.trim();
+    if (clean.startsWith("(?i)")) {
+      clean = clean.slice(4).trim();
+    }
+    try {
+      new RegExp(clean, "i");
+      return true;
+    } catch {
+      return false;
     }
   }
 
-  function removeTargetFromNodeGroup(ngIdx, targetIdx) {
+  function updateNodeGroupPattern(ngIdx, rawInput) {
     const tpl = store.selectedTemplate;
     const ng = tpl.content.node_groups?.[ngIdx];
-    if (ng && Array.isArray(ng.outbounds)) {
-      ng.outbounds.splice(targetIdx, 1);
-      triggerUpdate();
+    if (!ng) return;
+    let s = (rawInput || "").trim();
+    if (s.startsWith("{") && s.endsWith("}") && s.length >= 2) {
+      s = s.slice(1, -1).trim();
     }
+    if (s.startsWith("(?i)")) {
+      s = s.slice(4).trim();
+    }
+    if (!s) {
+      ng.outbounds = [];
+    } else {
+      const stored = s === ".*" ? "{.*}" : `{(?i)${s}}`;
+      ng.outbounds = [stored];
+    }
+    triggerUpdate();
   }
 
   // --- DNS operations ---
@@ -529,30 +556,21 @@
       <!-- Sub-module Navigation -->
       <div class="flex flex-wrap items-center gap-1.5 bg-slate-900/60 p-1 rounded-lg border border-slate-800 text-xs">
         <button
-          onclick={() => (currentSubTab = 'policy_groups')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'policy_groups' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
-        >
-          <Sparkles size={13} class="text-cyan-400" />
-          <span>出站策略组 (Policy Groups)</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.policy_groups?.length || 0}</span>
-        </button>
-
-        <button
           onclick={() => (currentSubTab = 'node_groups')}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'node_groups' ? 'bg-slate-800 text-amber-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
           <Layers size={13} class="text-amber-400" />
-          <span>节点分组 (Node Groups)</span>
+          <span>节点分组</span>
           <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.node_groups?.length || 0}</span>
         </button>
 
         <button
-          onclick={() => (currentSubTab = 'dns')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'dns' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+          onclick={() => (currentSubTab = 'policy_groups')}
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'policy_groups' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
-          <Radio size={13} />
-          <span>DNS 服务器 & 分流</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.dns?.servers?.length || 0}</span>
+          <Sparkles size={13} class="text-cyan-400" />
+          <span>出站策略组</span>
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.policy_groups?.length || 0}</span>
         </button>
 
         <button
@@ -560,15 +578,24 @@
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'route' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
           <Layers size={13} />
-          <span>路由分流规则 (Route)</span>
+          <span>路由分流规则</span>
           <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.route?.rules?.length || 0}</span>
+        </button>
+
+        <button
+          onclick={() => (currentSubTab = 'dns')}
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'dns' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+        >
+          <Radio size={13} />
+          <span>DNS 服务器与分流</span>
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.dns?.servers?.length || 0}</span>
         </button>
 
         <button
           onclick={() => (currentSubTab = 'inbounds')}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'inbounds' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
-          <span>入站 & 端点 (Inbounds)</span>
+          <span>入站与端点</span>
           <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">
             {(store.selectedTemplate.content?.inbounds?.length || 0) + (store.selectedTemplate.content?.endpoints?.length || 0)}
           </span>
@@ -578,11 +605,125 @@
           onclick={() => { ensureExperimentalDefaults(); currentSubTab = 'experimental'; }}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'experimental' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
         >
-          <span>Log & Clash API</span>
+          <span>日志与 Clash API</span>
         </button>
       </div>
 
-      <!-- 1. Policy Groups View -->
+      <!-- 1. Node Groups View -->
+      {#if currentSubTab === 'node_groups'}
+        <div class="space-y-3">
+          <div class="flex items-center justify-between px-1">
+            <div class="text-xs text-slate-400">
+              节点分组用于从节点源中通过正则表达式（默认忽略大小写）筛选并聚合代理节点，支持自动测速优选。
+            </div>
+            <button
+              onclick={addNodeGroup}
+              class="px-2.5 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium flex items-center gap-1 shadow-sm"
+            >
+              <Plus size={13} />
+              <span>添加节点分组</span>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {#each store.selectedTemplate.content?.node_groups || [] as ng, ngIdx}
+              {@const currentPattern = getDisplayPattern(ng.outbounds)}
+              {@const matchedNodes = getMatchedNodesForPattern(ng.outbounds?.[0] || "")}
+              {@const isValidRegex = checkRegexValid(currentPattern)}
+              <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-3.5 space-y-3">
+                <!-- Group Header: Type + Tag + Delete -->
+                <div class="flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2 flex-1">
+                    <select
+                      bind:value={ng.type}
+                      onchange={triggerUpdate}
+                      class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold {ng.type === 'urltest' ? 'text-amber-300' : 'text-cyan-300'}"
+                    >
+                      <option value="urltest">URLTest</option>
+                      <option value="selector">Selector</option>
+                    </select>
+
+                    <input
+                      type="text"
+                      bind:value={ng.tag}
+                      oninput={triggerUpdate}
+                      placeholder="分组标签，如：香港节点"
+                      class="bg-slate-950 text-slate-100 text-sm font-semibold px-2 py-0.5 rounded border border-slate-800 focus:border-amber-500 focus:outline-none flex-1 font-mono"
+                    />
+                  </div>
+
+                  <button
+                    onclick={() => removeNodeGroup(ngIdx)}
+                    title="删除此节点分组"
+                    class="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+
+                <!-- Urltest specific options -->
+                {#if ng.type === 'urltest'}
+                  <div class="grid grid-cols-2 gap-2 bg-slate-950/60 p-2 rounded border border-slate-800/80 text-xs">
+                    <div>
+                      <span class="text-slate-400 text-[11px] block">容差</span>
+                      <input
+                        type="number"
+                        bind:value={ng.tolerance}
+                        oninput={triggerUpdate}
+                        placeholder="50 (ms)"
+                        class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-slate-200 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <span class="text-slate-400 text-[11px] block">测速间隔</span>
+                      <input
+                        type="text"
+                        bind:value={ng.interval}
+                        oninput={triggerUpdate}
+                        placeholder="3m"
+                        class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-slate-200 font-mono"
+                      />
+                    </div>
+                  </div>
+                {/if}
+
+                <!-- Single Regex Pattern Section -->
+                <div class="space-y-1.5 pt-1">
+                  <div class="flex items-center justify-between text-xs text-slate-400">
+                    <span class="font-medium">节点筛选正则:</span>
+                    {#if !isValidRegex}
+                      <span class="text-rose-400 font-medium">正则格式错误</span>
+                    {:else}
+                      <span class="text-[11px] {matchedNodes.length > 0 ? "text-amber-400 font-medium" : "text-slate-500"}" title={matchedNodes.join(", ")}>
+                        命中 {matchedNodes.length} 个节点
+                      </span>
+                    {/if}
+                  </div>
+
+                  <div class="relative flex items-center">
+                    <input
+                      type="text"
+                      value={currentPattern}
+                      oninput={(e) => updateNodeGroupPattern(ngIdx, e.currentTarget.value)}
+                      placeholder="例如：港|hk 或 .*"
+                      class="w-full bg-slate-950 text-xs px-3 py-2 rounded border {isValidRegex ? "border-slate-800 focus:border-amber-500/80" : "border-rose-800 text-rose-200"} text-slate-200 focus:outline-none font-mono"
+                    />
+                    {#if isValidRegex && matchedNodes.length > 0}
+                      <span
+                        class="absolute right-2.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60 font-mono pointer-events-none"
+                      >
+                        {matchedNodes.length} 节点
+                      </span>
+                    {/if}
+                  </div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      <!-- 2. Policy Groups View -->
       {#if currentSubTab === 'policy_groups'}
         <div class="space-y-3">
           <div class="flex items-center justify-between px-1">
@@ -609,8 +750,8 @@
                       onchange={triggerUpdate}
                       class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold text-cyan-300"
                     >
-                      <option value="selector">selector</option>
-                      <option value="urltest">urltest</option>
+                      <option value="selector">Selector</option>
+                      <option value="urltest">URLTest</option>
                     </select>
 
                     <input
@@ -711,318 +852,6 @@
                 </div>
               </div>
             {/each}
-          </div>
-        </div>
-      {/if}
-
-      <!-- 2. Node Groups View -->
-      {#if currentSubTab === 'node_groups'}
-        <div class="space-y-3">
-          <div class="flex items-center justify-between px-1">
-            <div class="text-xs text-slate-400">
-              节点分组用于从节点源中按正则占位符（如 <code class="text-amber-400 bg-slate-900 border border-slate-800 px-1 py-0.5 rounded font-mono">&#123;(?i)(港|hk)&#125;</code>、<code class="text-amber-400 font-mono">&#123;.*&#125;</code>）筛选并聚合代理节点，支持自动测速优选。
-            </div>
-            <button
-              onclick={addNodeGroup}
-              class="px-2.5 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium flex items-center gap-1 shadow-sm"
-            >
-              <Plus size={13} />
-              <span>添加节点分组</span>
-            </button>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {#each store.selectedTemplate.content?.node_groups || [] as ng, ngIdx}
-              <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-3.5 space-y-3">
-                <!-- Group Header: Type + Tag + Delete -->
-                <div class="flex items-center justify-between gap-2">
-                  <div class="flex items-center gap-2 flex-1">
-                    <select
-                      bind:value={ng.type}
-                      onchange={triggerUpdate}
-                      class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold {ng.type === 'urltest' ? 'text-amber-300' : 'text-cyan-300'}"
-                    >
-                      <option value="urltest">urltest (自动测速)</option>
-                      <option value="selector">selector (手动切换)</option>
-                    </select>
-
-                    <input
-                      type="text"
-                      bind:value={ng.tag}
-                      oninput={triggerUpdate}
-                      placeholder="分组标签，如：香港节点"
-                      class="bg-slate-950 text-slate-100 text-sm font-semibold px-2 py-0.5 rounded border border-slate-800 focus:border-amber-500 focus:outline-none flex-1 font-mono"
-                    />
-                  </div>
-
-                  <button
-                    onclick={() => removeNodeGroup(ngIdx)}
-                    title="删除此节点分组"
-                    class="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-
-                <!-- Urltest specific options -->
-                {#if ng.type === 'urltest'}
-                  <div class="grid grid-cols-2 gap-2 bg-slate-950/60 p-2 rounded border border-slate-800/80 text-xs">
-                    <div>
-                      <span class="text-slate-400 text-[11px] block">容差 (Tolerance)</span>
-                      <input
-                        type="number"
-                        bind:value={ng.tolerance}
-                        oninput={triggerUpdate}
-                        placeholder="50 (ms)"
-                        class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-slate-200 font-mono"
-                      />
-                    </div>
-                    <div>
-                      <span class="text-slate-400 text-[11px] block">测速间隔 (Interval)</span>
-                      <input
-                        type="text"
-                        bind:value={ng.interval}
-                        oninput={triggerUpdate}
-                        placeholder="3m"
-                        class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-slate-200 font-mono"
-                      />
-                    </div>
-                  </div>
-                {/if}
-
-                <!-- Targets list -->
-                {#if Array.isArray(ng.outbounds)}
-                  <div class="space-y-2 pt-1">
-                    <div class="flex items-center justify-between text-xs text-slate-400">
-                      <span class="font-medium">匹配正则模式 / 节点标签:</span>
-                      <span class="text-[11px] text-slate-500">共 {ng.outbounds.length} 项</span>
-                    </div>
-
-                    <div class="flex flex-wrap gap-1.5 min-h-[30px] p-1.5 bg-slate-950/40 rounded border border-slate-800/60">
-                      {#each ng.outbounds as target, tIdx}
-                        {@const isPattern = target.startsWith('{') && target.endsWith('}')}
-                        {@const matchedTags = isPattern ? getMatchedNodesForPattern(target) : []}
-
-                        <div class="flex items-center gap-1.5 px-2 py-1 rounded text-xs {isPattern ? 'bg-amber-950/70 border border-amber-800/70 text-amber-300' : 'bg-slate-950 border border-slate-800 text-slate-200'}">
-                          {#if isPattern}
-                            <span class="font-mono text-amber-400 font-semibold">{target}</span>
-                            <span class="text-[10px] px-1 py-0.2 rounded bg-amber-900/60 text-amber-200 border border-amber-700/50" title={matchedTags.join(', ')}>
-                              命中 {matchedTags.length}
-                            </span>
-                          {:else}
-                            <span class="font-medium">{target}</span>
-                          {/if}
-                          <button
-                            onclick={() => removeTargetFromNodeGroup(ngIdx, tIdx)}
-                            title="从组中移除"
-                            class="text-slate-500 hover:text-rose-300 font-bold ml-0.5"
-                          >
-                            &times;
-                          </button>
-                        </div>
-                      {/each}
-                    </div>
-
-                    <!-- Input and Quick suggestions -->
-                    <div class="space-y-1.5 pt-1">
-                      <div class="flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          placeholder="输入 &#123;regex&#125; 或节点 tag"
-                          id={`ng-target-input-${ngIdx}`}
-                          onkeydown={(e) => {
-                            if (e.key === 'Enter') {
-                              addTargetToNodeGroup(ngIdx, e.currentTarget.value);
-                              e.currentTarget.value = '';
-                            }
-                          }}
-                          class="bg-slate-950 text-xs px-2.5 py-1 rounded border border-slate-800 text-slate-200 focus:outline-none focus:border-amber-500/80 flex-1 font-mono"
-                        />
-                        <button
-                          onclick={() => {
-                            const input = document.getElementById(`ng-target-input-${ngIdx}`);
-                            if (input) {
-                              addTargetToNodeGroup(ngIdx, input.value);
-                              input.value = '';
-                            }
-                          }}
-                          class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs shrink-0 font-medium"
-                        >
-                          添加
-                        </button>
-                      </div>
-
-                      <div class="flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
-                        <span>快捷正则:</span>
-                        <button onclick={() => addTargetToNodeGroup(ngIdx, '{.*}')} class="px-1.5 py-0.5 bg-amber-950/40 hover:bg-amber-900/40 rounded border border-amber-800/40 text-amber-300 font-mono">&#123;.*&#125;</button>
-                        <button onclick={() => addTargetToNodeGroup(ngIdx, '{(?i)(港|hk)}')} class="px-1.5 py-0.5 bg-amber-950/40 hover:bg-amber-900/40 rounded border border-amber-800/40 text-amber-300 font-mono">&#123;香港&#125;</button>
-                        <button onclick={() => addTargetToNodeGroup(ngIdx, '{(?i)(台|tw)}')} class="px-1.5 py-0.5 bg-amber-950/40 hover:bg-amber-900/40 rounded border border-amber-800/40 text-amber-300 font-mono">&#123;台湾&#125;</button>
-                        <button onclick={() => addTargetToNodeGroup(ngIdx, '{(?i)(日本|jp)}')} class="px-1.5 py-0.5 bg-amber-950/40 hover:bg-amber-900/40 rounded border border-amber-800/40 text-amber-300 font-mono">&#123;日本&#125;</button>
-                        <button onclick={() => addTargetToNodeGroup(ngIdx, '{(?i)(新加坡|sg)}')} class="px-1.5 py-0.5 bg-amber-950/40 hover:bg-amber-900/40 rounded border border-amber-800/40 text-amber-300 font-mono">&#123;新加坡&#125;</button>
-                        <button onclick={() => addTargetToNodeGroup(ngIdx, '{(?i)(美国|us)}')} class="px-1.5 py-0.5 bg-amber-950/40 hover:bg-amber-900/40 rounded border border-amber-800/40 text-amber-300 font-mono">&#123;美国&#125;</button>
-                        <button onclick={() => addTargetToNodeGroup(ngIdx, '{My-}')} class="px-1.5 py-0.5 bg-amber-950/40 hover:bg-amber-900/40 rounded border border-amber-800/40 text-amber-300 font-mono">&#123;My-&#125;</button>
-                      </div>
-                    </div>
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
-
-      <!-- 2. DNS Module View -->
-      {#if currentSubTab === 'dns'}
-        <div class="space-y-4">
-          <!-- Upstream Servers Card -->
-          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
-              <div>
-                <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
-                  <Radio size={15} class="text-indigo-400" />
-                  <span>上游 DNS 服务器 (DNS Servers)</span>
-                </h3>
-                <span class="text-xs text-slate-400">配置各 DNS 服务协议、上游地址与前置代理 detour</span>
-              </div>
-              <button
-                onclick={addDnsServer}
-                class="px-2.5 py-1 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 text-xs font-medium flex items-center gap-1"
-              >
-                <Plus size={13} />
-                <span>添加 DNS 服务器</span>
-              </button>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {#each store.selectedTemplate.content?.dns?.servers || [] as srv, sIdx}
-                <div class="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2 text-xs">
-                  <div class="flex items-center justify-between gap-1">
-                    <input
-                      type="text"
-                      bind:value={srv.tag}
-                      oninput={triggerUpdate}
-                      placeholder="标签名"
-                      class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-100 font-mono font-bold w-full"
-                    />
-                    <button
-                      onclick={() => removeDnsServer(sIdx)}
-                      title="删除此 DNS 服务器"
-                      class="text-slate-500 hover:text-rose-400 p-1"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-
-                  <div class="space-y-1.5">
-                    <div class="flex items-center gap-1.5">
-                      <span class="text-slate-500 text-[11px] w-12">协议:</span>
-                      <select
-                        bind:value={srv.type}
-                        onchange={triggerUpdate}
-                        class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
-                      >
-                        <option value="https">https (DoH)</option>
-                        <option value="tcp">tcp</option>
-                        <option value="udp">udp</option>
-                        <option value="tls">tls (DoT)</option>
-                        <option value="quic">quic (DoQ)</option>
-                      </select>
-                    </div>
-
-                    <div class="flex items-center gap-1.5">
-                      <span class="text-slate-500 text-[11px] w-12">地址:</span>
-                      <input
-                        type="text"
-                        bind:value={srv.server}
-                        oninput={triggerUpdate}
-                        placeholder="1.1.1.1"
-                        class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
-                      />
-                    </div>
-
-                    <div class="flex items-center gap-1.5">
-                      <span class="text-slate-500 text-[11px] w-12">Detour:</span>
-                      <select
-                        bind:value={srv.detour}
-                        onchange={triggerUpdate}
-                        class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
-                      >
-                        <option value="">(无)</option>
-                        <option value="直连">直连 (direct)</option>
-                        {#each availableRouteOutboundTags as oTag}
-                          <option value={oTag}>{oTag}</option>
-                        {/each}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-
-          <!-- DNS Rules Table -->
-          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-              <h3 class="text-sm font-semibold text-slate-200">DNS 规则列表 (DNS Rules)</h3>
-              <button
-                onclick={addDnsRule}
-                class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700"
-              >
-                <Plus size={13} />
-                <span>添加规则</span>
-              </button>
-            </div>
-
-            <div class="overflow-x-auto">
-              <table class="w-full text-xs text-left text-slate-300">
-                <thead class="bg-slate-950/80 text-slate-400 uppercase font-mono border-b border-slate-800">
-                  <tr>
-                    <th class="py-2 px-3">匹配条件</th>
-                    <th class="py-2 px-3">指定 DNS 服务器</th>
-                    <th class="py-2 px-3">操作</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-800/60 font-mono">
-                  {#each store.selectedTemplate.content?.dns?.rules || [] as r, rIdx}
-                    <tr class="hover:bg-slate-950/40">
-                      <td class="py-2 px-3">
-                        <input
-                          type="text"
-                          value={r.domain_keyword ? r.domain_keyword.join(', ') : r.rule_set ? r.rule_set.join(', ') : r.outbound || r.clash_mode || '规则条件'}
-                          onchange={(e) => {
-                            if (r.domain_keyword) r.domain_keyword = e.target.value.split(',').map(s => s.trim());
-                            else if (r.rule_set) r.rule_set = e.target.value.split(',').map(s => s.trim());
-                            else r.outbound = e.target.value;
-                            triggerUpdate();
-                          }}
-                          class="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
-                        />
-                      </td>
-                      <td class="py-2 px-3">
-                        <select
-                          bind:value={r.server}
-                          onchange={triggerUpdate}
-                          class="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-indigo-300 font-mono"
-                        >
-                          <option value="">(继承 final)</option>
-                          {#each (store.selectedTemplate.content?.dns?.servers || []) as srv}
-                            <option value={srv.tag}>{srv.tag}</option>
-                          {/each}
-                        </select>
-                      </td>
-                      <td class="py-2 px-3">
-                        <button
-                          onclick={() => removeDnsRule(rIdx)}
-                          class="text-slate-500 hover:text-rose-400 p-1"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
           </div>
         </div>
       {/if}
@@ -1239,6 +1068,162 @@
                   </button>
                 </div>
               {/each}
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      <!-- 4. DNS Module View -->
+      {#if currentSubTab === 'dns'}
+        <div class="space-y-4">
+          <!-- Upstream Servers Card -->
+          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <div>
+                <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
+                  <Radio size={15} class="text-indigo-400" />
+                  <span>上游 DNS 服务器 (DNS Servers)</span>
+                </h3>
+                <span class="text-xs text-slate-400">配置各 DNS 服务协议、上游地址与前置代理 detour</span>
+              </div>
+              <button
+                onclick={addDnsServer}
+                class="px-2.5 py-1 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 text-xs font-medium flex items-center gap-1"
+              >
+                <Plus size={13} />
+                <span>添加 DNS 服务器</span>
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {#each store.selectedTemplate.content?.dns?.servers || [] as srv, sIdx}
+                <div class="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2 text-xs">
+                  <div class="flex items-center justify-between gap-1">
+                    <input
+                      type="text"
+                      bind:value={srv.tag}
+                      oninput={triggerUpdate}
+                      placeholder="标签名"
+                      class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-100 font-mono font-bold w-full"
+                    />
+                    <button
+                      onclick={() => removeDnsServer(sIdx)}
+                      title="删除此 DNS 服务器"
+                      class="text-slate-500 hover:text-rose-400 p-1"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+
+                  <div class="space-y-1.5">
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-slate-500 text-[11px] w-12">协议:</span>
+                      <select
+                        bind:value={srv.type}
+                        onchange={triggerUpdate}
+                        class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
+                      >
+                        <option value="https">https (DoH)</option>
+                        <option value="tcp">tcp</option>
+                        <option value="udp">udp</option>
+                        <option value="tls">tls (DoT)</option>
+                        <option value="quic">quic (DoQ)</option>
+                      </select>
+                    </div>
+
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-slate-500 text-[11px] w-12">地址:</span>
+                      <input
+                        type="text"
+                        bind:value={srv.server}
+                        oninput={triggerUpdate}
+                        placeholder="1.1.1.1"
+                        class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
+                      />
+                    </div>
+
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-slate-500 text-[11px] w-12">Detour:</span>
+                      <select
+                        bind:value={srv.detour}
+                        onchange={triggerUpdate}
+                        class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
+                      >
+                        <option value="">(无)</option>
+                        <option value="直连">直连 (direct)</option>
+                        {#each availableRouteOutboundTags as oTag}
+                          <option value={oTag}>{oTag}</option>
+                        {/each}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+
+          <!-- DNS Rules Table -->
+          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+              <h3 class="text-sm font-semibold text-slate-200">DNS 规则列表 (DNS Rules)</h3>
+              <button
+                onclick={addDnsRule}
+                class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700"
+              >
+                <Plus size={13} />
+                <span>添加规则</span>
+              </button>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-left text-slate-300">
+                <thead class="bg-slate-950/80 text-slate-400 uppercase font-mono border-b border-slate-800">
+                  <tr>
+                    <th class="py-2 px-3">匹配条件</th>
+                    <th class="py-2 px-3">指定 DNS 服务器</th>
+                    <th class="py-2 px-3">操作</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60 font-mono">
+                  {#each store.selectedTemplate.content?.dns?.rules || [] as r, rIdx}
+                    <tr class="hover:bg-slate-950/40">
+                      <td class="py-2 px-3">
+                        <input
+                          type="text"
+                          value={r.domain_keyword ? r.domain_keyword.join(', ') : r.rule_set ? r.rule_set.join(', ') : r.outbound || r.clash_mode || '规则条件'}
+                          onchange={(e) => {
+                            if (r.domain_keyword) r.domain_keyword = e.target.value.split(',').map(s => s.trim());
+                            else if (r.rule_set) r.rule_set = e.target.value.split(',').map(s => s.trim());
+                            else r.outbound = e.target.value;
+                            triggerUpdate();
+                          }}
+                          class="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
+                        />
+                      </td>
+                      <td class="py-2 px-3">
+                        <select
+                          bind:value={r.server}
+                          onchange={triggerUpdate}
+                          class="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-indigo-300 font-mono"
+                        >
+                          <option value="">(继承 final)</option>
+                          {#each (store.selectedTemplate.content?.dns?.servers || []) as srv}
+                            <option value={srv.tag}>{srv.tag}</option>
+                          {/each}
+                        </select>
+                      </td>
+                      <td class="py-2 px-3">
+                        <button
+                          onclick={() => removeDnsRule(rIdx)}
+                          class="text-slate-500 hover:text-rose-400 p-1"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
