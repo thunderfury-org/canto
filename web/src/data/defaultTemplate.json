@@ -116,6 +116,10 @@
     {
       "tag": "直连",
       "type": "direct"
+    },
+    {
+      "tag": "block",
+      "type": "block"
     }
   ],
   "route": {
