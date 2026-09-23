@@ -399,6 +399,8 @@
   ],
   "rule_sets": [
     {
+      "name": "DustinWin 规则集",
+      "type": "remote",
       "tag": [
         "private",
         "privateip",
@@ -410,10 +412,12 @@
         "netflixip",
         "youtube"
       ],
-      "type": "remote",
       "format": "binary",
       "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs",
-      "download_detour": "ALL"
+      "download_detour": "ALL",
+      "source_url": "DustinWin/ruleset_geodata@sing-box-ruleset",
+      "tag_prefix": "",
+      "category": "domain_and_ip"
     }
   ]
 }

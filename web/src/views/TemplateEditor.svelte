@@ -23,75 +23,20 @@
   import Square from 'lucide-svelte/icons/square';
   import CheckSquare from 'lucide-svelte/icons/check-square';
   import Globe from 'lucide-svelte/icons/globe';
+  import ChevronDown from 'lucide-svelte/icons/chevron-down';
+  import ChevronRight from 'lucide-svelte/icons/chevron-right';
+  import X from 'lucide-svelte/icons/x';
 
   let currentSubTab = $state('node_groups'); // 'node_groups' | 'policy_groups' | 'route' | 'dns' | 'inbounds' | 'experimental'
   let editMode = $state('visual'); // 'visual' | 'raw'
   let rawJsonText = $state('');
   let rawJsonError = $state(null);
+  let saveError = $state('');
+  let creating = $state(false);
   let savedNotice = $state(false);
 
   // Keep track of current template id to only sync rawJson when template switches or entering raw mode
   let lastSyncedTplId = $state(null);
-
-  // Rule Sets state & presets
-  const fallbackPresets = [
-    {
-      id: 'dustinwin-ruleset',
-      name: 'DustinWin 规则集',
-      repo: 'DustinWin/ruleset_geodata',
-      tag: 'sing-box-ruleset',
-      description: '主流 DNS 与路由分流规则（cn, ai, netflix, youtube, proxy, private 等）',
-      urlPattern: 'https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs',
-      format: 'binary'
-    },
-    {
-      id: 'loyalsoldier-rules',
-      name: 'Loyalsoldier 规则集',
-      repo: 'Loyalsoldier/sing-box-rules',
-      tag: 'release',
-      description: '经典社区全量 GeoSite / GeoIP 域名与 IP 规则集',
-      urlPattern: 'https://github.com/Loyalsoldier/sing-box-rules/releases/download/release/{tag}.srs',
-      format: 'binary'
-    },
-    {
-      id: 'metacubex-rules',
-      name: 'MetaCubeX sing-box 规则集',
-      repo: 'MetaCubeX/meta-rules-dat',
-      tag: 'sing',
-      description: 'MetaCubeX 维护的 GeoSite / GeoIP 兼容规则集',
-      urlPattern: 'https://github.com/MetaCubeX/meta-rules-dat/releases/download/sing/{tag}.srs',
-      format: 'binary'
-    }
-  ];
-
-  let presets = $state(fallbackPresets);
-  let selectedPresetId = $state('dustinwin-ruleset');
-  let releaseInputUrl = $state('DustinWin/ruleset_geodata@sing-box-ruleset');
-  let inspectingRelease = $state(false);
-  let inspectError = $state('');
-  let releaseResult = $state(null);
-  let searchRuleQuery = $state('');
-  let preferredFormat = $state('binary');
-  let commonDetour = $state('ALL');
-
-  let filteredReleaseRules = $derived.by(() => {
-    if (!releaseResult || !releaseResult.rules) return [];
-    const query = searchRuleQuery.toLowerCase().trim();
-    if (!query) return releaseResult.rules;
-    return releaseResult.rules.filter(r => r.tag.toLowerCase().includes(query));
-  });
-
-  async function loadPresets() {
-    try {
-      const res = await fetch('/api/rulesets/presets', { headers: store.authHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          presets = data;
-        }
-      }
-    } catch (_) {}
-  }
 
   onMount(() => {
     if (store.isAuthenticated) {
@@ -215,9 +160,6 @@
     Array.from(new Set([...availablePolicyGroupTags, ...availableNodeGroupTags, ...availableBaseOutboundTags]))
   );
 
-  let saveError = $state('');
-  let creating = $state(false);
-
   async function handleCreateTemplate() {
     creating = true;
     saveError = '';
@@ -249,6 +191,103 @@
     }
   }
 
+  // Rule Sets state & presets
+  const fallbackPresets = [
+    {
+      id: 'dustinwin-ruleset',
+      name: 'DustinWin 规则集',
+      repo: 'DustinWin/ruleset_geodata',
+      tag: 'sing-box-ruleset',
+      description: '主流 DNS 与路由分流规则（cn, ai, netflix, youtube, proxy, private 等）',
+      urlPattern: 'https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs',
+      format: 'binary',
+      defaultPrefix: '',
+      category: 'domain_and_ip'
+    },
+    {
+      id: 'sagernet-geosite',
+      name: 'SagerNet 官方 GeoSite 规则集',
+      repo: 'SagerNet/sing-geosite',
+      tag: 'rule-set',
+      description: 'SagerNet 官方维护的最新域名分流规则集 (branch: rule-set)',
+      urlPattern: 'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/{tag}.srs',
+      format: 'binary',
+      defaultPrefix: 'geosite-',
+      category: 'geosite'
+    },
+    {
+      id: 'sagernet-geoip',
+      name: 'SagerNet 官方 GeoIP 规则集',
+      repo: 'SagerNet/sing-geoip',
+      tag: 'rule-set',
+      description: 'SagerNet 官方维护的 IP 分流规则集 (branch: rule-set)',
+      urlPattern: 'https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/{tag}.srs',
+      format: 'binary',
+      defaultPrefix: 'geoip-',
+      category: 'geoip'
+    },
+    {
+      id: 'metacubex-geosite',
+      name: 'MetaCubeX GeoSite (域名规则)',
+      repo: 'MetaCubeX/meta-rules-dat',
+      tag: 'sing/geo/geosite',
+      description: 'MetaCubeX 维护的完整 GeoSite 域名分流规则',
+      urlPattern: 'https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/{tag}.srs',
+      format: 'binary',
+      defaultPrefix: 'geosite-',
+      category: 'geosite'
+    },
+    {
+      id: 'metacubex-geoip',
+      name: 'MetaCubeX GeoIP (IP 规则)',
+      repo: 'MetaCubeX/meta-rules-dat',
+      tag: 'sing/geo/geoip',
+      description: 'MetaCubeX 维护的 GeoIP 规则',
+      urlPattern: 'https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/{tag}.srs',
+      format: 'binary',
+      defaultPrefix: 'geoip-',
+      category: 'geoip'
+    }
+  ];
+
+  const GEOSITE_QUICK_PICKS = [
+    'cn', 'category-ads-all', 'google', 'youtube', 'netflix',
+    'openai', 'telegram', 'bilibili', 'apple', 'microsoft',
+    'github', 'steam', 'spotify', 'disney', 'tiktok', 'twitter'
+  ];
+  const GEOIP_QUICK_PICKS = [
+    'cn', 'private', 'telegram', 'netflix', 'twitter', 'google'
+  ];
+  const DUSTINWIN_QUICK_PICKS = [
+    'cn', 'ai', 'netflix', 'youtube', 'proxy', 'private',
+    'cnip', 'privateip', 'netflixip', 'bilibili', 'apple-cn'
+  ];
+
+  const ALPHABET_LIST = ['ALL', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
+
+  let presets = $state(fallbackPresets);
+  let expandedProviderIndices = $state(new Set([0]));
+  let providerInspectStates = $state({}); // pIdx -> { rules: [...], inspecting: bool, error: '', searchQuery: '', searchDropdownOpen: bool }
+
+  let browseModal = $state({
+    open: false,
+    providerIdx: -1,
+    search: '',
+    letterFilter: 'ALL'
+  });
+
+  async function loadPresets() {
+    try {
+      const res = await fetch('/api/rulesets/presets', { headers: store.authHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          presets = data;
+        }
+      }
+    } catch (_) {}
+  }
+
   function ensureRuleSets() {
     const tpl = store.selectedTemplate;
     if (!tpl || !tpl.content) return;
@@ -256,29 +295,24 @@
       if (Array.isArray(tpl.content.route?.rule_set)) {
         const legacySets = tpl.content.route.rule_set;
         const releaseTags = [];
-        const customSets = [];
         for (const item of legacySets) {
-          if (item.type === 'remote' && item.url && item.url.includes('ruleset_geodata')) {
-            if (typeof item.tag === 'string') releaseTags.push(item.tag);
-            else if (Array.isArray(item.tag)) releaseTags.push(...item.tag);
-          } else {
-            customSets.push(item);
+          if (typeof item.tag === 'string') releaseTags.push(item.tag);
+          else if (Array.isArray(item.tag)) releaseTags.push(...item.tag);
+        }
+        tpl.content.rule_sets = [
+          {
+            name: 'DustinWin 规则集',
+            type: 'remote',
+            tag: Array.from(new Set(releaseTags)),
+            format: 'binary',
+            url: 'https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs',
+            download_detour: 'ALL',
+            source_url: 'DustinWin/ruleset_geodata@sing-box-ruleset',
+            tag_prefix: '',
+            category: 'domain_and_ip',
+            preset_id: 'dustinwin-ruleset'
           }
-        }
-        if (releaseTags.length > 0) {
-          tpl.content.rule_sets = [
-            {
-              type: 'remote',
-              tag: Array.from(new Set(releaseTags)),
-              format: 'binary',
-              url: 'https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs',
-              download_detour: 'ALL'
-            },
-            ...customSets
-          ];
-        } else {
-          tpl.content.rule_sets = JSON.parse(JSON.stringify(legacySets));
-        }
+        ];
         delete tpl.content.route.rule_set;
       } else {
         tpl.content.rule_sets = [];
@@ -326,221 +360,200 @@
     return set;
   });
 
-  // Get or initialize the primary Release-managed remote rule_set item
-  function getReleaseRuleSet() {
-    ensureRuleSets();
-    const sets = store.selectedTemplate?.content?.rule_sets;
-    if (!sets) return null;
-    let found = sets.find(rs => rs.type === 'remote' && rs.url && rs.url.includes('{tag}'));
-    if (!found) {
-      found = sets.find(rs => rs.type === 'remote' && Array.isArray(rs.tag));
+  // Duplicate tags across different providers
+  let duplicateTagsMap = $derived.by(() => {
+    const tpl = store.selectedTemplate;
+    if (!tpl || !tpl.content || !Array.isArray(tpl.content.rule_sets)) return {};
+    const tagCounts = {};
+    for (let i = 0; i < tpl.content.rule_sets.length; i++) {
+      const rs = tpl.content.rule_sets[i];
+      const tags = Array.isArray(rs.tag) ? rs.tag : (rs.tag ? [rs.tag] : []);
+      for (const t of tags) {
+        if (!tagCounts[t]) tagCounts[t] = [];
+        tagCounts[t].push(i);
+      }
     }
-    return found;
-  }
-
-  // Active tags in the release rule_set
-  let activeReleaseTags = $derived.by(() => {
-    const rel = getReleaseRuleSet();
-    if (!rel || !rel.tag) return [];
-    return Array.isArray(rel.tag) ? rel.tag : [rel.tag];
+    const collisions = {};
+    for (const [t, indices] of Object.entries(tagCounts)) {
+      if (indices.length > 1) {
+        collisions[t] = indices;
+      }
+    }
+    return collisions;
   });
 
-  async function handleInspectRelease() {
-    if (!releaseInputUrl.trim()) return;
-    inspectingRelease = true;
-    inspectError = '';
+  async function inspectProvider(pIdx) {
+    ensureRuleSets();
+    const p = store.selectedTemplate.content.rule_sets[pIdx];
+    if (!p) return;
+    const url = (p.source_url || p.url || '').trim();
+    if (!url) return;
+
+    if (!providerInspectStates[pIdx]) {
+      providerInspectStates[pIdx] = { rules: [], inspecting: false, error: '', searchQuery: '', searchDropdownOpen: false };
+    }
+    providerInspectStates[pIdx].inspecting = true;
+    providerInspectStates[pIdx].error = '';
     try {
       if (store.isAuthenticated) {
         const res = await fetch('/api/rulesets/inspect-release', {
           method: 'POST',
           headers: store.authHeaders(),
-          body: JSON.stringify({ url: releaseInputUrl.trim() })
+          body: JSON.stringify({ url })
         });
         if (!res.ok) {
           throw new Error(await store.apiError(res));
         }
-        releaseResult = await res.json();
+        const data = await res.json();
+        providerInspectStates[pIdx].rules = data.rules || [];
+        if (data.downloadUrlTemplateSrs && (!p.url || p.url.includes('example'))) {
+          p.url = p.format === 'source' ? data.downloadUrlTemplateJson : data.downloadUrlTemplateSrs;
+        }
+        if (data.suggestedPrefix && p.tag_prefix === undefined) {
+          p.tag_prefix = data.suggestedPrefix;
+        }
+        if (data.category && !p.category) {
+          p.category = data.category;
+        }
       } else {
-        // Fallback for unauthenticated preview mode: query GitHub API
-        let ghUrl = '';
-        const raw = releaseInputUrl.trim();
-        if (raw.includes('@')) {
-          const [repo, tag] = raw.split('@');
-          ghUrl = `https://api.github.com/repos/${repo}/releases/tags/${tag}`;
-        } else if (raw.includes('github.com/')) {
-          const parts = raw.replace(/https?:\/\/github\.com\//, '').split('/');
-          if (parts.length >= 5 && parts[2] === 'releases' && parts[3] === 'tag') {
-            ghUrl = `https://api.github.com/repos/${parts[0]}/${parts[1]}/releases/tags/${parts[4]}`;
-          } else {
-            ghUrl = `https://api.github.com/repos/${parts[0]}/${parts[1]}/releases/latest`;
-          }
-        } else {
-          ghUrl = `https://api.github.com/repos/${raw}/releases/latest`;
-        }
-        const res = await fetch(ghUrl);
-        if (!res.ok) throw new Error(`GitHub API error: HTTP ${res.status}`);
-        const gh = await res.json();
-        const tag = gh.tag_name || 'sing-box-ruleset';
-        const parts = ghUrl.replace('https://api.github.com/repos/', '').split('/');
-        const owner = parts[0];
-        const repo = parts[1];
-        const rulesMap = {};
-        for (const asset of gh.assets || []) {
-          if (asset.name.endsWith('.srs')) {
-            const t = asset.name.replace('.srs', '');
-            if (!rulesMap[t]) rulesMap[t] = { tag: t, formats: [] };
-            rulesMap[t].formats.push('srs');
-            rulesMap[t].srsSize = asset.size;
-          } else if (asset.name.endsWith('.json')) {
-            const t = asset.name.replace('.json', '');
-            if (!rulesMap[t]) rulesMap[t] = { tag: t, formats: [] };
-            rulesMap[t].formats.push('json');
-            rulesMap[t].jsonSize = asset.size;
-          }
-        }
-        releaseResult = {
-          owner,
-          repo,
-          tag,
-          name: gh.name || tag,
-          htmlUrl: gh.html_url || '',
-          publishedAt: gh.published_at,
-          downloadUrlTemplateSrs: `https://github.com/${owner}/${repo}/releases/download/${tag}/{tag}.srs`,
-          downloadUrlTemplateJson: `https://github.com/${owner}/${repo}/releases/download/${tag}/{tag}.json`,
-          rules: Object.values(rulesMap)
-        };
+        // Demo fallback
+        providerInspectStates[pIdx].rules = [];
       }
     } catch (err) {
-      inspectError = err.message || String(err);
+      providerInspectStates[pIdx].error = err.message || String(err);
     } finally {
-      inspectingRelease = false;
+      providerInspectStates[pIdx].inspecting = false;
+      providerInspectStates = { ...providerInspectStates };
     }
   }
 
-  function handleSelectPreset(presetId) {
-    selectedPresetId = presetId;
-    const p = presets.find(item => item.id === presetId);
-    if (p) {
-      releaseInputUrl = `${p.repo}@${p.tag}`;
-      preferredFormat = p.format || 'binary';
-      handleInspectRelease();
-    }
-  }
-
-  function toggleReleaseTag(tag) {
+  function handleProviderPresetChange(pIdx, presetId) {
     ensureRuleSets();
-    const sets = store.selectedTemplate.content.rule_sets;
-    let rel = getReleaseRuleSet();
-    const urlPattern = releaseResult
-      ? (preferredFormat === 'binary' ? releaseResult.downloadUrlTemplateSrs : releaseResult.downloadUrlTemplateJson)
-      : (preferredFormat === 'binary' ? 'https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs' : 'https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.json');
-
-    // Remove any duplicate custom rule set with the same tag
-    for (let i = sets.length - 1; i >= 0; i--) {
-      if (sets[i] !== rel && (sets[i].tag === tag || (Array.isArray(sets[i].tag) && sets[i].tag.includes(tag)))) {
-        sets.splice(i, 1);
-      }
-    }
-
-    if (!rel) {
-      rel = {
-        type: 'remote',
-        tag: [tag],
-        format: preferredFormat,
-        url: urlPattern,
-        download_detour: commonDetour
-      };
-      sets.unshift(rel);
-    } else {
-      let currentTags = Array.isArray(rel.tag) ? [...rel.tag] : (rel.tag ? [rel.tag] : []);
-      if (currentTags.includes(tag)) {
-        currentTags = currentTags.filter(t => t !== tag);
-      } else {
-        currentTags.push(tag);
-      }
-      rel.tag = currentTags;
-      rel.format = preferredFormat;
-      if (urlPattern) rel.url = urlPattern;
-      rel.download_detour = commonDetour;
-    }
+    const p = store.selectedTemplate.content.rule_sets[pIdx];
+    if (!p) return;
+    const preset = presets.find(item => item.id === presetId);
+    if (!preset) return;
+    p.name = preset.name;
+    p.preset_id = preset.id;
+    p.format = preset.format || 'binary';
+    p.tag_prefix = preset.defaultPrefix || '';
+    p.category = preset.category || 'general';
+    p.url = preset.urlPattern;
+    p.source_url = preset.id === 'dustinwin-ruleset'
+      ? `${preset.repo}@${preset.tag}`
+      : `${preset.repo}#${preset.tag}`;
     triggerUpdate();
+    inspectProvider(pIdx);
   }
 
-  function selectAllReleaseRules() {
-    if (!releaseResult || !releaseResult.rules) return;
+  function addProvider() {
     ensureRuleSets();
-    const allTags = releaseResult.rules.map(r => r.tag);
-    let rel = getReleaseRuleSet();
-    const urlPattern = preferredFormat === 'binary' ? releaseResult.downloadUrlTemplateSrs : releaseResult.downloadUrlTemplateJson;
-    if (!rel) {
-      rel = {
-        type: 'remote',
-        tag: allTags,
-        format: preferredFormat,
-        url: urlPattern,
-        download_detour: commonDetour
-      };
-      store.selectedTemplate.content.rule_sets.unshift(rel);
-    } else {
-      rel.tag = allTags;
-      rel.format = preferredFormat;
-      rel.url = urlPattern;
-      rel.download_detour = commonDetour;
-    }
-    triggerUpdate();
-  }
-
-  function clearAllReleaseRules() {
-    ensureRuleSets();
-    let rel = getReleaseRuleSet();
-    if (rel) {
-      rel.tag = [];
-      triggerUpdate();
-    }
-  }
-
-  function handleFormatChange(newFmt) {
-    preferredFormat = newFmt;
-    let rel = getReleaseRuleSet();
-    if (rel) {
-      rel.format = newFmt;
-      if (releaseResult) {
-        rel.url = newFmt === 'binary' ? releaseResult.downloadUrlTemplateSrs : releaseResult.downloadUrlTemplateJson;
-      } else if (rel.url) {
-        rel.url = newFmt === 'binary' ? rel.url.replace('.json', '.srs') : rel.url.replace('.srs', '.json');
-      }
-      triggerUpdate();
-    }
-  }
-
-  function handleDetourChange(newDetour) {
-    commonDetour = newDetour;
-    let rel = getReleaseRuleSet();
-    if (rel) {
-      rel.download_detour = newDetour;
-      triggerUpdate();
-    }
-  }
-
-  function addCustomRuleSet() {
-    ensureRuleSets();
-    store.selectedTemplate.content.rule_sets.push({
-      tag: 'custom_' + (store.selectedTemplate.content.rule_sets.length + 1),
+    const tpl = store.selectedTemplate;
+    if (!Array.isArray(tpl.content.rule_sets)) tpl.content.rule_sets = [];
+    const existingPresetIds = tpl.content.rule_sets.map(rs => rs.preset_id);
+    const nextPreset = presets.find(p => !existingPresetIds.includes(p.id)) || presets[0];
+    const newIdx = tpl.content.rule_sets.length;
+    tpl.content.rule_sets.push({
+      name: nextPreset.name,
       type: 'remote',
-      format: 'binary',
-      url: '',
-      download_detour: 'ALL'
+      tag_prefix: nextPreset.defaultPrefix || '',
+      tag: [],
+      format: nextPreset.format || 'binary',
+      url: nextPreset.urlPattern,
+      download_detour: 'ALL',
+      source_url: nextPreset.id === 'dustinwin-ruleset'
+        ? `${nextPreset.repo}@${nextPreset.tag}`
+        : `${nextPreset.repo}#${nextPreset.tag}`,
+      category: nextPreset.category || 'general',
+      preset_id: nextPreset.id
     });
+    expandedProviderIndices.add(newIdx);
+    expandedProviderIndices = new Set(expandedProviderIndices);
+    triggerUpdate();
+    inspectProvider(newIdx);
+  }
+
+  function removeProvider(pIdx) {
+    ensureRuleSets();
+    const tpl = store.selectedTemplate;
+    if (!tpl.content.rule_sets) return;
+    if (!confirm(`确定删除规则源「${tpl.content.rule_sets[pIdx]?.name || '此规则源'}」吗？`)) {
+      return;
+    }
+    tpl.content.rule_sets.splice(pIdx, 1);
+    expandedProviderIndices.delete(pIdx);
+    expandedProviderIndices = new Set(expandedProviderIndices);
     triggerUpdate();
   }
 
-  function removeRuleSet(idx) {
+  function toggleProviderExpanded(pIdx) {
+    if (expandedProviderIndices.has(pIdx)) {
+      expandedProviderIndices.delete(pIdx);
+    } else {
+      expandedProviderIndices.add(pIdx);
+    }
+    expandedProviderIndices = new Set(expandedProviderIndices);
+  }
+
+  function toggleProviderTag(pIdx, rawTag) {
     ensureRuleSets();
-    const sets = store.selectedTemplate.content.rule_sets;
-    if (sets) {
-      sets.splice(idx, 1);
+    const p = store.selectedTemplate.content.rule_sets[pIdx];
+    if (!p) return;
+    const prefix = p.tag_prefix || '';
+    const finalTag = rawTag.startsWith(prefix) ? rawTag : `${prefix}${rawTag}`;
+    let tags = Array.isArray(p.tag) ? [...p.tag] : (p.tag ? [p.tag] : []);
+    if (tags.includes(finalTag)) {
+      tags = tags.filter(t => t !== finalTag);
+    } else {
+      tags.push(finalTag);
+    }
+    p.tag = tags;
+    triggerUpdate();
+  }
+
+  function clearProviderTags(pIdx) {
+    ensureRuleSets();
+    const p = store.selectedTemplate.content.rule_sets[pIdx];
+    if (p) {
+      p.tag = [];
       triggerUpdate();
     }
+  }
+
+  function isTagSelected(p, rawTag) {
+    if (!p || !p.tag) return false;
+    const prefix = p.tag_prefix || '';
+    const finalTag = rawTag.startsWith(prefix) ? rawTag : `${prefix}${rawTag}`;
+    const tags = Array.isArray(p.tag) ? p.tag : [p.tag];
+    return tags.includes(finalTag) || tags.includes(rawTag);
+  }
+
+  function getProviderQuickPicks(p) {
+    if (p.category === 'geosite' || (p.tag_prefix && p.tag_prefix.includes('geosite'))) {
+      return GEOSITE_QUICK_PICKS;
+    }
+    if (p.category === 'geoip' || (p.tag_prefix && p.tag_prefix.includes('geoip'))) {
+      return GEOIP_QUICK_PICKS;
+    }
+    return DUSTINWIN_QUICK_PICKS;
+  }
+
+  function openBrowseModal(pIdx) {
+    browseModal = {
+      open: true,
+      providerIdx: pIdx,
+      search: '',
+      letterFilter: 'ALL'
+    };
+  }
+
+  function closeBrowseModal() {
+    browseModal = {
+      open: false,
+      providerIdx: -1,
+      search: '',
+      letterFilter: 'ALL'
+    };
   }
 
   function addEndpoint() {
@@ -1253,312 +1266,484 @@
       <!-- 2.5 Rule Sets Module View -->
       {#if currentSubTab === 'rule_sets'}
         <div class="space-y-4">
-          <!-- Card 1: Remote Release Rule Set Provider -->
-          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-4">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
-              <div>
-                <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
-                  <Bookmark size={15} class="text-emerald-400" />
-                  <span>GitHub Release 批量规则集 (Remote Provider)</span>
-                </h3>
-                <span class="text-xs text-slate-400">基于 sing-box 1.14+ 聚合语法，自动探测 Release 资产清单并按需勾选启用规则</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-slate-400">预设源:</span>
-                <select
-                  bind:value={selectedPresetId}
-                  onchange={(e) => handleSelectPreset(e.target.value)}
-                  class="bg-slate-950 border border-slate-700 rounded px-2.5 py-1 text-xs text-emerald-300 font-medium font-mono"
-                >
-                  {#each presets as p}
-                    <option value={p.id}>{p.name} ({p.tag})</option>
-                  {/each}
-                </select>
-              </div>
+          <!-- Multi-Provider Header -->
+          <div class="flex items-center justify-between bg-slate-900/80 border border-slate-800 rounded-lg p-3.5">
+            <div>
+              <h3 class="text-sm font-semibold text-slate-100 flex items-center gap-1.5">
+                <Bookmark size={16} class="text-emerald-400" />
+                <span>外部规则源管理 (Rule Set Providers)</span>
+              </h3>
+              <p class="text-xs text-slate-400 mt-0.5">
+                支持同时引入多个规则源（如同时引入 SagerNet GeoSite 与 MetaCubeX GeoIP），通过独立 Tag 前缀（如 geosite- / geoip-）彻底隔离同名冲突。
+              </p>
             </div>
+            <button
+              type="button"
+              onclick={addProvider}
+              class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+            >
+              <Plus size={13} />
+              <span>添加规则源</span>
+            </button>
+          </div>
 
-            <!-- Provider Configuration Bar -->
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
-              <div class="md:col-span-5 space-y-1">
-                <label for="release-url-input" class="text-[11px] text-slate-400 flex items-center gap-1">
-                  <Globe size={11} />
-                  <span>GitHub Release 地址或仓库标签 (owner/repo@tag)</span>
-                </label>
-                <input
-                  id="release-url-input"
-                  type="text"
-                  bind:value={releaseInputUrl}
-                  placeholder="例如: DustinWin/ruleset_geodata@sing-box-ruleset"
-                  class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:border-emerald-500 focus:outline-none"
-                />
-              </div>
+          <!-- Provider Cards List -->
+          <div class="space-y-3.5">
+            {#each (store.selectedTemplate.content?.rule_sets || []) as p, pIdx}
+              {@const isExpanded = expandedProviderIndices.has(pIdx)}
+              {@const inspectState = providerInspectStates[pIdx] || { rules: [], inspecting: false, error: '', searchQuery: '', searchDropdownOpen: false }}
+              {@const providerCollisions = (Array.isArray(p.tag) ? p.tag : [p.tag]).filter(t => t && duplicateTagsMap[t])}
+              {@const quickPicks = getProviderQuickPicks(p)}
 
-              <div class="md:col-span-2 space-y-1">
-                <label for="format-select" class="text-[11px] text-slate-400">资产格式</label>
-                <select
-                  id="format-select"
-                  bind:value={preferredFormat}
-                  onchange={(e) => handleFormatChange(e.target.value)}
-                  class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200 font-mono"
-                >
-                  <option value="binary">.srs (二进制, 推荐)</option>
-                  <option value="source">.json (源码格式)</option>
-                </select>
-              </div>
+              <div class="bg-slate-900/90 border {providerCollisions.length > 0 ? 'border-amber-600/70' : 'border-slate-800'} rounded-lg overflow-hidden transition-all shadow-sm">
+                <!-- Card Header -->
+                <div class="bg-slate-950/70 p-3 flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-800/80">
+                  <div class="flex items-center gap-2 flex-1 min-w-[280px]">
+                    <button
+                      type="button"
+                      onclick={() => toggleProviderExpanded(pIdx)}
+                      class="p-1 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                      title={isExpanded ? "折叠此源" : "展开此源"}
+                    >
+                      {#if isExpanded}
+                        <ChevronDown size={15} />
+                      {:else}
+                        <ChevronRight size={15} />
+                      {/if}
+                    </button>
 
-              <div class="md:col-span-2 space-y-1">
-                <label for="detour-select" class="text-[11px] text-slate-400">下载 Detour</label>
-                <select
-                  id="detour-select"
-                  bind:value={commonDetour}
-                  onchange={(e) => handleDetourChange(e.target.value)}
-                  class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200 font-mono"
-                >
-                  <option value="ALL">ALL (默认)</option>
-                  <option value="直连">直连 (direct)</option>
-                  {#each allOutboundTags as oTag}
-                    {#if oTag !== 'ALL' && oTag !== '直连'}
-                      <option value={oTag}>{oTag}</option>
-                    {/if}
-                  {/each}
-                </select>
-              </div>
+                    <!-- Provider Name -->
+                    <input
+                      type="text"
+                      bind:value={p.name}
+                      oninput={triggerUpdate}
+                      placeholder="规则源名称 (如 SagerNet GeoSite)"
+                      class="bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-100 font-bold focus:border-emerald-500 focus:outline-none w-48 sm:w-56"
+                    />
 
-              <div class="md:col-span-3">
-                <button
-                  type="button"
-                  onclick={handleInspectRelease}
-                  disabled={inspectingRelease}
-                  class="w-full py-1.5 px-3 rounded bg-emerald-700/50 hover:bg-emerald-600/70 border border-emerald-500/50 text-emerald-100 text-xs font-medium flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 transition-colors"
-                >
-                  <RefreshCw size={13} class={inspectingRelease ? "animate-spin" : ""} />
-                  <span>{inspectingRelease ? '探测规则资产中...' : '探测并拉取 Release 规则'}</span>
-                </button>
-              </div>
-            </div>
+                    <!-- Quick Preset Switcher -->
+                    <select
+                      value={p.preset_id || ''}
+                      onchange={(e) => handleProviderPresetChange(pIdx, e.target.value)}
+                      class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-emerald-300 font-mono"
+                    >
+                      <option value="">(选择或套用预设...)</option>
+                      {#each presets as pr}
+                        <option value={pr.id}>{pr.name}</option>
+                      {/each}
+                    </select>
 
-            {#if inspectError}
-              <div class="p-2.5 bg-rose-950/60 border border-rose-800/60 rounded text-xs text-rose-300 flex items-center gap-2">
-                <AlertCircle size={14} class="shrink-0" />
-                <span>{inspectError}</span>
-              </div>
-            {/if}
-
-            <!-- Release Assets & Selection Grid -->
-            {#if releaseResult}
-              <div class="space-y-3 pt-2 border-t border-slate-800/80">
-                <!-- Release Info & Batch Actions -->
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 text-xs">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-medium">
-                      {releaseResult.owner}/{releaseResult.repo} @ {releaseResult.tag}
+                    <!-- Enabled Rules Count Badge -->
+                    <span class="px-2 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-800 font-mono text-[11px]">
+                      已选 <span class="text-emerald-400 font-bold">{(Array.isArray(p.tag) ? p.tag.length : (p.tag ? 1 : 0))}</span> 条
                     </span>
-                    {#if releaseResult.publishedAt}
-                      <span class="text-slate-400 text-[11px]">发布时间: {releaseResult.publishedAt.slice(0, 10)}</span>
-                    {/if}
-                    <span class="text-slate-500 text-[11px]">|</span>
-                    <span class="text-slate-300 text-[11px]">
-                      共探测到 <span class="text-emerald-400 font-mono font-bold">{releaseResult.rules.length}</span> 条规则，已勾选启用 <span class="text-cyan-400 font-mono font-bold">{activeReleaseTags.length}</span> 条
-                    </span>
-                    {#if releaseResult.htmlUrl}
-                      <a
-                        href={releaseResult.htmlUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        class="text-indigo-400 hover:text-indigo-300 inline-flex items-center gap-0.5 ml-1"
-                        title="打开 GitHub Release 网页"
-                      >
-                        <ExternalLink size={11} />
-                      </a>
+
+                    <!-- Collision Warning Badge -->
+                    {#if providerCollisions.length > 0}
+                      <span class="px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800 font-mono text-[11px] flex items-center gap-1">
+                        <AlertCircle size={11} class="text-amber-400" />
+                        <span>{providerCollisions.length} 个 Tag 重名冲突</span>
+                      </span>
                     {/if}
                   </div>
 
-                  <div class="flex items-center gap-1.5 self-end sm:self-auto">
+                  <div class="flex items-center gap-2">
                     <button
                       type="button"
-                      onclick={selectAllReleaseRules}
-                      class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium"
+                      onclick={() => removeProvider(pIdx)}
+                      class="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-900 transition-colors"
+                      title="删除此规则源"
                     >
-                      全选
-                    </button>
-                    <button
-                      type="button"
-                      onclick={clearAllReleaseRules}
-                      class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium"
-                    >
-                      清空
+                      <Trash2 size={13} />
                     </button>
                   </div>
                 </div>
 
-                <!-- Search Input -->
-                <div class="relative">
-                  <Search size={13} class="absolute left-2.5 top-2.5 text-slate-500" />
-                  <input
-                    type="text"
-                    bind:value={searchRuleQuery}
-                    placeholder="按名称过滤规则 (如 cn, ai, netflix, bilibili, steam, apple)..."
-                    class="w-full bg-slate-950 border border-slate-800 rounded pl-8 pr-3 py-1.5 text-xs text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
-                  />
-                </div>
+                <!-- Card Body -->
+                {#if isExpanded}
+                  <div class="p-4 space-y-3.5">
+                    <!-- Source Configuration Bar -->
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/60">
+                      <div class="md:col-span-5 space-y-1">
+                        <span class="text-[11px] text-slate-400 flex items-center gap-1 font-sans">
+                          <Globe size={11} class="text-indigo-400" />
+                          <span>仓库地址 / 分支 / 目录 (owner/repo#branch/path)</span>
+                        </span>
+                        <input
+                          type="text"
+                          bind:value={p.source_url}
+                          oninput={triggerUpdate}
+                          placeholder="例如: SagerNet/sing-geosite#rule-set 或 MetaCubeX/meta-rules-dat#sing/geo/geosite"
+                          class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 font-mono focus:border-emerald-500 focus:outline-none"
+                        />
+                      </div>
 
-                <!-- Rules Checklist Grid -->
-                {#if filteredReleaseRules.length === 0}
-                  <div class="py-6 text-center text-slate-500 text-xs font-mono">
-                    没有找到匹配 "{searchRuleQuery}" 的规则集
-                  </div>
-                {:else}
-                  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-[380px] overflow-y-auto pr-1">
-                    {#each filteredReleaseRules as item}
-                      {@const isChecked = activeReleaseTags.includes(item.tag)}
-                      {@const isReferenced = referencedRuleTags.has(item.tag)}
-                      <button
-                        type="button"
-                        onclick={() => toggleReleaseTag(item.tag)}
-                        class="p-2 rounded-lg border text-left transition-all flex flex-col justify-between gap-1.5 cursor-pointer {isChecked ? 'bg-emerald-950/40 border-emerald-500/60 shadow-sm' : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700 text-slate-400'}"
-                      >
-                        <div class="flex items-start justify-between gap-1">
-                          <span class="font-mono text-xs font-bold truncate {isChecked ? 'text-emerald-300' : 'text-slate-300'}">
-                            {item.tag}
+                      <div class="md:col-span-2 space-y-1">
+                        <span class="text-[11px] text-slate-400 font-sans block" title="为本源所有规则 Tag 添加前缀，避免与其它规则源（如 IP 源与域名源）发生同名冲突">
+                          Tag 前缀 (命名空间)
+                        </span>
+                        <input
+                          type="text"
+                          bind:value={p.tag_prefix}
+                          oninput={triggerUpdate}
+                          placeholder="例如: geosite- 或 geoip-"
+                          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-amber-300 font-mono focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div class="md:col-span-2 space-y-1">
+                        <span class="text-[11px] text-slate-400 font-sans block">资产格式</span>
+                        <select
+                          bind:value={p.format}
+                          onchange={triggerUpdate}
+                          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 font-mono"
+                        >
+                          <option value="binary">.srs (二进制, 推荐)</option>
+                          <option value="source">.json (源码格式)</option>
+                        </select>
+                      </div>
+
+                      <div class="md:col-span-1 space-y-1">
+                        <span class="text-[11px] text-slate-400 font-sans block">下载 Detour</span>
+                        <select
+                          bind:value={p.download_detour}
+                          onchange={triggerUpdate}
+                          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 font-mono"
+                        >
+                          <option value="ALL">ALL (默认)</option>
+                          <option value="直连">直连</option>
+                          {#each allOutboundTags as oTag}
+                            {#if oTag !== 'ALL' && oTag !== '直连'}
+                              <option value={oTag}>{oTag}</option>
+                            {/if}
+                          {/each}
+                        </select>
+                      </div>
+
+                      <div class="md:col-span-2">
+                        <button
+                          type="button"
+                          onclick={() => inspectProvider(pIdx)}
+                          disabled={inspectState.inspecting}
+                          class="w-full py-1 px-2.5 rounded bg-emerald-700/40 hover:bg-emerald-600/60 border border-emerald-500/50 text-emerald-100 text-xs font-medium flex items-center justify-center gap-1 shadow-sm disabled:opacity-50 transition-colors cursor-pointer"
+                        >
+                          <RefreshCw size={12} class={inspectState.inspecting ? "animate-spin" : ""} />
+                          <span>{inspectState.inspecting ? '探测中...' : '同步规则清单'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Collision Warning Banner -->
+                    {#if providerCollisions.length > 0}
+                      <div class="p-2.5 bg-amber-950/60 border border-amber-800/80 rounded-lg text-xs text-amber-200 flex items-start gap-2 font-mono">
+                        <AlertCircle size={14} class="text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <span class="font-bold">⚠️ 检测到重名冲突：</span>
+                          <span>当前源以下 Tag 与其它规则源冲突：[{providerCollisions.join(', ')}]。建议在上方为本源配置独立的 Tag 前缀（如 geosite- 或 geoip-）进行隔离！</span>
+                        </div>
+                      </div>
+                    {/if}
+
+                    {#if inspectState.error}
+                      <div class="p-2.5 bg-rose-950/60 border border-rose-800/60 rounded text-xs text-rose-300 flex items-center gap-2">
+                        <AlertCircle size={14} class="shrink-0" />
+                        <span>{inspectState.error}</span>
+                      </div>
+                    {/if}
+
+                    <!-- Row 2: Curated Quick-Picks (主流常用推荐一键点亮) -->
+                    <div class="bg-slate-950/50 border border-slate-800/60 rounded-lg p-2.5 space-y-2">
+                      <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-300 flex items-center gap-1 font-medium font-sans">
+                          <Sparkles size={12} class="text-amber-400" />
+                          <span>主流常用规则快捷点亮 ({p.category === 'geoip' ? 'IP 分流' : '域名分流'}):</span>
+                        </span>
+                        <span class="text-[11px] text-slate-500 font-sans">点击直接切换加入或移除</span>
+                      </div>
+                      <div class="flex flex-wrap gap-1.5">
+                        {#each quickPicks as qTag}
+                          {@const isChecked = isTagSelected(p, qTag)}
+                          {@const displayTag = `${p.tag_prefix || ''}${qTag}`}
+                          <button
+                            type="button"
+                            onclick={() => toggleProviderTag(pIdx, qTag)}
+                            class="px-2 py-0.5 rounded text-xs font-mono transition-all flex items-center gap-1 cursor-pointer {isChecked ? 'bg-emerald-950 text-emerald-300 border border-emerald-600 font-bold shadow-sm' : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800 hover:border-slate-700'}"
+                          >
+                            <span>{isChecked ? '✓' : '+'}</span>
+                            <span>{displayTag}</span>
+                          </button>
+                        {/each}
+                      </div>
+                    </div>
+
+                    <!-- Row 3: Instant Search & Add + Browse All Modal Trigger -->
+                    <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                      <!-- Search & Add Input with instant autocomplete -->
+                      <div class="relative flex-1">
+                        <Search size={13} class="absolute left-2.5 top-2.5 text-slate-500" />
+                        <input
+                          type="text"
+                          bind:value={inspectState.searchQuery}
+                          onfocus={() => { inspectState.searchDropdownOpen = true; providerInspectStates = { ...providerInspectStates }; }}
+                          onblur={() => { setTimeout(() => { inspectState.searchDropdownOpen = false; providerInspectStates = { ...providerInspectStates }; }, 200); }}
+                          onkeydown={(e) => {
+                            if (e.key === 'Enter' && inspectState.searchQuery.trim()) {
+                              const q = inspectState.searchQuery.trim().toLowerCase();
+                              const matched = (inspectState.rules || []).find(r => r.tag.toLowerCase().includes(q));
+                              if (matched) {
+                                toggleProviderTag(pIdx, matched.tag);
+                                inspectState.searchQuery = '';
+                              } else {
+                                toggleProviderTag(pIdx, inspectState.searchQuery.trim());
+                                inspectState.searchQuery = '';
+                              }
+                            }
+                          }}
+                          placeholder="智能搜索并快速添加规则 (如 bilibili, openai, steam, apple)... 回车添加"
+                          class="w-full bg-slate-950 border border-slate-800 rounded pl-8 pr-3 py-1.5 text-xs text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
+                        />
+
+                        <!-- Live Suggestion Dropdown -->
+                        {#if inspectState.searchDropdownOpen && inspectState.searchQuery.trim() && (inspectState.rules || []).length > 0}
+                          {@const searchMatches = (inspectState.rules || []).filter(r => r.tag.toLowerCase().includes(inspectState.searchQuery.trim().toLowerCase())).slice(0, 8)}
+                          {#if searchMatches.length > 0}
+                            <div class="absolute left-0 right-0 top-full mt-1 bg-slate-950 border border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto divide-y divide-slate-800/60 font-mono text-xs">
+                              {#each searchMatches as m}
+                                {@const isChecked = isTagSelected(p, m.tag)}
+                                {@const displayTag = `${p.tag_prefix || ''}${m.tag}`}
+                                <button
+                                  type="button"
+                                  onmousedown={() => { toggleProviderTag(pIdx, m.tag); }}
+                                  class="w-full text-left px-3 py-1.5 flex items-center justify-between hover:bg-slate-800 transition-colors cursor-pointer"
+                                >
+                                  <span class="font-bold {isChecked ? 'text-emerald-300' : 'text-slate-200'}">{displayTag}</span>
+                                  <span class="text-[10px] text-slate-500">{isChecked ? '✓ 已添加 (点击移除)' : '+ 点击添加'}</span>
+                                </button>
+                              {/each}
+                            </div>
+                          {/if}
+                        {/if}
+                      </div>
+
+                      <!-- Browse All Button -->
+                      {#if (inspectState.rules || []).length > 0}
+                        <button
+                          type="button"
+                          onclick={() => openBrowseModal(pIdx)}
+                          class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium flex items-center justify-center gap-1.5 shrink-0 transition-colors cursor-pointer"
+                        >
+                          <Bookmark size={13} class="text-cyan-400" />
+                          <span>浏览全库 (共 {inspectState.rules.length} 条)</span>
+                        </button>
+                      {/if}
+                    </div>
+
+                    <!-- Row 4: Currently Selected Rules Pool (已选规则池) -->
+                    <div class="bg-slate-950/70 border border-slate-800/80 rounded-lg p-3 space-y-2 text-xs">
+                      <div class="flex items-center justify-between">
+                        <span class="text-slate-300 font-medium font-sans">
+                          本源已启用规则池 ({Array.isArray(p.tag) ? p.tag.length : (p.tag ? 1 : 0)} 个规则):
+                        </span>
+                        {#if (Array.isArray(p.tag) ? p.tag.length : 0) > 0}
+                          <button
+                            type="button"
+                            onclick={() => clearProviderTags(pIdx)}
+                            class="text-slate-500 hover:text-rose-400 font-mono text-[11px]"
+                          >
+                            清空已选
+                          </button>
+                        {/if}
+                      </div>
+
+                      <div class="flex flex-wrap gap-1.5">
+                        {#each (Array.isArray(p.tag) ? p.tag : (p.tag ? [p.tag] : [])) as t}
+                          {@const isRef = referencedRuleTags.has(t)}
+                          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-200 font-mono text-[11px]">
+                            <span class="font-bold text-emerald-400">{t}</span>
+                            {#if isRef}
+                              <span class="text-[9px] text-cyan-400 font-sans" title="已在路由或 DNS 分流规则中被引用">(已引用)</span>
+                            {/if}
+                            <button
+                              type="button"
+                              onclick={() => toggleProviderTag(pIdx, t)}
+                              class="text-slate-500 hover:text-rose-400 ml-0.5 cursor-pointer"
+                              title="移除此规则"
+                            >
+                              ×
+                            </button>
                           </span>
-                          {#if isChecked}
-                            <CheckSquare size={13} class="text-emerald-400 shrink-0 mt-0.5" />
-                          {:else}
-                            <Square size={13} class="text-slate-600 shrink-0 mt-0.5" />
-                          {/if}
-                        </div>
-
-                        <div class="flex flex-wrap items-center gap-1 text-[10px]">
-                          {#if item.formats.includes('srs')}
-                            <span class="px-1 py-0.2 rounded bg-slate-900 text-slate-400 font-mono">srs</span>
-                          {/if}
-                          {#if item.formats.includes('json')}
-                            <span class="px-1 py-0.2 rounded bg-slate-900 text-slate-400 font-mono">json</span>
-                          {/if}
-                          {#if isReferenced}
-                            <span class="px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60" title="此规则已在当前模板的路由规则或 DNS 规则中被引用">
-                              已引用
-                            </span>
-                          {/if}
-                        </div>
-                      </button>
-                    {/each}
+                        {/each}
+                        {#if (Array.isArray(p.tag) ? p.tag.length : 0) === 0}
+                          <span class="text-slate-500 text-xs font-mono py-1">
+                            尚未启用任何规则，可点击上方推荐规则点亮或在搜索框中快速添加。
+                          </span>
+                        {/if}
+                      </div>
+                    </div>
                   </div>
                 {/if}
               </div>
-            {:else}
-              <!-- If release hasn't been fetched yet, display currently enabled tags summary and quick inspect tip -->
-              <div class="bg-slate-950/70 border border-slate-800/80 rounded-lg p-3 text-xs space-y-2">
-                <div class="flex items-center justify-between">
-                  <span class="text-slate-300 font-medium">当前已配置规则集 ({activeReleaseTags.length} 个规则):</span>
-                  <button
-                    type="button"
-                    onclick={handleInspectRelease}
-                    class="text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 font-mono text-[11px]"
-                  >
-                    <RefreshCw size={11} /> 探查 Release 勾选更多
-                  </button>
-                </div>
-                <div class="flex flex-wrap gap-1.5">
-                  {#each activeReleaseTags as t}
-                    {@const isRef = referencedRuleTags.has(t)}
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-200 font-mono text-[11px]">
-                      <span class="font-bold text-emerald-400">{t}</span>
-                      {#if isRef}
-                        <span class="text-[9px] text-cyan-400">(已引用)</span>
-                      {/if}
-                      <button
-                        type="button"
-                        onclick={() => toggleReleaseTag(t)}
-                        class="text-slate-500 hover:text-rose-400 ml-0.5"
-                        title="移除此规则"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  {/each}
-                </div>
+            {/each}
+
+            {#if !store.selectedTemplate.content?.rule_sets || store.selectedTemplate.content.rule_sets.length === 0}
+              <div class="bg-slate-900/40 border border-slate-800 rounded-lg p-8 text-center space-y-2">
+                <Bookmark size={24} class="mx-auto text-slate-600" />
+                <p class="text-xs text-slate-400">尚未添加任何规则源</p>
+                <button
+                  type="button"
+                  onclick={addProvider}
+                  class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium inline-flex items-center gap-1 shadow-sm"
+                >
+                  <Plus size={13} />
+                  <span>添加第一个规则源</span>
+                </button>
               </div>
             {/if}
           </div>
+        </div>
+      {/if}
 
-          <!-- Card 2: Custom / Individual Rule Sets -->
-          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
-              <div>
-                <h3 class="text-sm font-semibold text-slate-200">自定义规则集 (Custom Rule Sets)</h3>
-                <span class="text-xs text-slate-400">配置独立的本地文件 (local)、内联规则 (inline) 或独立 URL 的单个规则集</span>
+      <!-- Full Rules Modal Dialog (全库查阅与多选弹窗) -->
+      {#if browseModal.open && browseModal.providerIdx !== -1}
+        {@const pIdx = browseModal.providerIdx}
+        {@const p = store.selectedTemplate.content?.rule_sets[pIdx]}
+        {@const state = providerInspectStates[pIdx]}
+        {@const allRules = state?.rules || []}
+        {@const searchQ = browseModal.search.toLowerCase().trim()}
+        {@const filteredByLetter = allRules.filter(r => {
+          if (browseModal.letterFilter === 'ALL') return true;
+          if (browseModal.letterFilter === '#') return !/^[A-Za-z]/.test(r.tag);
+          return r.tag.toUpperCase().startsWith(browseModal.letterFilter);
+        })}
+        {@const modalFilteredRules = filteredByLetter.filter(r => !searchQ || r.tag.toLowerCase().includes(searchQ))}
+
+        <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
+          <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden text-xs">
+            <!-- Modal Header -->
+            <div class="p-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <Bookmark size={16} class="text-emerald-400" />
+                <div>
+                  <h4 class="text-sm font-bold text-slate-100 font-sans">
+                    规则全库 — {p?.name || '规则源'} (共 {allRules.length} 条)
+                  </h4>
+                  <p class="text-[11px] text-slate-400 font-sans">
+                    当前源 Tag 前缀为 <span class="text-amber-300 font-mono font-bold">"{p?.tag_prefix || '(无)'}"</span>
+                  </p>
+                </div>
               </div>
+
               <button
                 type="button"
-                onclick={addCustomRuleSet}
-                class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700"
+                onclick={closeBrowseModal}
+                class="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                title="关闭"
               >
-                <Plus size={13} />
-                <span>添加规则集</span>
+                <X size={16} />
               </button>
             </div>
 
-            <div class="grid grid-cols-1 gap-2">
-              {#each (store.selectedTemplate.content?.rule_sets || []).filter(rs => !(rs.type === 'remote' && rs.url && rs.url.includes('{tag}'))) as rs, rsIdx}
-                <div class="grid grid-cols-1 md:grid-cols-12 gap-2 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs items-center">
+            <!-- Filter & Search Toolbar -->
+            <div class="p-3 bg-slate-950/60 border-b border-slate-800 space-y-2">
+              <div class="flex flex-col sm:flex-row items-center gap-2">
+                <div class="relative flex-1 w-full">
+                  <Search size={13} class="absolute left-2.5 top-2.5 text-slate-500" />
                   <input
                     type="text"
-                    bind:value={rs.tag}
-                    oninput={triggerUpdate}
-                    placeholder="tag"
-                    class="md:col-span-2 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-100 font-mono font-bold"
+                    bind:value={browseModal.search}
+                    placeholder="按规则名模糊检索..."
+                    class="w-full bg-slate-900 border border-slate-800 rounded pl-8 pr-3 py-1.5 text-xs text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
                   />
-                  <select
-                    bind:value={rs.type}
-                    onchange={triggerUpdate}
-                    class="md:col-span-2 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-cyan-300 font-mono"
-                  >
-                    <option value="remote">remote</option>
-                    <option value="local">local</option>
-                    <option value="inline">inline</option>
-                  </select>
-                  <select
-                    bind:value={rs.format}
-                    onchange={triggerUpdate}
-                    class="md:col-span-1 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-300 font-mono"
-                  >
-                    <option value="binary">binary</option>
-                    <option value="source">source</option>
-                  </select>
-                  <input
-                    type="text"
-                    bind:value={rs.url}
-                    oninput={triggerUpdate}
-                    placeholder="https://.../rule.srs 或路径"
-                    class="md:col-span-5 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-200 font-mono"
-                  />
-                  <select
-                    bind:value={rs.download_detour}
-                    onchange={triggerUpdate}
-                    class="md:col-span-1 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-200 font-mono"
-                  >
-                    <option value="">detour</option>
-                    <option value="直连">直连</option>
-                    {#each allOutboundTags as oTag}
-                      <option value={oTag}>{oTag}</option>
-                    {/each}
-                  </select>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
                   <button
                     type="button"
-                    onclick={() => removeRuleSet(rsIdx)}
-                    class="md:col-span-1 text-slate-500 hover:text-rose-400 p-1 justify-self-end"
-                    title="删除规则集"
+                    onclick={() => {
+                      for (const r of modalFilteredRules) {
+                        if (!isTagSelected(p, r.tag)) {
+                          toggleProviderTag(pIdx, r.tag);
+                        }
+                      }
+                    }}
+                    class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-sans text-xs"
                   >
-                    <Trash2 size={13} />
+                    全选当前过滤 ({modalFilteredRules.length})
+                  </button>
+                  <button
+                    type="button"
+                    onclick={() => clearProviderTags(pIdx)}
+                    class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-sans text-xs"
+                  >
+                    清空本源已选
                   </button>
                 </div>
-              {/each}
-              {#if (store.selectedTemplate.content?.rule_sets || []).filter(rs => !(rs.type === 'remote' && rs.url && rs.url.includes('{tag}'))).length === 0}
-                <div class="py-4 text-center text-slate-500 text-xs font-mono">
-                  无额外自定义规则集（所有分流规则均由上方 GitHub Release 批量规则源提供）
+              </div>
+
+              <!-- A-Z Alphabet Quick Bar -->
+              <div class="flex flex-wrap items-center gap-1 text-[11px] font-mono pt-1">
+                {#each ALPHABET_LIST as letter}
+                  <button
+                    type="button"
+                    onclick={() => { browseModal.letterFilter = letter; }}
+                    class="px-1.5 py-0.5 rounded transition-colors {browseModal.letterFilter === letter ? 'bg-cyan-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}"
+                  >
+                    {letter}
+                  </button>
+                {/each}
+              </div>
+            </div>
+
+            <!-- Modal Rules Grid -->
+            <div class="flex-1 overflow-y-auto p-3.5 space-y-1">
+              {#if modalFilteredRules.length === 0}
+                <div class="py-12 text-center text-slate-500 font-mono text-xs">
+                  没有找到匹配的规则条目
+                </div>
+              {:else}
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                  {#each modalFilteredRules as r}
+                    {@const isChecked = isTagSelected(p, r.tag)}
+                    {@const isRef = referencedRuleTags.has(`${p?.tag_prefix || ''}${r.tag}`)}
+                    <button
+                      type="button"
+                      onclick={() => toggleProviderTag(pIdx, r.tag)}
+                      class="px-2.5 py-2 rounded-lg border text-left transition-all flex items-center justify-between gap-1.5 cursor-pointer {isChecked ? 'bg-emerald-950/40 border-emerald-500/70 text-emerald-200' : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700'}"
+                    >
+                      <div class="truncate">
+                        <span class="font-mono font-bold">{p?.tag_prefix || ''}{r.tag}</span>
+                        {#if r.raw_name && r.raw_name !== r.tag}
+                          <span class="text-[10px] text-slate-500 block truncate">{r.raw_name}</span>
+                        {/if}
+                      </div>
+
+                      <div class="flex items-center gap-1.5 shrink-0">
+                        {#if isRef}
+                          <span class="px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 text-[10px]" title="已在当前模板路由或 DNS 中被引用">已引用</span>
+                        {/if}
+                        {#if isChecked}
+                          <CheckSquare size={14} class="text-emerald-400" />
+                        {:else}
+                          <Square size={14} class="text-slate-600" />
+                        {/if}
+                      </div>
+                    </button>
+                  {/each}
                 </div>
               {/if}
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="p-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between">
+              <span class="text-slate-300 font-mono">
+                当前规则源已启用 <span class="text-emerald-400 font-bold">{Array.isArray(p?.tag) ? p.tag.length : 0}</span> 条规则
+              </span>
+              <button
+                type="button"
+                onclick={closeBrowseModal}
+                class="px-4 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs shadow-sm transition-colors cursor-pointer"
+              >
+                完成
+              </button>
             </div>
           </div>
         </div>

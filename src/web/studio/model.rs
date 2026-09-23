@@ -338,9 +338,6 @@ pub fn validate_template_content(content: &Value) -> std::result::Result<(), Str
                 }
                 tags.push(trimmed.to_string());
             } else if let Some(tag_arr) = item.get("tag").and_then(Value::as_array) {
-                if tag_arr.is_empty() {
-                    return Err("rule_set tag array cannot be empty".to_string());
-                }
                 for t in tag_arr {
                     let Some(s) = t.as_str().map(str::trim) else {
                         return Err("rule_set tag array elements must be strings".to_string());

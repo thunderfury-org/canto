@@ -151,12 +151,32 @@ pub fn expand_profile(template_content: &Value, nodes: &[Value]) -> Expansion {
         obj.remove("node_groups");
         obj.insert("outbounds".to_string(), Value::Array(assembled_outbounds));
 
-        if let Some(rule_sets) = obj.remove("rule_sets") {
+        if let Some(mut rule_sets_val) = obj.remove("rule_sets") {
+            if let Some(rule_sets_arr) = rule_sets_val.as_array_mut() {
+                rule_sets_arr.retain(|rs| {
+                    if let Some(arr) = rs.get("tag").and_then(Value::as_array) {
+                        !arr.is_empty()
+                    } else if let Some(s) = rs.get("tag").and_then(Value::as_str) {
+                        !s.trim().is_empty()
+                    } else {
+                        false
+                    }
+                });
+                for rs in rule_sets_arr.iter_mut() {
+                    if let Some(rs_obj) = rs.as_object_mut() {
+                        rs_obj.remove("name");
+                        rs_obj.remove("source_url");
+                        rs_obj.remove("tag_prefix");
+                        rs_obj.remove("category");
+                        rs_obj.remove("preset_id");
+                    }
+                }
+            }
             let route_entry = obj
                 .entry("route".to_string())
                 .or_insert_with(|| Value::Object(serde_json::Map::new()));
             if let Some(route_obj) = route_entry.as_object_mut() {
-                route_obj.insert("rule_set".to_string(), rule_sets);
+                route_obj.insert("rule_set".to_string(), rule_sets_val);
             }
         }
     }

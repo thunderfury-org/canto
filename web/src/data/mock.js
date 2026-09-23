@@ -309,7 +309,16 @@ export function compileProfile(template, boundSources) {
 
   if (compiled.rule_sets) {
     if (!compiled.route) compiled.route = {};
-    compiled.route.rule_set = compiled.rule_sets;
+    const cleaned = compiled.rule_sets.map(rs => {
+      const copy = { ...rs };
+      delete copy.name;
+      delete copy.source_url;
+      delete copy.tag_prefix;
+      delete copy.category;
+      delete copy.preset_id;
+      return copy;
+    });
+    compiled.route.rule_set = cleaned;
     delete compiled.rule_sets;
   }
 

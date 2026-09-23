@@ -1472,6 +1472,53 @@ async fn test_relational_guards_prevent_dangling_template_and_empty_profile_sour
         .unwrap();
     assert_eq!(del_src_res.status(), StatusCode::NO_CONTENT);
 
+    // 6. Test multi-provider template with tag prefixes
+    let multi_provider_payload = json!({
+        "name": "多规则源模板",
+        "content": {
+            "outbounds": [{ "type": "direct", "tag": "直连" }],
+            "rule_sets": [
+                {
+                    "name": "SagerNet GeoSite",
+                    "type": "remote",
+                    "tag_prefix": "geosite-",
+                    "tag": ["geosite-cn", "geosite-openai"],
+                    "format": "binary",
+                    "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/{tag}.srs",
+                    "download_detour": "ALL"
+                },
+                {
+                    "name": "MetaCubeX GeoIP",
+                    "type": "remote",
+                    "tag_prefix": "geoip-",
+                    "tag": ["geoip-cn", "geoip-telegram"],
+                    "format": "binary",
+                    "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/{tag}.srs",
+                    "download_detour": "ALL"
+                }
+            ],
+            "route": {
+                "rules": [
+                    { "rule_set": ["geosite-cn"], "outbound": "直连" },
+                    { "rule_set": ["geoip-cn"], "outbound": "直连" }
+                ]
+            }
+        }
+    });
+
+    let (status, created_multi) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/templates",
+                Body::from(multi_provider_payload.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created_multi}");
+
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -1494,6 +1541,14 @@ async fn test_ruleset_presets_and_template_rule_sets_flow() {
         arr.iter()
             .any(|p| p["tag"] == "sing-box-ruleset" && p["repo"] == "DustinWin/ruleset_geodata")
     );
+    assert!(
+        arr.iter()
+            .all(|p| p["repo"] != "Loyalsoldier/sing-box-rules")
+    );
+    assert!(arr.iter().any(|p| p["id"] == "sagernet-geosite"));
+    assert!(arr.iter().any(|p| p["id"] == "sagernet-geoip"));
+    assert!(arr.iter().any(|p| p["id"] == "metacubex-geosite"));
+    assert!(arr.iter().any(|p| p["id"] == "metacubex-geoip"));
 
     // 2. Inspect release empty input check
     let (status, err) = json_body(
