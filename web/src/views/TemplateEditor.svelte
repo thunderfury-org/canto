@@ -124,6 +124,13 @@
     (store.selectedTemplate?.content?.node_groups || []).map(g => g.tag).filter(Boolean)
   );
 
+  // User-configurable policy groups (excluding built-in direct and block)
+  let userPolicyGroups = $derived(
+    (store.selectedTemplate?.content?.policy_groups || []).filter(
+      p => p?.type !== "direct" && p?.type !== "block"
+    )
+  );
+
   // Collect policy group tags
   let availablePolicyGroupTags = $derived(
     (store.selectedTemplate?.content?.policy_groups || []).map(p => p.tag).filter(Boolean)
@@ -589,7 +596,7 @@
     if (!tpl.content.policy_groups) tpl.content.policy_groups = [];
     const firstCand = availableNodeGroupTags[0] || directOutbound?.tag || "直连";
     tpl.content.policy_groups.push({
-      tag: "新策略组 " + (tpl.content.policy_groups.length + 1),
+      tag: "新策略组 " + (userPolicyGroups.length + 1),
       type: "selector",
       outbounds: [firstCand],
       default: firstCand
@@ -597,11 +604,14 @@
     triggerUpdate();
   }
 
-  function removePolicyGroup(idx) {
+  function removePolicyGroup(targetPg) {
     const tpl = store.selectedTemplate;
     if (tpl.content.policy_groups) {
-      tpl.content.policy_groups.splice(idx, 1);
-      triggerUpdate();
+      const idx = tpl.content.policy_groups.indexOf(targetPg);
+      if (idx !== -1) {
+        tpl.content.policy_groups.splice(idx, 1);
+        triggerUpdate();
+      }
     }
   }
 
@@ -930,7 +940,7 @@
         >
           <Sparkles size={13} class="text-cyan-400" />
           <span>出站策略组</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.policy_groups?.length || 0}</span>
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{userPolicyGroups.length}</span>
         </button>
 
         <button
@@ -1184,75 +1194,57 @@
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-800/60 font-mono">
-                  {#each store.selectedTemplate.content?.policy_groups || [] as pg, pgIdx}
-                    {#if pg.type === 'direct' || pg.type === 'block'}
-                      <tr class="bg-slate-950/20 hover:bg-slate-950/40 transition-colors align-middle">
-                        <td class="py-2.5 px-3.5">
-                          <div class="flex items-center gap-2">
-                            <span class="px-2 py-0.5 rounded text-[10px] font-semibold {pg.type === 'direct' ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60' : 'bg-rose-950/80 text-rose-300 border border-rose-800/60'}">
-                              {pg.type === 'direct' ? '直连' : '拦截'}
-                            </span>
-                            <span class="text-xs font-semibold text-slate-200 font-mono">{pg.tag}</span>
-                          </div>
-                        </td>
-                        <td class="py-2.5 px-3 text-slate-500 text-xs font-mono">
-                          {pg.type === 'direct' ? '系统基础出站直连' : '系统基础出站丢弃拦截'}
-                        </td>
-                        <td class="py-2.5 px-3 text-slate-600 text-xs font-mono">-</td>
-                        <td class="py-2.5 px-3 text-center text-slate-600 text-[10px] font-mono">内置</td>
-                      </tr>
-                    {:else}
-                      <tr class="hover:bg-slate-950/30 transition-colors align-middle">
-                        <!-- Tag Name -->
-                        <td class="py-2.5 px-3.5">
-                          <input
-                            type="text"
-                            bind:value={pg.tag}
-                            oninput={triggerUpdate}
-                            placeholder="策略组标签"
-                            class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-100 font-semibold focus:border-cyan-500 focus:outline-none font-mono"
-                          />
-                        </td>
+                  {#each userPolicyGroups as pg}
+                    <tr class="hover:bg-slate-950/30 transition-colors align-middle">
+                      <!-- Tag Name -->
+                      <td class="py-2.5 px-3.5">
+                        <input
+                          type="text"
+                          bind:value={pg.tag}
+                          oninput={triggerUpdate}
+                          placeholder="策略组标签"
+                          class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-100 font-semibold focus:border-cyan-500 focus:outline-none font-mono"
+                        />
+                      </td>
 
-                        <!-- MultiSelect Node Groups -->
-                        <td class="py-2.5 px-3">
-                          <MultiSelect
-                            options={policyCandidateOptions}
-                            bind:selected={pg.outbounds}
-                            placeholder="选择包含的节点分组..."
-                            onChange={() => handlePolicyGroupOutboundsChange(pg)}
-                          />
-                        </td>
+                      <!-- MultiSelect Node Groups -->
+                      <td class="py-2.5 px-3">
+                        <MultiSelect
+                          options={policyCandidateOptions}
+                          bind:selected={pg.outbounds}
+                          placeholder="选择包含的节点分组..."
+                          onChange={() => handlePolicyGroupOutboundsChange(pg)}
+                        />
+                      </td>
 
-                        <!-- Default selection (Under/Next to node groups) -->
-                        <td class="py-2.5 px-3">
-                          <select
-                            bind:value={pg.default}
-                            onchange={triggerUpdate}
-                            class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-cyan-200 font-mono focus:border-cyan-500 focus:outline-none"
-                          >
-                            <option value="">(首项: {pg.outbounds?.[0] || "空"})</option>
-                            {#each pg.outbounds || [] as cand}
-                              <option value={cand}>{cand}</option>
-                            {/each}
-                          </select>
-                        </td>
+                      <!-- Default selection (Under/Next to node groups) -->
+                      <td class="py-2.5 px-3">
+                        <select
+                          bind:value={pg.default}
+                          onchange={triggerUpdate}
+                          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-cyan-200 font-mono focus:border-cyan-500 focus:outline-none"
+                        >
+                          <option value="">(首项: {pg.outbounds?.[0] || "空"})</option>
+                          {#each pg.outbounds || [] as cand}
+                            <option value={cand}>{cand}</option>
+                          {/each}
+                        </select>
+                      </td>
 
-                        <!-- Delete Action -->
-                        <td class="py-2.5 px-3 text-center">
-                          <button
-                            type="button"
-                            onclick={() => removePolicyGroup(pgIdx)}
-                            title="删除此策略组"
-                            class="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800 transition-colors cursor-pointer"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    {/if}
+                      <!-- Delete Action -->
+                      <td class="py-2.5 px-3 text-center">
+                        <button
+                          type="button"
+                          onclick={() => removePolicyGroup(pg)}
+                          title="删除此策略组"
+                          class="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
                   {/each}
-                  {#if !store.selectedTemplate.content?.policy_groups || store.selectedTemplate.content.policy_groups.length === 0}
+                  {#if userPolicyGroups.length === 0}
                     <tr>
                       <td colspan="4" class="py-8 text-center text-slate-500 text-xs font-mono">
                         暂无出站策略组，点击右上角「添加出站策略组」进行创建
