@@ -308,64 +308,100 @@ async fn inspect_github_branch(
     path: String,
 ) -> Response {
     let clean_path = path.trim_matches('/').to_string();
-    let gh_api_url = if clean_path.is_empty() {
-        format!("https://api.github.com/repos/{owner}/{repo}/contents?ref={branch}")
-    } else {
-        format!("https://api.github.com/repos/{owner}/{repo}/contents/{clean_path}?ref={branch}")
-    };
 
-    let res = match state
+    // 1. Prefer Git Trees API: /repos/{owner}/{repo}/git/trees/{branch}:{clean_path}
+    // Git Trees API returns up to 100,000 files without the 1,000 files truncation limit of /contents!
+    let tree_ref = if clean_path.is_empty() {
+        branch.clone()
+    } else {
+        format!("{branch}:{clean_path}")
+    };
+    let git_trees_url = format!("https://api.github.com/repos/{owner}/{repo}/git/trees/{tree_ref}");
+
+    let mut res = state
         .http
-        .get(&gh_api_url)
+        .get(&git_trees_url)
         .header("User-Agent", "canto-web-studio")
         .header("Accept", "application/vnd.github.v3+json")
         .send()
-        .await
-    {
-        Ok(res) => res,
+        .await;
+
+    // Fallback to /contents API if git trees returns non-success
+    let is_trees_success = match &res {
+        Ok(r) => r.status().is_success(),
+        Err(_) => false,
+    };
+
+    if !is_trees_success {
+        let fallback_contents_url = if clean_path.is_empty() {
+            format!("https://api.github.com/repos/{owner}/{repo}/contents?ref={branch}")
+        } else {
+            format!(
+                "https://api.github.com/repos/{owner}/{repo}/contents/{clean_path}?ref={branch}"
+            )
+        };
+        if let Ok(fallback_res) = state
+            .http
+            .get(&fallback_contents_url)
+            .header("User-Agent", "canto-web-studio")
+            .header("Accept", "application/vnd.github.v3+json")
+            .send()
+            .await
+            && fallback_res.status().is_success()
+        {
+            res = Ok(fallback_res);
+        }
+    }
+
+    let response = match res {
+        Ok(r) => r,
         Err(err) => {
             return json_error(
                 StatusCode::BAD_GATEWAY,
-                &format!("failed to fetch github branch contents: {err}"),
+                &format!("failed to fetch github branch items: {err}"),
             );
         }
     };
 
-    if !res.status().is_success() {
-        let status = res.status();
-        let body = res.text().await.unwrap_or_default();
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
         return json_error(
             StatusCode::BAD_GATEWAY,
             &format!("GitHub API returned {status}: {body}"),
         );
     }
 
-    let bytes = match res.bytes().await {
+    let bytes = match response.bytes().await {
         Ok(b) => b,
         Err(err) => {
             return json_error(
                 StatusCode::BAD_GATEWAY,
-                &format!("failed to read GitHub contents response: {err}"),
+                &format!("failed to read GitHub response: {err}"),
             );
         }
     };
 
-    let items_json: serde_json::Value = match serde_json::from_slice(&bytes) {
+    let parsed_json: serde_json::Value = match serde_json::from_slice(&bytes) {
         Ok(v) => v,
         Err(err) => {
             return json_error(
                 StatusCode::BAD_GATEWAY,
-                &format!("failed to parse GitHub contents JSON: {err}"),
+                &format!("failed to parse GitHub JSON: {err}"),
             );
         }
     };
 
-    let Some(items) = items_json.as_array() else {
-        return json_error(
-            StatusCode::BAD_GATEWAY,
-            "GitHub contents API returned non-array response (expected directory)",
-        );
-    };
+    // Git Trees API returns { "tree": [...] }, while /contents returns [...]
+    let empty_vec = Vec::new();
+    let items: &[serde_json::Value] =
+        if let Some(tree_arr) = parsed_json.get("tree").and_then(|v| v.as_array()) {
+            tree_arr
+        } else if let Some(arr) = parsed_json.as_array() {
+            arr
+        } else {
+            &empty_vec
+        };
 
     type AssetMeta = (String, BTreeSet<String>, Option<u64>, Option<u64>);
     let mut rules_map: BTreeMap<String, AssetMeta> = BTreeMap::new();
@@ -376,12 +412,18 @@ async fn inspect_github_branch(
     let mut total_rule_files = 0;
 
     for item in items {
-        if item.get("type").and_then(|v| v.as_str()) != Some("file") {
+        let typ = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        if typ != "file" && typ != "blob" {
             continue;
         }
-        let Some(file_name) = item.get("name").and_then(|v| v.as_str()) else {
+        let Some(raw_path) = item
+            .get("path")
+            .or_else(|| item.get("name"))
+            .and_then(|v| v.as_str())
+        else {
             continue;
         };
+        let file_name = raw_path.rsplit('/').next().unwrap_or(raw_path);
         let is_srs = file_name.ends_with(".srs");
         let is_json = file_name.ends_with(".json");
         if !is_srs && !is_json {
@@ -409,12 +451,18 @@ async fn inspect_github_branch(
         };
 
     for item in items {
-        if item.get("type").and_then(|v| v.as_str()) != Some("file") {
+        let typ = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        if typ != "file" && typ != "blob" {
             continue;
         }
-        let Some(file_name) = item.get("name").and_then(|v| v.as_str()) else {
+        let Some(raw_path) = item
+            .get("path")
+            .or_else(|| item.get("name"))
+            .and_then(|v| v.as_str())
+        else {
             continue;
         };
+        let file_name = raw_path.rsplit('/').next().unwrap_or(raw_path);
         let size = item.get("size").and_then(|v| v.as_u64());
 
         let (base_name, fmt) = if let Some(stripped) = file_name.strip_suffix(".srs") {

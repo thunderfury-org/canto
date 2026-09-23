@@ -275,6 +275,7 @@
     search: '',
     letterFilter: 'ALL'
   });
+  let modalDisplayLimit = $state(240);
 
   async function loadPresets() {
     try {
@@ -539,6 +540,7 @@
   }
 
   function openBrowseModal(pIdx) {
+    modalDisplayLimit = 240;
     browseModal = {
       open: true,
       providerIdx: pIdx,
@@ -1650,7 +1652,7 @@
                   <Search size={13} class="absolute left-2.5 top-2.5 text-slate-500" />
                   <input
                     type="text"
-                    bind:value={browseModal.search}
+                    bind:value={browseModal.search} oninput={() => { modalDisplayLimit = 240; }}
                     placeholder="按规则名模糊检索..."
                     class="w-full bg-slate-900 border border-slate-800 rounded pl-8 pr-3 py-1.5 text-xs text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
                   />
@@ -1684,7 +1686,7 @@
                 {#each ALPHABET_LIST as letter}
                   <button
                     type="button"
-                    onclick={() => { browseModal.letterFilter = letter; }}
+                    onclick={() => { browseModal.letterFilter = letter; modalDisplayLimit = 240; }}
                     class="px-1.5 py-0.5 rounded transition-colors {browseModal.letterFilter === letter ? 'bg-cyan-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}"
                   >
                     {letter}
@@ -1694,14 +1696,15 @@
             </div>
 
             <!-- Modal Rules Grid -->
-            <div class="flex-1 overflow-y-auto p-3.5 space-y-1">
+            <div class="flex-1 overflow-y-auto p-3.5 space-y-2">
               {#if modalFilteredRules.length === 0}
                 <div class="py-12 text-center text-slate-500 font-mono text-xs">
                   没有找到匹配的规则条目
                 </div>
               {:else}
+                {@const visibleModalRules = modalFilteredRules.slice(0, modalDisplayLimit)}
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                  {#each modalFilteredRules as r}
+                  {#each visibleModalRules as r}
                     {@const isChecked = isTagSelected(p, r.tag)}
                     {@const isRef = referencedRuleTags.has(`${p?.tag_prefix || ''}${r.tag}`)}
                     <button
@@ -1729,6 +1732,25 @@
                     </button>
                   {/each}
                 </div>
+
+                {#if modalFilteredRules.length > modalDisplayLimit}
+                  <div class="pt-3 pb-1 text-center flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onclick={() => { modalDisplayLimit += 240; }}
+                      class="px-3.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 font-mono text-xs cursor-pointer"
+                    >
+                      加载更多 (+240 条，已显示 {visibleModalRules.length} / {modalFilteredRules.length})
+                    </button>
+                    <button
+                      type="button"
+                      onclick={() => { modalDisplayLimit = modalFilteredRules.length; }}
+                      class="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs cursor-pointer"
+                    >
+                      全部显示
+                    </button>
+                  </div>
+                {/if}
               {/if}
             </div>
 
