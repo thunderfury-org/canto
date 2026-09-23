@@ -37,15 +37,21 @@ export const initialTemplates = [
         { type: "direct", tag: "直连" },
         { type: "block", tag: "block" }
       ],
+      rule_sets: [
+        {
+          tag: ["cn"],
+          type: "remote",
+          format: "binary",
+          url: "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs",
+          download_detour: "ALL"
+        }
+      ],
       route: {
         auto_detect_interface: true,
         rules: [
           { protocol: "dns", outbound: "dns-out" },
           { ip_is_private: true, outbound: "直连" },
           { rule_set: "cn", outbound: "直连" }
-        ],
-        rule_set: [
-          { tag: "cn", type: "remote", format: "binary", url: "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs" }
         ]
       }
     }
@@ -300,6 +306,12 @@ export function compileProfile(template, boundSources) {
   delete compiled.policy_groups;
   delete compiled.node_groups;
   compiled.outbounds = assembledOutbounds;
+
+  if (compiled.rule_sets) {
+    if (!compiled.route) compiled.route = {};
+    compiled.route.rule_set = compiled.rule_sets;
+    delete compiled.rule_sets;
+  }
 
   return {
     config: compiled,

@@ -14,6 +14,7 @@ use crate::web::studio::api::{
     get_source, get_subscription, get_template, list_profiles, list_sources, list_templates,
     preview_profile, refresh_source, update_profile, update_source, update_template,
 };
+use crate::web::studio::ruleset::{inspect_release, list_ruleset_presets};
 
 pub fn create_app(state: WebState) -> Router {
     let cors = CorsLayer::new()
@@ -43,6 +44,8 @@ pub fn create_app(state: WebState) -> Router {
         .route("/profiles", get(list_profiles).post(create_profile))
         .route("/profiles/{id}", put(update_profile).delete(delete_profile))
         .route("/profiles/{id}/preview", get(preview_profile))
+        .route("/rulesets/presets", get(list_ruleset_presets))
+        .route("/rulesets/inspect-release", post(inspect_release))
         .fallback(api_fallback_404)
         .layer(middleware::from_fn_with_state(
             state.clone(),

@@ -159,6 +159,7 @@ pub fn validate_template_content(content: &Value) -> std::result::Result<(), Str
     validate_optional_array_of_objects(obj, "outbounds")?;
     validate_optional_array_of_objects(obj, "node_groups")?;
     validate_optional_array_of_objects(obj, "policy_groups")?;
+    validate_optional_array_of_objects(obj, "rule_sets")?;
 
     let mut base_tags: std::collections::HashSet<String> = std::collections::HashSet::new();
     if let Some(outbounds) = obj.get("outbounds").and_then(Value::as_array) {
@@ -312,6 +313,122 @@ pub fn validate_template_content(content: &Value) -> std::result::Result<(), Str
         }
     }
 
+    let mut defined_rule_set_tags: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+
+    if let Some(rule_sets) = obj.get("rule_sets").and_then(Value::as_array) {
+        for rs in rule_sets {
+            let Some(item) = rs.as_object() else {
+                return Err("content.rule_sets entries must be objects".to_string());
+            };
+            let typ = item
+                .get("type")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or("");
+            if typ.is_empty() {
+                return Err("rule_set entry must have a non-empty type".to_string());
+            }
+
+            let mut tags = Vec::new();
+            if let Some(tag_str) = item.get("tag").and_then(Value::as_str) {
+                let trimmed = tag_str.trim();
+                if trimmed.is_empty() {
+                    return Err("rule_set tag cannot be empty".to_string());
+                }
+                tags.push(trimmed.to_string());
+            } else if let Some(tag_arr) = item.get("tag").and_then(Value::as_array) {
+                if tag_arr.is_empty() {
+                    return Err("rule_set tag array cannot be empty".to_string());
+                }
+                for t in tag_arr {
+                    let Some(s) = t.as_str().map(str::trim) else {
+                        return Err("rule_set tag array elements must be strings".to_string());
+                    };
+                    if s.is_empty() {
+                        return Err("rule_set tag element cannot be empty".to_string());
+                    }
+                    tags.push(s.to_string());
+                }
+            } else {
+                return Err("rule_set entry must have a tag string or array of tags".to_string());
+            }
+
+            for tag in tags {
+                if !defined_rule_set_tags.insert(tag.clone()) {
+                    return Err(format!("duplicate rule_set tag '{tag}'"));
+                }
+            }
+        }
+    }
+
+    if let Some(route_obj) = obj.get("route").and_then(Value::as_object)
+        && let Some(rule_sets) = route_obj.get("rule_set").and_then(Value::as_array)
+    {
+        for rs in rule_sets {
+            if let Some(tag) = rs.get("tag").and_then(Value::as_str).map(str::trim)
+                && !tag.is_empty()
+            {
+                defined_rule_set_tags.insert(tag.to_string());
+            } else if let Some(tag_arr) = rs.get("tag").and_then(Value::as_array) {
+                for t in tag_arr {
+                    if let Some(tag) = t.as_str().map(str::trim)
+                        && !tag.is_empty()
+                    {
+                        defined_rule_set_tags.insert(tag.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(route_obj) = obj.get("route").and_then(Value::as_object)
+        && let Some(rules) = route_obj.get("rules").and_then(Value::as_array)
+    {
+        for rule in rules {
+            if let Some(rule_obj) = rule.as_object()
+                && let Some(target_rs) = rule_obj.get("rule_set")
+            {
+                validate_rule_set_reference(target_rs, &defined_rule_set_tags, "route rule")?;
+            }
+        }
+    }
+
+    if let Some(dns_obj) = obj.get("dns").and_then(Value::as_object)
+        && let Some(rules) = dns_obj.get("rules").and_then(Value::as_array)
+    {
+        for rule in rules {
+            if let Some(rule_obj) = rule.as_object()
+                && let Some(target_rs) = rule_obj.get("rule_set")
+            {
+                validate_rule_set_reference(target_rs, &defined_rule_set_tags, "dns rule")?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_rule_set_reference(
+    val: &Value,
+    defined: &std::collections::HashSet<String>,
+    scope: &str,
+) -> std::result::Result<(), String> {
+    if let Some(s) = val.as_str() {
+        let tag = s.trim();
+        if !tag.is_empty() && !defined.contains(tag) {
+            return Err(format!("{scope} references undefined rule_set '{tag}'"));
+        }
+    } else if let Some(arr) = val.as_array() {
+        for item in arr {
+            if let Some(s) = item.as_str() {
+                let tag = s.trim();
+                if !tag.is_empty() && !defined.contains(tag) {
+                    return Err(format!("{scope} references undefined rule_set '{tag}'"));
+                }
+            }
+        }
+    }
     Ok(())
 }
 
@@ -474,6 +591,78 @@ mod tests {
             }))
             .is_err()
         );
+        // valid rule_sets with multi-tag and route references
+        assert!(
+            validate_template_content(&json!({
+                "rule_sets": [
+                    {
+                        "tag": ["cn", "apple"],
+                        "type": "remote",
+                        "format": "binary",
+                        "url": "https://example.com/{tag}.srs"
+                    },
+                    {
+                        "tag": "ai",
+                        "type": "remote",
+                        "format": "binary",
+                        "url": "https://example.com/ai.srs"
+                    }
+                ],
+                "route": {
+                    "rules": [
+                        { "rule_set": ["cn", "ai"], "outbound": "direct" }
+                    ]
+                },
+                "dns": {
+                    "rules": [
+                        { "rule_set": "apple", "server": "dns_direct" }
+                    ]
+                }
+            }))
+            .is_ok()
+        );
+
+        // duplicate rule_set tag rejected
+        assert!(
+            validate_template_content(&json!({
+                "rule_sets": [
+                    { "tag": ["cn", "ai"], "type": "remote" },
+                    { "tag": "cn", "type": "remote" }
+                ]
+            }))
+            .is_err()
+        );
+
+        // route rule referencing undefined rule_set rejected
+        assert!(
+            validate_template_content(&json!({
+                "rule_sets": [
+                    { "tag": "cn", "type": "remote" }
+                ],
+                "route": {
+                    "rules": [
+                        { "rule_set": "unknown_tag", "outbound": "direct" }
+                    ]
+                }
+            }))
+            .is_err()
+        );
+
+        // dns rule referencing undefined rule_set rejected
+        assert!(
+            validate_template_content(&json!({
+                "rule_sets": [
+                    { "tag": "cn", "type": "remote" }
+                ],
+                "dns": {
+                    "rules": [
+                        { "rule_set": ["unknown_tag"], "server": "dns_direct" }
+                    ]
+                }
+            }))
+            .is_err()
+        );
+
         assert!(!is_safe_id("../etc/passwd"));
         assert!(is_safe_id("tpl_abc-1"));
     }
