@@ -28,9 +28,8 @@
 
 3. **海量规则轻量化交互工作流**：
    - **已选规则池 (Selected Pool)**：主界面常态仅渲染当前已启用的 10~30 个规则药丸，DOM 节点数量降低 95% 以上，页面极致轻快。
-   - **主流常用推荐 (Curated Quick-Picks)**：针对 GeoSite 与 GeoIP 智能提供 15~25 个高频主流服务药丸（如 `cn`, `google`, `youtube`, `netflix`, `openai`, `telegram`, `bilibili`, `apple`, `microsoft` 等），一键快速点亮。
    - **智能即时搜索 (Search & Add)**：输入即时下拉呈现匹配项，支持回车一键加入已选。
-   - **全库查阅弹窗 (Browse All Modal)**：提供独立弹窗查阅上千条全量规则，支持 A-Z 索引与多选，关闭后即刻从 DOM 卸载。
+   - **全库查阅弹窗 (Browse All Modal)**：提供独立弹窗查阅上千条全量规则，支持 A-Z 索引、模糊搜索与分页增量加载，关闭后即刻从 DOM 卸载，消除冗余静态推荐，保持界面极简纯粹。
 
 4. **编译展开与引用完整性校验**：
    - `expand_profile` 将各规则源装配进 sing-box 的 `route.rule_set` 数组中，清理内部辅助字段。

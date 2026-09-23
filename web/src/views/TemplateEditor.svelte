@@ -250,19 +250,6 @@
     }
   ];
 
-  const GEOSITE_QUICK_PICKS = [
-    'cn', 'category-ads-all', 'google', 'youtube', 'netflix',
-    'openai', 'telegram', 'bilibili', 'apple', 'microsoft',
-    'github', 'steam', 'spotify', 'disney', 'tiktok', 'twitter'
-  ];
-  const GEOIP_QUICK_PICKS = [
-    'cn', 'private', 'telegram', 'netflix', 'twitter', 'google'
-  ];
-  const DUSTINWIN_QUICK_PICKS = [
-    'cn', 'ai', 'netflix', 'youtube', 'proxy', 'private',
-    'cnip', 'privateip', 'netflixip', 'bilibili', 'apple-cn'
-  ];
-
   const ALPHABET_LIST = ['ALL', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
 
   let presets = $state(fallbackPresets);
@@ -527,16 +514,6 @@
     const finalTag = rawTag.startsWith(prefix) ? rawTag : `${prefix}${rawTag}`;
     const tags = Array.isArray(p.tag) ? p.tag : [p.tag];
     return tags.includes(finalTag) || tags.includes(rawTag);
-  }
-
-  function getProviderQuickPicks(p) {
-    if (p.category === 'geosite' || (p.tag_prefix && p.tag_prefix.includes('geosite'))) {
-      return GEOSITE_QUICK_PICKS;
-    }
-    if (p.category === 'geoip' || (p.tag_prefix && p.tag_prefix.includes('geoip'))) {
-      return GEOIP_QUICK_PICKS;
-    }
-    return DUSTINWIN_QUICK_PICKS;
   }
 
   function openBrowseModal(pIdx) {
@@ -1295,7 +1272,6 @@
               {@const isExpanded = expandedProviderIndices.has(pIdx)}
               {@const inspectState = providerInspectStates[pIdx] || { rules: [], inspecting: false, error: '', searchQuery: '', searchDropdownOpen: false }}
               {@const providerCollisions = (Array.isArray(p.tag) ? p.tag : [p.tag]).filter(t => t && duplicateTagsMap[t])}
-              {@const quickPicks = getProviderQuickPicks(p)}
 
               <div class="bg-slate-900/90 border {providerCollisions.length > 0 ? 'border-amber-600/70' : 'border-slate-800'} rounded-lg overflow-hidden transition-all shadow-sm">
                 <!-- Card Header -->
@@ -1452,31 +1428,6 @@
                         <span>{inspectState.error}</span>
                       </div>
                     {/if}
-
-                    <!-- Row 2: Curated Quick-Picks (主流常用推荐一键点亮) -->
-                    <div class="bg-slate-950/50 border border-slate-800/60 rounded-lg p-2.5 space-y-2">
-                      <div class="flex items-center justify-between text-xs">
-                        <span class="text-slate-300 flex items-center gap-1 font-medium font-sans">
-                          <Sparkles size={12} class="text-amber-400" />
-                          <span>主流常用规则快捷点亮 ({p.category === 'geoip' ? 'IP 分流' : '域名分流'}):</span>
-                        </span>
-                        <span class="text-[11px] text-slate-500 font-sans">点击直接切换加入或移除</span>
-                      </div>
-                      <div class="flex flex-wrap gap-1.5">
-                        {#each quickPicks as qTag}
-                          {@const isChecked = isTagSelected(p, qTag)}
-                          {@const displayTag = `${p.tag_prefix || ''}${qTag}`}
-                          <button
-                            type="button"
-                            onclick={() => toggleProviderTag(pIdx, qTag)}
-                            class="px-2 py-0.5 rounded text-xs font-mono transition-all flex items-center gap-1 cursor-pointer {isChecked ? 'bg-emerald-950 text-emerald-300 border border-emerald-600 font-bold shadow-sm' : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800 hover:border-slate-700'}"
-                          >
-                            <span>{isChecked ? '✓' : '+'}</span>
-                            <span>{displayTag}</span>
-                          </button>
-                        {/each}
-                      </div>
-                    </div>
 
                     <!-- Row 3: Instant Search & Add + Browse All Modal Trigger -->
                     <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
