@@ -826,7 +826,7 @@
 
           <!-- Section 2: Policy Groups List (Table) -->
           <div class="bg-slate-900/80 border border-slate-800 rounded-lg overflow-visible">
-            <div class="overflow-x-auto md:overflow-visible min-h-[420px] pb-16">
+            <div class="overflow-x-auto md:overflow-visible">
               <table class="w-full text-xs text-left text-slate-300">
                 <thead class="bg-slate-950/90 text-slate-400 uppercase font-mono border-b border-slate-800 text-[11px]">
                   <tr>
