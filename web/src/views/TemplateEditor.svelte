@@ -8,7 +8,6 @@
   import FileCode2 from 'lucide-svelte/icons/file-code-2';
   import Plus from 'lucide-svelte/icons/plus';
   import Trash2 from 'lucide-svelte/icons/trash-2';
-  import Code from 'lucide-svelte/icons/code';
   import Layers from 'lucide-svelte/icons/layers';
   import Check from 'lucide-svelte/icons/check';
   import Radio from 'lucide-svelte/icons/radio';
@@ -28,15 +27,9 @@
   import X from 'lucide-svelte/icons/x';
 
   let currentSubTab = $state('node_groups'); // 'node_groups' | 'policy_groups' | 'route' | 'dns' | 'inbounds' | 'experimental'
-  let editMode = $state('visual'); // 'visual' | 'raw'
-  let rawJsonText = $state('');
-  let rawJsonError = $state(null);
   let saveError = $state('');
   let creating = $state(false);
   let savedNotice = $state(false);
-
-  // Keep track of current template id to only sync rawJson when template switches or entering raw mode
-  let lastSyncedTplId = $state(null);
 
   onMount(() => {
     if (store.isAuthenticated) {
@@ -47,16 +40,19 @@
 
   function ensureBaseOutbounds(content) {
     if (!content) return;
-    if (!Array.isArray(content.outbounds)) {
-      content.outbounds = [];
+    if (!Array.isArray(content.policy_groups)) {
+      content.policy_groups = [];
     }
-    const hasDirect = content.outbounds.some(o => o && o.type === "direct");
+    const hasDirect = content.policy_groups.some(o => o && o.type === "direct");
     if (!hasDirect) {
-      content.outbounds.unshift({ tag: "直连", type: "direct" });
+      content.policy_groups.unshift({ tag: "直连", type: "direct" });
     }
-    const hasBlock = content.outbounds.some(o => o && o.type === "block");
+    const hasBlock = content.policy_groups.some(o => o && o.type === "block");
     if (!hasBlock) {
-      content.outbounds.push({ tag: "block", type: "block" });
+      content.policy_groups.push({ tag: "block", type: "block" });
+    }
+    if (content.outbounds) {
+      delete content.outbounds;
     }
   }
 
@@ -64,46 +60,8 @@
     const tpl = store.selectedTemplate;
     if (tpl) {
       ensureBaseOutbounds(tpl.content);
-      if (lastSyncedTplId !== tpl.id || editMode === "raw") {
-        if (lastSyncedTplId !== tpl.id) {
-          rawJsonText = JSON.stringify(tpl.content, null, 2);
-          rawJsonError = null;
-          lastSyncedTplId = tpl.id;
-        }
-      }
     }
   });
-
-  function switchToRaw() {
-    rawJsonText = JSON.stringify(store.selectedTemplate.content, null, 2);
-    rawJsonError = null;
-    editMode = 'raw';
-  }
-
-  function switchToVisual() {
-    try {
-      const parsed = JSON.parse(rawJsonText);
-      store.updateTemplateContent(store.selectedTemplateId, parsed);
-      rawJsonError = null;
-      editMode = 'visual';
-    } catch (e) {
-      if (confirm('当前 Raw JSON 中存在语法错误，放弃编辑并返回可视化模式吗？')) {
-        editMode = 'visual';
-      }
-    }
-  }
-
-  function handleSaveRaw() {
-    try {
-      const parsed = JSON.parse(rawJsonText);
-      store.updateTemplateContent(store.selectedTemplateId, parsed);
-      rawJsonError = null;
-      savedNotice = true;
-      setTimeout(() => (savedNotice = false), 2000);
-    } catch (e) {
-      rawJsonError = 'JSON 语法错误: ' + e.message;
-    }
-  }
 
   function triggerUpdate() {
     store.touchTemplate(store.selectedTemplateId);
@@ -121,22 +79,32 @@
     (store.selectedTemplate?.content?.node_groups || []).map(g => g.tag).filter(Boolean)
   );
 
+  // User-configurable policy groups (excluding built-in direct and block)
+  let userPolicyGroups = $derived(
+    (store.selectedTemplate?.content?.policy_groups || []).filter(
+      p => p?.type !== "direct" && p?.type !== "block"
+    )
+  );
+
   // Collect policy group tags
   let availablePolicyGroupTags = $derived(
     (store.selectedTemplate?.content?.policy_groups || []).map(p => p.tag).filter(Boolean)
   );
 
-  // Built-in base outbounds
+  // Built-in base outbounds in policy_groups
   let directOutbound = $derived(
-    store.selectedTemplate?.content?.outbounds?.find(o => o?.type === "direct")
+    store.selectedTemplate?.content?.policy_groups?.find(o => o?.type === "direct")
   );
   let blockOutbound = $derived(
-    store.selectedTemplate?.content?.outbounds?.find(o => o?.type === "block")
+    store.selectedTemplate?.content?.policy_groups?.find(o => o?.type === "block")
   );
 
-  // Collect base outbound tags
+  // Collect base outbound tags from policy_groups
   let availableBaseOutboundTags = $derived(
-    (store.selectedTemplate?.content?.outbounds || []).map(o => o.tag).filter(Boolean)
+    (store.selectedTemplate?.content?.policy_groups || [])
+      .filter(o => o?.type === "direct" || o?.type === "block")
+      .map(o => o.tag)
+      .filter(Boolean)
   );
 
   // Candidates that a policy group can select from (node groups + base outbounds)
@@ -583,7 +551,7 @@
     if (!tpl.content.policy_groups) tpl.content.policy_groups = [];
     const firstCand = availableNodeGroupTags[0] || directOutbound?.tag || "直连";
     tpl.content.policy_groups.push({
-      tag: "新策略组 " + (tpl.content.policy_groups.length + 1),
+      tag: "新策略组 " + (userPolicyGroups.length + 1),
       type: "selector",
       outbounds: [firstCand],
       default: firstCand
@@ -591,11 +559,14 @@
     triggerUpdate();
   }
 
-  function removePolicyGroup(idx) {
+  function removePolicyGroup(targetPg) {
     const tpl = store.selectedTemplate;
     if (tpl.content.policy_groups) {
-      tpl.content.policy_groups.splice(idx, 1);
-      triggerUpdate();
+      const idx = tpl.content.policy_groups.indexOf(targetPg);
+      if (idx !== -1) {
+        tpl.content.policy_groups.splice(idx, 1);
+        triggerUpdate();
+      }
     }
   }
 
@@ -847,66 +818,15 @@
       </button>
     </div>
 
-    <!-- Mode Toggle: Visual vs Raw -->
-    <div class="flex items-center gap-3">
-      <div class="bg-slate-950 p-0.5 rounded border border-slate-800 flex text-xs">
-        <button
-          onclick={switchToVisual}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded {editMode === 'visual' ? 'bg-indigo-950 text-indigo-300 font-medium border border-indigo-800/50' : 'text-slate-400 hover:text-slate-200'}"
-        >
-          <Layers size={13} />
-          <span>分模块可视化</span>
-        </button>
-        <button
-          onclick={switchToRaw}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded {editMode === 'raw' ? 'bg-indigo-950 text-indigo-300 font-medium border border-indigo-800/50' : 'text-slate-400 hover:text-slate-200'}"
-        >
-          <Code size={13} />
-          <span>Raw JSON 源码</span>
-        </button>
-      </div>
-
-      {#if savedNotice}
-        <span class="text-xs text-emerald-400 flex items-center gap-1 font-mono">
-          <Check size={13} /> 已同步更新
-        </span>
-      {/if}
-    </div>
+    {#if savedNotice}
+      <span class="text-xs text-emerald-400 flex items-center gap-1 font-mono">
+        <Check size={13} /> 已同步更新
+      </span>
+    {/if}
   </div>
 
-  {#if editMode === 'raw'}
-    <!-- Raw JSON Editor Mode -->
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3">
-      <div class="flex items-center justify-between">
-        <div class="text-xs text-slate-400 flex items-center gap-1.5">
-          <Code size={14} class="text-cyan-400" />
-          <span>直接编辑完整 sing-box 模板 JSON。支持修改任意字段，保存后立即同步到分模块可视化视图与 Profile 编译引擎。</span>
-        </div>
-        <button
-          onclick={handleSaveRaw}
-          class="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium flex items-center gap-1.5 shadow-sm"
-        >
-          <Check size={13} />
-          <span>校验并保存 JSON</span>
-        </button>
-      </div>
-
-      {#if rawJsonError}
-        <div class="p-2.5 bg-rose-950/60 border border-rose-800/60 rounded text-xs text-rose-300 flex items-center gap-2">
-          <AlertCircle size={14} class="shrink-0" />
-          <span>{rawJsonError}</span>
-        </div>
-      {/if}
-
-      <textarea
-        bind:value={rawJsonText}
-        rows="26"
-        class="w-full bg-slate-950 text-slate-200 font-mono text-xs p-3.5 rounded border border-slate-800 focus:outline-none focus:border-cyan-500/80 leading-relaxed"
-      ></textarea>
-    </div>
-  {:else}
-    <!-- Modular Visual Editor Mode -->
-    <div class="space-y-3">
+  <!-- Modular Visual Editor Mode -->
+  <div class="space-y-3">
       <!-- Sub-module Navigation -->
       <div class="flex flex-wrap items-center gap-1.5 bg-slate-900/60 p-1 rounded-lg border border-slate-800 text-xs">
         <button
@@ -924,7 +844,7 @@
         >
           <Sparkles size={13} class="text-cyan-400" />
           <span>出站策略组</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.policy_groups?.length || 0}</span>
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{userPolicyGroups.length}</span>
         </button>
 
         <button
@@ -1178,7 +1098,7 @@
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-800/60 font-mono">
-                  {#each store.selectedTemplate.content?.policy_groups || [] as pg, pgIdx}
+                  {#each userPolicyGroups as pg}
                     <tr class="hover:bg-slate-950/30 transition-colors align-middle">
                       <!-- Tag Name -->
                       <td class="py-2.5 px-3.5">
@@ -1219,7 +1139,7 @@
                       <td class="py-2.5 px-3 text-center">
                         <button
                           type="button"
-                          onclick={() => removePolicyGroup(pgIdx)}
+                          onclick={() => removePolicyGroup(pg)}
                           title="删除此策略组"
                           class="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800 transition-colors cursor-pointer"
                         >
@@ -1228,7 +1148,7 @@
                       </td>
                     </tr>
                   {/each}
-                  {#if !store.selectedTemplate.content?.policy_groups || store.selectedTemplate.content.policy_groups.length === 0}
+                  {#if userPolicyGroups.length === 0}
                     <tr>
                       <td colspan="4" class="py-8 text-center text-slate-500 text-xs font-mono">
                         暂无出站策略组，点击右上角「添加出站策略组」进行创建
@@ -2278,13 +2198,12 @@
                 </select>
               </div>
               {:else}
-              <p class="text-slate-500">当前模板没有 Clash API 配置，可在 Raw JSON 中添加。</p>
+              <p class="text-slate-500">当前模板未启用外部 Clash API 扩展控制。</p>
               {/if}
             </div>
           </div>
         </div>
       {/if}
     </div>
-  {/if}
   {/if}
 </div>

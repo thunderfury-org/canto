@@ -70,7 +70,7 @@ canto
 
 ### 2.2 Web Studio 生产端
 
-见 [ADR 0012](adr/0012-web-studio-producer-coexistence.md)。状态落在 `work_dir/studio/`（`templates/*.json`、`sources.json`、`profiles.json`）。管理 API `/api/*` 需要 `admin_token`；公开 `GET /sub/:token` 返回编译后的完整 sing-box JSON，可作为网关 `[singbox].source`。
+见 [ADR 0012](adr/0012-web-studio-producer-coexistence.md) 与 [ADR 0015](adr/0015-modular-template-directory-and-canto-prefix.md)。状态落在 `work_dir/studio/`（`templates/<id>/` 模块化目录、`sources.json`、`profiles.json`）。管理 API `/api/*` 需要 `admin_token`；公开 `GET /sub/:token` 返回编译后的完整 sing-box JSON，可作为网关 `[singbox].source`。
 
 网关消费该 URL 时走既有覆盖与刷新：失败保留 last-good 与当前 nft；覆盖后的 JSON 与当前 `config_path` 相同则不重启 sing-box。
 

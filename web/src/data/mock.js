@@ -28,14 +28,12 @@ export const initialTemplates = [
         { type: "tun", tag: "tun-in", interface_name: "utun", inet4_address: "172.19.0.1/30", auto_route: true, strict_route: true }
       ],
       policy_groups: [
+        { type: "direct", tag: "直连" },
+        { type: "block", tag: "block" },
         { type: "selector", tag: "默认策略", outbounds: ["全部节点", "直连"] }
       ],
       node_groups: [
         { type: "urltest", tag: "全部节点", outbounds: ["{.*}"] }
-      ],
-      outbounds: [
-        { type: "direct", tag: "直连" },
-        { type: "block", tag: "block" }
       ],
       rule_sets: [
         {
@@ -245,7 +243,7 @@ export function compileProfile(template, boundSources) {
   const node_groups = Array.isArray(compiled.node_groups) ? compiled.node_groups : [];
   const base_outbounds = Array.isArray(compiled.outbounds) ? compiled.outbounds : [];
 
-  const fallbackTag = base_outbounds.find(o => o.type === 'direct')?.tag || 'direct';
+  const fallbackTag = policy_groups.find(o => o.type === 'direct')?.tag || base_outbounds.find(o => o.type === 'direct')?.tag || 'direct';
 
   const expanded_node_groups = [];
   for (const group of node_groups) {

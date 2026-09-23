@@ -8,8 +8,9 @@ use tracing::{info, warn};
 
 use crate::error::{CantoError, Result};
 use crate::web::studio::model::{
-    NodeSource, Profile, Template, is_safe_id, validate_template_content,
+    NodeSource, Profile, Template, TemplateMeta, is_safe_id, validate_template_content,
 };
+use serde_json::Value;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct SourcesFile {
@@ -397,17 +398,61 @@ impl TemplateStore {
         if !guard.iter().any(|template| template.id == id) {
             return Ok(false);
         }
-        let path = template_path(&self.dir, id);
-        if path.exists() {
-            fs::remove_file(&path)?;
+        let dir = template_dir(&self.dir, id);
+        if dir.exists() {
+            fs::remove_dir_all(&dir)?;
+        }
+        let legacy_file = self.dir.join(format!("{id}.json"));
+        if legacy_file.exists() {
+            let _ = fs::remove_file(&legacy_file);
         }
         guard.retain(|template| template.id != id);
         Ok(true)
     }
 }
 
-fn template_path(dir: &Path, id: &str) -> PathBuf {
-    dir.join(format!("{id}.json"))
+fn template_dir(dir: &Path, id: &str) -> PathBuf {
+    dir.join(id)
+}
+
+fn is_safe_module_key(key: &str) -> bool {
+    !key.is_empty()
+        && key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+fn module_filename(key: &str) -> Option<String> {
+    if !is_safe_module_key(key) {
+        return None;
+    }
+    let filename = match key {
+        "node_groups" => "canto.node_groups.json".to_string(),
+        "policy_groups" => "canto.policy_groups.json".to_string(),
+        "rule_sets" => "canto.rule_sets.json".to_string(),
+        "outbounds" => return None,
+        other => format!("{other}.json"),
+    };
+    Some(filename)
+}
+
+fn module_key_from_filename(filename: &str) -> Option<String> {
+    if !filename.ends_with(".json") || filename.starts_with('.') || filename == "meta.json" {
+        return None;
+    }
+    match filename {
+        "canto.node_groups.json" => Some("node_groups".to_string()),
+        "canto.policy_groups.json" => Some("policy_groups".to_string()),
+        "canto.rule_sets.json" => Some("rule_sets".to_string()),
+        other => {
+            let stem = other.trim_end_matches(".json");
+            if is_safe_module_key(stem) {
+                Some(stem.to_string())
+            } else {
+                None
+            }
+        }
+    }
 }
 
 fn load_templates(dir: &Path) -> Result<Vec<Template>> {
@@ -421,19 +466,18 @@ fn load_templates(dir: &Path) -> Result<Vec<Template>> {
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        if !name.ends_with(".json") || name.starts_with('.') {
+        if name.starts_with('.') {
             continue;
         }
-        match load_template_file(&path) {
-            Ok(template) => templates.push(template),
-            Err(err) => {
-                let bak = path.with_extension("json.bak");
-                warn!(
-                    "Failed to parse {}; backing up to {} ({err})",
-                    path.display(),
-                    bak.display()
-                );
-                let _ = fs::rename(&path, &bak);
+        if path.is_dir() {
+            match load_template_dir(&path) {
+                Ok(template) => templates.push(template),
+                Err(err) => {
+                    warn!(
+                        "Failed to parse template directory {}; ({err})",
+                        path.display()
+                    );
+                }
             }
         }
     }
@@ -441,35 +485,129 @@ fn load_templates(dir: &Path) -> Result<Vec<Template>> {
     Ok(templates)
 }
 
-fn load_template_file(path: &Path) -> Result<Template> {
-    let text = fs::read_to_string(path)?;
-    let mut template: Template = serde_json::from_str(&text)?;
-    if template.id.is_empty()
-        && let Some(stem) = path.file_stem().and_then(|stem| stem.to_str())
-    {
-        template.id = stem.to_string();
+fn load_template_dir(dir: &Path) -> Result<Template> {
+    let stem = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let meta_path = dir.join("meta.json");
+    let mut meta: TemplateMeta = if meta_path.exists() {
+        let text = fs::read_to_string(&meta_path)?;
+        serde_json::from_str(&text)?
+    } else {
+        TemplateMeta {
+            id: stem.to_string(),
+            name: stem.to_string(),
+            description: String::new(),
+            updated_at: None,
+        }
+    };
+    if meta.id.is_empty() {
+        meta.id = stem.to_string();
     }
-    if !is_safe_id(&template.id) {
+    if !is_safe_id(&meta.id) {
         return Err(CantoError::Web(format!(
             "invalid template id '{}'",
-            template.id
+            meta.id
         )));
     }
-    if let Err(err) = validate_template_content(&template.content) {
+
+    let mut content_map = serde_json::Map::new();
+    let mut entries: Vec<_> = fs::read_dir(dir)?.filter_map(|e| e.ok()).collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let Some(key) = module_key_from_filename(file_name) else {
+            continue;
+        };
+        let text = fs::read_to_string(&path)?;
+        let val: Value = serde_json::from_str(&text)
+            .map_err(|err| CantoError::Web(format!("failed to parse {}: {err}", path.display())))?;
+        content_map.insert(key, val);
+    }
+
+    let content = Value::Object(content_map);
+    if let Err(err) = validate_template_content(&content) {
         return Err(CantoError::Web(err));
     }
-    Ok(template)
+
+    Ok(Template {
+        id: meta.id,
+        name: meta.name,
+        description: meta.description,
+        updated_at: meta.updated_at,
+        content,
+    })
 }
 
 fn persist_template(dir: &Path, template: &Template) -> Result<()> {
     fs::create_dir_all(dir)?;
-    let mut formatted = serde_json::to_string_pretty(template)?;
+    let target_dir = template_dir(dir, &template.id);
+    let tmp_dir = dir.join(format!(".{}.tmp", template.id));
+    let old_dir = dir.join(format!(".{}.old", template.id));
+
+    if tmp_dir.exists() {
+        let _ = fs::remove_dir_all(&tmp_dir);
+    }
+    if old_dir.exists() {
+        let _ = fs::remove_dir_all(&old_dir);
+    }
+
+    fs::create_dir_all(&tmp_dir)?;
+
+    let meta = TemplateMeta {
+        id: template.id.clone(),
+        name: template.name.clone(),
+        description: template.description.clone(),
+        updated_at: template.updated_at.clone(),
+    };
+    write_pretty_json(&tmp_dir.join("meta.json"), &meta)?;
+
+    if let Some(obj) = template.content.as_object() {
+        for (key, val) in obj {
+            if val.is_null() {
+                continue;
+            }
+            if let Some(filename) = module_filename(key) {
+                write_pretty_json(&tmp_dir.join(filename), val)?;
+            }
+        }
+    }
+
+    if target_dir.exists() {
+        fs::rename(&target_dir, &old_dir)?;
+    }
+    if let Err(err) = fs::rename(&tmp_dir, &target_dir) {
+        if old_dir.exists() {
+            let _ = fs::rename(&old_dir, &target_dir);
+        }
+        return Err(CantoError::Io(err));
+    }
+    if old_dir.exists() {
+        let _ = fs::remove_dir_all(&old_dir);
+    }
+
+    let legacy_file = dir.join(format!("{}.json", template.id));
+    if legacy_file.exists() {
+        let _ = fs::remove_file(&legacy_file);
+    }
+
+    info!("Wrote template {} to {}", template.id, target_dir.display());
+    Ok(())
+}
+
+fn write_pretty_json<T: Serialize>(path: &Path, val: &T) -> Result<()> {
+    let mut formatted = serde_json::to_string_pretty(val)?;
     if !formatted.ends_with('\n') {
         formatted.push('\n');
     }
-    let path = template_path(dir, &template.id);
-    atomic_write(&path, formatted.as_bytes())?;
-    info!("Wrote template {} to {}", template.id, path.display());
+    let mut file = File::create(path)?;
+    file.write_all(formatted.as_bytes())?;
+    file.sync_all()?;
     Ok(())
 }
 
@@ -572,29 +710,33 @@ mod tests {
                     "tag": "香港节点",
                     "outbounds": ["{(?i)(港|hk)}"]
                 }],
-                "policy_groups": [{
-                    "type": "selector",
-                    "tag": "默认策略",
-                    "outbounds": ["香港节点", "direct"]
-                }],
-                "outbounds": [{
-                    "type": "direct",
-                    "tag": "direct"
-                }]
+                "policy_groups": [
+                    { "type": "direct", "tag": "direct" },
+                    {
+                        "type": "selector",
+                        "tag": "默认策略",
+                        "outbounds": ["香港节点", "direct"]
+                    }
+                ]
             }),
         }
     }
 
     #[tokio::test]
-    async fn test_template_file_roundtrip() {
+    async fn test_template_directory_roundtrip() {
         let dir = temp_dir("templates");
         let store = TemplateStore::load(&dir).unwrap();
         assert!(store.list().await.is_empty());
 
         store.insert(sample_template("tpl_a")).await.unwrap();
-        let path = dir.join("studio").join("templates").join("tpl_a.json");
-        assert!(path.exists());
-        let persisted = fs::read_to_string(&path).unwrap();
+        let target_dir = dir.join("studio").join("templates").join("tpl_a");
+        assert!(target_dir.is_dir());
+        assert!(target_dir.join("meta.json").is_file());
+        assert!(target_dir.join("canto.node_groups.json").is_file());
+        assert!(target_dir.join("canto.policy_groups.json").is_file());
+        assert!(!target_dir.join("outbounds.json").exists());
+
+        let persisted = fs::read_to_string(target_dir.join("canto.node_groups.json")).unwrap();
         assert!(persisted.contains("{(?i)(港|hk)}"));
 
         let reloaded = TemplateStore::load(&dir).unwrap();
@@ -602,6 +744,15 @@ mod tests {
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].id, "tpl_a");
         assert_eq!(listed[0].name, "网关模板");
+        assert_eq!(
+            listed[0].content["node_groups"][0]["outbounds"][0],
+            "{(?i)(港|hk)}"
+        );
+
+        assert!(reloaded.delete("tpl_a").await.unwrap());
+        assert!(!target_dir.exists());
+        assert!(reloaded.list().await.is_empty());
+
         fs::remove_dir_all(&dir).ok();
     }
 
