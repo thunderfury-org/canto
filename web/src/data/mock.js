@@ -34,7 +34,8 @@ export const initialTemplates = [
         { type: "urltest", tag: "全部节点", outbounds: ["{.*}"] }
       ],
       outbounds: [
-        { type: "direct", tag: "直连" }
+        { type: "direct", tag: "直连" },
+        { type: "block", tag: "block" }
       ],
       route: {
         auto_detect_interface: true,
