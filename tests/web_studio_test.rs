@@ -701,17 +701,15 @@ async fn test_templates_crud_persist_and_schema_validation() {
     assert!(id.starts_with("tpl_"), "{id}");
     assert!(created["updatedAt"].as_str().is_some());
 
-    let file_path = dir
-        .join("studio")
-        .join("templates")
-        .join(format!("{id}.json"));
-    let persisted = std::fs::read_to_string(&file_path).unwrap();
-    let persisted_json: Value = serde_json::from_str(&persisted).unwrap();
-    assert_eq!(persisted_json["id"], id);
-    assert_eq!(
-        persisted_json["content"]["node_groups"][0]["outbounds"][0],
-        "{(?i)(港|hk)}"
-    );
+    let dir_path = dir.join("studio").join("templates").join(&id);
+    assert!(dir_path.is_dir());
+    let meta_file = dir_path.join("meta.json");
+    let meta_json: Value =
+        serde_json::from_str(&std::fs::read_to_string(&meta_file).unwrap()).unwrap();
+    assert_eq!(meta_json["id"], id);
+    let ng_file = dir_path.join("canto.node_groups.json");
+    let ng_json: Value = serde_json::from_str(&std::fs::read_to_string(&ng_file).unwrap()).unwrap();
+    assert_eq!(ng_json[0]["outbounds"][0], "{(?i)(港|hk)}");
 
     let (status, fetched) = json_body(
         app.clone()
@@ -798,7 +796,7 @@ async fn test_templates_crud_persist_and_schema_validation() {
         .await
         .unwrap();
     assert_eq!(delete_res.status(), StatusCode::NO_CONTENT);
-    assert!(!file_path.exists());
+    assert!(!dir_path.exists());
 
     let (status, listed) = json_body(
         reloaded
