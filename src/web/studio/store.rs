@@ -410,12 +410,11 @@ impl TemplateStore {
         let Some(existing) = guard.iter_mut().find(|item| item.id == template.id) else {
             return Ok(TemplateWrite::Missing);
         };
-        if !force {
-            if let Some(base) = base_updated_at {
-                if existing.updated_at.as_deref() != Some(base) {
-                    return Ok(TemplateWrite::Conflict);
-                }
-            }
+        if !force
+            && let Some(base) = base_updated_at
+            && existing.updated_at.as_deref() != Some(base)
+        {
+            return Ok(TemplateWrite::Conflict);
         }
         let mut template = template;
         template.updated_at = Some(distinct_stamp(existing.updated_at.as_deref()));

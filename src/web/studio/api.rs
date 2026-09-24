@@ -238,15 +238,15 @@ pub async fn update_template(
         return json_error(StatusCode::NOT_FOUND, "template not found");
     };
 
-    if let Some(name) = req.name.as_deref() {
-        if name.trim().is_empty() {
-            return json_error(StatusCode::BAD_REQUEST, "name is required");
-        }
+    if let Some(name) = req.name.as_deref()
+        && name.trim().is_empty()
+    {
+        return json_error(StatusCode::BAD_REQUEST, "name is required");
     }
-    if let Some(content) = req.content.as_ref() {
-        if let Err(err) = validate_template_content(content) {
-            return json_error(StatusCode::BAD_REQUEST, &err);
-        }
+    if let Some(content) = req.content.as_ref()
+        && let Err(err) = validate_template_content(content)
+    {
+        return json_error(StatusCode::BAD_REQUEST, &err);
     }
     if let Some(name) = req.name {
         template.name = name.trim().to_string();
