@@ -3,6 +3,7 @@
   import { store } from '../data/store.svelte.js';
   import { testRegexMatch } from '../data/mock.js';
   import MultiSelect from '../components/MultiSelect.svelte';
+  import RouteRules from './RouteRules.svelte';
   import Lock from 'lucide-svelte/icons/lock';
   import Shield from 'lucide-svelte/icons/shield';
   import FileCode2 from 'lucide-svelte/icons/file-code-2';
@@ -13,8 +14,6 @@
   import Radio from 'lucide-svelte/icons/radio';
   import AlertCircle from 'lucide-svelte/icons/alert-circle';
   import Sparkles from 'lucide-svelte/icons/sparkles';
-  import ArrowUp from 'lucide-svelte/icons/arrow-up';
-  import ArrowDown from 'lucide-svelte/icons/arrow-down';
   import Bookmark from 'lucide-svelte/icons/bookmark';
   import Search from 'lucide-svelte/icons/search';
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
@@ -133,6 +132,18 @@
   // All outbounds (including node groups) for rule_set download_detour
   let allOutboundTags = $derived(
     Array.from(new Set([...availablePolicyGroupTags, ...availableNodeGroupTags, ...availableBaseOutboundTags]))
+  );
+
+  let endpointTags = $derived(
+    (store.selectedTemplate?.content?.endpoints || [])
+      .map((ep) => ep?.tag)
+      .filter(Boolean)
+  );
+
+  let dnsServerTags = $derived(
+    (store.selectedTemplate?.content?.dns?.servers || [])
+      .map((server) => server?.tag)
+      .filter(Boolean)
   );
 
   async function handleCreateTemplate() {
@@ -692,36 +703,12 @@
     }
   }
 
-  // --- Route operations ---
-  function addRouteRule() {
+  function commitRoute(nextRoute) {
     const tpl = store.selectedTemplate;
-    if (!tpl.content.route) tpl.content.route = { rules: [], rule_set: [] };
-    if (!tpl.content.route.rules) tpl.content.route.rules = [];
-    tpl.content.route.rules.unshift({
-      rule_set: ['proxy'],
-      outbound: '默认策略'
-    });
+    if (!tpl) return;
+    if (!tpl.content) tpl.content = {};
+    tpl.content.route = nextRoute;
     triggerUpdate();
-  }
-
-  function moveRouteRule(idx, direction) {
-    const tpl = store.selectedTemplate;
-    const rules = tpl.content.route?.rules;
-    if (!rules) return;
-    const targetIdx = idx + direction;
-    if (targetIdx < 0 || targetIdx >= rules.length) return;
-    const temp = rules[idx];
-    rules[idx] = rules[targetIdx];
-    rules[targetIdx] = temp;
-    triggerUpdate();
-  }
-
-  function removeRouteRule(idx) {
-    const tpl = store.selectedTemplate;
-    if (tpl.content.route?.rules) {
-      tpl.content.route.rules.splice(idx, 1);
-      triggerUpdate();
-    }
   }
 
   // --- Inbounds operations ---
@@ -1650,186 +1637,15 @@
 
       <!-- 3. Route Rules Module View -->
       {#if currentSubTab === 'route'}
-        <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-4">
-          <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
-            <div>
-              <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
-                <Layers size={15} class="text-cyan-400" />
-                <span>分流路由规则 (Route Rules)</span>
-              </h3>
-              <span class="text-xs text-slate-400">从上到下逐条评估流量条件，并分配至对应的出站策略组</span>
-            </div>
-            <button
-              onclick={addRouteRule}
-              class="px-2.5 py-1.5 rounded bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-200 border border-cyan-500/40 text-xs font-medium flex items-center gap-1 shadow-sm"
-            >
-              <Plus size={13} />
-              <span>添加分流规则</span>
-            </button>
-          </div>
-
-          <div class="overflow-x-auto">
-            <table class="w-full text-xs text-left text-slate-300">
-              <thead class="bg-slate-950/80 text-slate-400 font-mono border-b border-slate-800">
-                <tr>
-                  <th class="py-2 px-2.5 w-16 text-center">排序</th>
-                  <th class="py-2 px-3 w-40">匹配类型</th>
-                  <th class="py-2 px-3">匹配内容 / 条件</th>
-                  <th class="py-2 px-3 w-44">分流出站目标</th>
-                  <th class="py-2 px-2 w-10"></th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-800/60 font-mono">
-                {#each store.selectedTemplate.content?.route?.rules || [] as r, rIdx}
-                  <tr class="hover:bg-slate-950/40">
-                    <!-- Order move buttons -->
-                    <td class="py-2 px-2 text-center">
-                      <div class="flex items-center justify-center gap-0.5">
-                        <button
-                          onclick={() => moveRouteRule(rIdx, -1)}
-                          disabled={rIdx === 0}
-                          title="上移"
-                          class="p-0.5 text-slate-500 hover:text-cyan-400 disabled:opacity-20"
-                        >
-                          <ArrowUp size={12} />
-                        </button>
-                        <button
-                          onclick={() => moveRouteRule(rIdx, 1)}
-                          disabled={rIdx === (store.selectedTemplate.content?.route?.rules?.length || 0) - 1}
-                          title="下移"
-                          class="p-0.5 text-slate-500 hover:text-cyan-400 disabled:opacity-20"
-                        >
-                          <ArrowDown size={12} />
-                        </button>
-                      </div>
-                    </td>
-
-                    <!-- Condition Type -->
-                    <td class="py-2 px-3">
-                      {#if r.action === 'hijack-dns'}
-                        <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800/50">DNS 劫持</span>
-                      {:else if r.rule_set}
-                        <span class="text-emerald-400 font-bold">rule_set</span>
-                      {:else if r.protocol}
-                        <span class="text-indigo-400 font-bold">protocol</span>
-                      {:else if r.domain_suffix}
-                        <span class="text-cyan-400 font-bold">domain_suffix</span>
-                      {:else if r.ip_cidr}
-                        <span class="text-purple-400 font-bold">ip_cidr</span>
-                      {:else if r.ip_is_private}
-                        <span class="text-slate-400">局域网私有 IP</span>
-                      {:else if r.clash_mode}
-                        <span class="text-amber-400 font-bold">clash_mode</span>
-                      {:else}
-                        <span class="text-slate-400">通用规则</span>
-                      {/if}
-                    </td>
-
-                    <!-- Condition Values -->
-                    <td class="py-2 px-3">
-                      {#if r.rule_set}
-                        <div class="space-y-1">
-                          <input
-                            type="text"
-                            value={Array.isArray(r.rule_set) ? r.rule_set.join(', ') : r.rule_set}
-                            onchange={(e) => {
-                              r.rule_set = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
-                              triggerUpdate();
-                            }}
-                            placeholder="例如: cn, ai, proxy"
-                            class="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
-                          />
-                          {#if allDefinedRuleTags.length > 0}
-                            <div class="flex flex-wrap gap-1 items-center pt-0.5">
-                              <span class="text-[10px] text-slate-500 font-sans">候选:</span>
-                              {#each allDefinedRuleTags as cTag}
-                                {@const isSelected = (Array.isArray(r.rule_set) ? r.rule_set : [r.rule_set]).includes(cTag)}
-                                <button
-                                  type="button"
-                                  onclick={() => {
-                                    let arr = Array.isArray(r.rule_set) ? [...r.rule_set] : (r.rule_set ? [r.rule_set] : []);
-                                    if (arr.includes(cTag)) {
-                                      arr = arr.filter(t => t !== cTag);
-                                    } else {
-                                      arr.push(cTag);
-                                    }
-                                    r.rule_set = arr;
-                                    triggerUpdate();
-                                  }}
-                                  class="text-[10px] px-1.5 py-0.2 rounded font-mono transition-colors {isSelected ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 font-semibold' : 'bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800'}"
-                                >
-                                  {isSelected ? '✓ ' : '+ '}{cTag}
-                                </button>
-                              {/each}
-                            </div>
-                          {/if}
-                        </div>
-                      {:else if r.domain_suffix}
-                        <input
-                          type="text"
-                          value={r.domain_suffix.join(', ')}
-                          onchange={(e) => {
-                            r.domain_suffix = e.target.value.split(',').map(s => s.trim());
-                            triggerUpdate();
-                          }}
-                          placeholder="例如: google.com, openai.com"
-                          class="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
-                        />
-                      {:else if r.protocol}
-                        <input
-                          type="text"
-                          bind:value={r.protocol}
-                          oninput={triggerUpdate}
-                          placeholder="例如: dns, quic, stun"
-                          class="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
-                        />
-                      {:else if r.ip_cidr}
-                        <input
-                          type="text"
-                          value={r.ip_cidr.join(', ')}
-                          onchange={(e) => {
-                            r.ip_cidr = e.target.value.split(',').map(s => s.trim());
-                            triggerUpdate();
-                          }}
-                          placeholder="例如: 192.168.1.0/24"
-                          class="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 font-mono w-full"
-                        />
-                      {:else}
-                        <span class="text-slate-500">{r.action || '固定配置'}</span>
-                      {/if}
-                    </td>
-
-                    <!-- Outbound Target Selection -->
-                    <td class="py-2 px-3">
-                      <select
-                        bind:value={r.outbound}
-                        onchange={triggerUpdate}
-                        class="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-cyan-300 font-bold font-mono w-full"
-                      >
-                        <option value="直连">直连 (direct)</option>
-                        {#each availableRouteOutboundTags as oTag}
-                          <option value={oTag}>{oTag}</option>
-                        {/each}
-                      </select>
-                    </td>
-
-                    <!-- Delete button -->
-                    <td class="py-2 px-2 text-center">
-                      <button
-                        onclick={() => removeRouteRule(rIdx)}
-                        title="删除此规则"
-                        class="text-slate-500 hover:text-rose-400 p-1"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-
-          </div>
+        <RouteRules
+          route={store.selectedTemplate.content?.route}
+          policyTags={availablePolicyGroupTags}
+          nodeGroupTags={availableNodeGroupTags}
+          endpointTags={endpointTags}
+          ruleTags={allDefinedRuleTags}
+          dnsServerTags={dnsServerTags}
+          onCommit={commitRoute}
+        />
       {/if}
 
       <!-- 4. DNS Module View -->
