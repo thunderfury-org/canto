@@ -17,6 +17,11 @@
 
   let activeProfile = $derived(store.selectedProfile);
   let compiledResult = $derived(store.currentCompiled);
+  let templateHasDraft = $derived.by(() => {
+    const epoch = store.draftEpoch;
+    const templateId = activeProfile?.templateId;
+    return epoch >= 0 && store.isAuthenticated && store.isTemplateDirty(templateId);
+  });
 
   function copyText(text, type) {
     navigator.clipboard.writeText(text);
@@ -315,6 +320,11 @@
 
       <!-- Right Column: Live Compilation & JSON Output -->
       <div class="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-lg overflow-hidden space-y-0 sticky top-16">
+        {#if templateHasDraft}
+          <div class="px-3.5 py-2 text-xs text-amber-200 bg-amber-950/40 border-b border-amber-900/50">
+            预览的是已保存模板，编辑器里还有未保存修改。
+          </div>
+        {/if}
         <!-- Right Column Header -->
         <div class="p-3 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between gap-3">
           <div class="flex items-center gap-2">

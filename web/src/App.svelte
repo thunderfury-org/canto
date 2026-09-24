@@ -10,7 +10,16 @@
 
   onMount(() => {
     const cleanup = initRouter(store);
-    return cleanup;
+    const onBeforeUnload = (event) => {
+      if (!store.hasDirtyTemplates) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      cleanup();
+    };
   });
 
   $effect(() => {

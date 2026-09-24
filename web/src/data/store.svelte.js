@@ -1,6 +1,23 @@
 import { initialTemplates, initialSources, initialProfiles } from './mock.js';
 import defaultTemplateRaw from './defaultTemplate.json';
 import { getInitialRoute, navigate } from './router.js';
+import { migrateLegacyRuleSets, normalizeTemplateContent, withExperimentalDefaults } from './templateDocument.js';
+import {
+  commitTemplateSave,
+  createTemplateRequest,
+  createTemplateSession,
+  discardLocal,
+  discardTemplateRemote,
+  dirtyIds,
+  forgetTemplate,
+  isDirty,
+  isMissing,
+  isStale,
+  mergeTemplateList,
+  noteProgrammaticRewrite as markProgrammaticRewrite,
+  noteUserEdit as markUserEdit,
+  saveAllDrafts as commitAllDrafts,
+} from './templateDraft.js';
 
 const initialRoute = getInitialRoute();
 
@@ -31,8 +48,9 @@ class StudioStore {
   );
   isAuthenticated = $state(false);
   authStatusMessage = $state('');
-  templatePersistTimers = {};
   templateSaveError = $state('');
+  templateSession = $state(createTemplateSession());
+  draftEpoch = $state(0);
   // True only after /api/templates replaces the in-memory demo.
   templatesLoaded = $state(false);
   profilePersistTimers = {};
@@ -59,6 +77,12 @@ class StudioStore {
     this.isAuthenticated
       ? (this.preview || { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 })
       : { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 }
+  );
+
+  hasDirtyTemplates = $derived(
+    this.isAuthenticated &&
+    this.draftEpoch >= 0 &&
+    dirtyIds(this.templateSession, this.templates).length > 0
   );
 
   navigate(tab, params = {}, options = {}) {
@@ -139,60 +163,189 @@ class StudioStore {
   }
 
   touchTemplate(tplId) {
+    if (this.isAuthenticated) {
+      this.noteUserEdit(tplId);
+      return;
+    }
     const tpl = this.templates.find(t => t.id === tplId);
     if (tpl) {
       tpl.updatedAt = new Date().toISOString();
     }
     this.templates = [...this.templates];
-    this.scheduleTemplatePersist(tplId);
   }
 
   updateTemplateContent(tplId, newContent) {
     const tpl = this.templates.find(t => t.id === tplId);
-    if (tpl) {
-      tpl.content = newContent;
-      tpl.updatedAt = new Date().toISOString();
+    if (!tpl) return;
+    tpl.content = newContent;
+    if (this.isAuthenticated) {
+      this.noteUserEdit(tplId);
+      return;
     }
+    tpl.updatedAt = new Date().toISOString();
     this.templates = [...this.templates];
-    this.scheduleTemplatePersist(tplId);
   }
 
-  scheduleTemplatePersist(tplId) {
+  noteUserEdit(tplId) {
     if (!this.isAuthenticated || !tplId) return;
-    clearTimeout(this.templatePersistTimers[tplId]);
-    this.templatePersistTimers[tplId] = setTimeout(() => {
-      void this.flushTemplate(tplId);
-    }, 400);
+    const template = this.templates.find(t => t.id === tplId);
+    if (!template) return;
+    this.templateSession = markUserEdit(this.templateSession, template);
+    this.draftEpoch += 1;
   }
 
-  async flushTemplate(tplId) {
-    const tpl = this.templates.find(t => t.id === tplId);
-    if (!tpl || !this.isAuthenticated) return;
-    try {
-      await this.updateTemplate(tplId, {
-        name: tpl.name,
-        description: tpl.description || '',
-        content: tpl.content
-      });
-      this.templateSaveError = '';
-    } catch (err) {
-      this.templateSaveError = '保存模板失败: ' + (err.message || err);
+  noteProgrammaticRewrite(tplId) {
+    if (!this.isAuthenticated || !tplId) return;
+    const template = this.templates.find(t => t.id === tplId);
+    if (!template) return;
+    const subtab = this.templateSubTab;
+    const next = markProgrammaticRewrite(this.templateSession, template, (content) => {
+      let rewritten = normalizeTemplateContent(content);
+      if (subtab === 'rule_sets') rewritten = migrateLegacyRuleSets(rewritten);
+      if (subtab === 'experimental') rewritten = withExperimentalDefaults(rewritten) ?? rewritten;
+      return rewritten;
+    });
+    if (next === this.templateSession) return;
+    this.templateSession = next;
+    this.draftEpoch += 1;
+  }
+
+  isTemplateDirty(tplId) {
+    const template = this.templates.find(t => t.id === tplId);
+    return this.isAuthenticated && !!template && isDirty(this.templateSession, template);
+  }
+
+  isTemplateStale(tplId) {
+    return this.isAuthenticated && isStale(this.templateSession, tplId);
+  }
+
+  isTemplateMissing(tplId) {
+    return this.isAuthenticated && isMissing(this.templateSession, tplId);
+  }
+
+  templateFetch(url, init = {}) {
+    return fetch(url, {
+      ...init,
+      headers: {
+        ...(init.headers || {}),
+        ...this.authHeaders(),
+      },
+    });
+  }
+
+  saveFailureMessage(result) {
+    if (result?.status === 409) {
+      return '模板已在其他地方保存。可以放弃，或强制保存。';
     }
+    if (result?.status === 404) {
+      return '模板已不在服务器上。可以克隆新建，或放弃。';
+    }
+    if (result?.status === 0) {
+      return '保存模板失败: ' + (result.error?.message || result.error || '网络错误');
+    }
+    return '保存模板失败: ' + (result?.errorMessage || `HTTP ${result?.status || ''}`);
+  }
+
+  async saveTemplate(id, { force = false } = {}) {
+    if (!this.isAuthenticated || !id) return false;
+    const template = this.templates.find(t => t.id === id);
+    if (!template) return false;
+    const result = await commitTemplateSave({
+      fetchImpl: (url, init) => this.templateFetch(url, init),
+      session: this.templateSession,
+      template,
+      force,
+    });
+    this.templateSession = result.session;
+    if (result.ok) {
+      template.updatedAt = result.updated?.updatedAt ?? template.updatedAt;
+      this.templateSaveError = '';
+      this.draftEpoch += 1;
+      void this.refreshPreview();
+      return true;
+    }
+    this.templateSaveError = this.saveFailureMessage(result);
+    this.draftEpoch += 1;
+    return false;
+  }
+
+  async saveAllDrafts() {
+    if (!this.isAuthenticated) return true;
+    const result = await commitAllDrafts({
+      fetchImpl: (url, init) => this.templateFetch(url, init),
+      session: this.templateSession,
+      templates: this.templates,
+    });
+    this.templateSession = result.session;
+    this.templates = [...this.templates];
+    this.draftEpoch += 1;
+    if (!result.ok) {
+      const failed = result.results.find(item => !item.ok);
+      this.templateSaveError = this.saveFailureMessage(failed);
+      return false;
+    }
+    this.templateSaveError = '';
+    void this.refreshPreview();
+    return true;
+  }
+
+  async discardTemplate(id) {
+    if (!this.isAuthenticated || !id) return false;
+    const applied = await discardTemplateRemote({
+      fetchImpl: (url, init) => this.templateFetch(url, init),
+      session: this.templateSession,
+      templates: this.templates,
+      id,
+    });
+    if (!applied.ok) {
+      const detail = applied.error?.message || applied.errorMessage || '网络错误';
+      this.templateSaveError = '放弃失败: ' + detail;
+      this.draftEpoch += 1;
+      return false;
+    }
+    this.templateSession = applied.session;
+    this.templates = applied.templates;
+    if (!this.templates.some(t => t.id === this.selectedTemplateId)) {
+      this.selectedTemplateId = this.templates[0]?.id || '';
+    }
+    this.templateSaveError = '';
+    this.draftEpoch += 1;
+    return true;
+  }
+
+  discardAllDrafts() {
+    let session = this.templateSession;
+    let templates = this.templates;
+    for (const id of dirtyIds(session, templates)) {
+      const applied = discardLocal(session, templates, id);
+      session = applied.session;
+      templates = applied.templates;
+    }
+    this.templateSession = session;
+    this.templates = templates;
+    if (!this.templates.some(t => t.id === this.selectedTemplateId)) {
+      this.selectedTemplateId = this.templates[0]?.id || '';
+    }
+    this.templateSaveError = '';
+    this.draftEpoch += 1;
   }
 
   async loadTemplates() {
-    this.templatesLoaded = false;
     try {
       const res = await fetch('/api/templates', { headers: this.authHeaders() });
       if (!res.ok) {
         return false;
       }
       const data = await res.json();
-      this.templates = Array.isArray(data) ? data : [];
+      const serverTemplates = Array.isArray(data) ? data : [];
+      const merged = mergeTemplateList(this.templateSession, this.templates, serverTemplates);
+      this.templateSession = merged.session;
+      this.templates = merged.templates;
       if (!this.templates.some(t => t.id === this.selectedTemplateId)) {
         this.selectedTemplateId = this.templates[0]?.id || '';
       }
       this.templatesLoaded = true;
+      this.draftEpoch += 1;
       return true;
     } catch {
       return false;
@@ -215,42 +368,20 @@ class StudioStore {
       this.selectedTemplateId = local.id;
       return local;
     }
-    const res = await fetch('/api/templates', {
-      method: 'POST',
-      headers: this.authHeaders(),
-      body: JSON.stringify(body)
+    const result = await createTemplateRequest({
+      fetchImpl: (url, init) => this.templateFetch(url, init),
+      session: this.templateSession,
+      templates: this.templates,
+      body,
     });
-    if (!res.ok) {
-      throw new Error(await this.apiError(res));
+    if (!result.ok) {
+      throw new Error(result.errorMessage || result.error?.message || '创建模板失败');
     }
-    const created = await res.json();
-    this.templates = [...this.templates, created];
-    this.selectedTemplateId = created.id;
-    return created;
-  }
-
-  async updateTemplate(id, payload) {
-    if (!this.isAuthenticated) {
-      return this.templates.find(t => t.id === id);
-    }
-    const res = await fetch(`/api/templates/${id}`, {
-      method: 'PUT',
-      headers: this.authHeaders(),
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) {
-      throw new Error(await this.apiError(res));
-    }
-    const updated = await res.json();
-    const idx = this.templates.findIndex(t => t.id === id);
-    if (idx !== -1) {
-      this.templates[idx] = {
-        ...this.templates[idx],
-        updatedAt: updated.updatedAt
-      };
-      this.templates = [...this.templates];
-    }
-    return updated;
+    this.templateSession = result.session;
+    this.templates = result.templates;
+    this.selectedTemplateId = result.created.id;
+    this.draftEpoch += 1;
+    return result.created;
   }
 
   async removeTemplate(id) {
@@ -263,7 +394,9 @@ class StudioStore {
         throw new Error(await this.apiError(res));
       }
     }
+    this.templateSession = forgetTemplate(this.templateSession, id);
     this.templates = this.templates.filter(t => t.id !== id);
+    this.draftEpoch += 1;
     if (this.selectedTemplateId === id) {
       this.selectedTemplateId = this.templates[0]?.id || '';
     }

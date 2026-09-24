@@ -28,6 +28,28 @@ export function normalizeTemplateContent(content) {
   return next
 }
 
+export function withExperimentalDefaults(content) {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return content
+  const next = cloneJson(content)
+  let changed = false
+  if (!next.log) {
+    next.log = { level: 'warn', timestamp: true }
+    changed = true
+  }
+  if (!next.experimental) {
+    next.experimental = {}
+    changed = true
+  }
+  if (!next.experimental.clash_api) {
+    next.experimental.clash_api = {
+      external_controller: '127.0.0.1:9090',
+      default_mode: 'rule',
+    }
+    changed = true
+  }
+  return changed ? next : content
+}
+
 export function displayPattern(outbounds) {
   if (!Array.isArray(outbounds) || outbounds.length === 0) return ''
   const first = outbounds[0]

@@ -11,6 +11,8 @@
   import X from 'lucide-svelte/icons/x';
 
   let showAuthModal = $state(false);
+  let logoutPrompt = $state(false);
+  let logoutBusy = $state(false);
   let tokenInput = $state(store.adminToken);
   let isChecking = $state(false);
 
@@ -30,7 +32,35 @@
   }
 
   async function handleLogout() {
+    if (store.hasDirtyTemplates) {
+      logoutPrompt = true;
+      return;
+    }
     tokenInput = '';
+    showAuthModal = false;
+    await store.logout();
+  }
+
+  async function confirmLogoutSave() {
+    logoutBusy = true;
+    const ok = await store.saveAllDrafts();
+    logoutBusy = false;
+    if (!ok) {
+      logoutPrompt = false;
+      showAuthModal = false;
+      return;
+    }
+    logoutPrompt = false;
+    tokenInput = '';
+    showAuthModal = false;
+    await store.logout();
+  }
+
+  async function confirmLogoutDiscard() {
+    store.discardAllDrafts();
+    logoutPrompt = false;
+    tokenInput = '';
+    showAuthModal = false;
     await store.logout();
   }
 </script>
@@ -117,6 +147,42 @@
     </div>
   </div>
 </header>
+
+<!-- Logout with unsaved template drafts -->
+{#if logoutPrompt}
+  <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl max-w-md w-full p-5 text-slate-100">
+      <h3 class="text-sm font-semibold text-slate-100">还有未保存的配置模板</h3>
+      <p class="mt-2 text-xs text-slate-400">保存会尝试保存每一份草稿。某一份失败时不会退出。基准已旧的草稿不会被强行保存。</p>
+      <div class="mt-4 flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          onclick={() => (logoutPrompt = false)}
+          disabled={logoutBusy}
+          class="text-xs px-3 py-1.5 rounded-md text-slate-300 hover:bg-slate-800 disabled:opacity-40"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          onclick={confirmLogoutDiscard}
+          disabled={logoutBusy}
+          class="text-xs px-3 py-1.5 rounded-md bg-slate-800 text-slate-200 border border-slate-700 disabled:opacity-40"
+        >
+          放弃
+        </button>
+        <button
+          type="button"
+          onclick={confirmLogoutSave}
+          disabled={logoutBusy}
+          class="text-xs px-3 py-1.5 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white font-medium disabled:opacity-40"
+        >
+          {logoutBusy ? '保存中' : '保存'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Admin Authentication Modal -->
 {#if showAuthModal}
