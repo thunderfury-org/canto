@@ -72,6 +72,10 @@ _Avoid_: 动态生成, 导出配置, 打包
 定义域名、IP CIDR 等特征集合的可重用分流资产单元，独立于具体的路由分流或 DNS 规则，支持 sing-box 1.14+ 多标签聚合定义。
 _Avoid_: 路由集, 规则文件, 分流包
 
+**规则源 (Rule Source)**:
+配置模板中的一条规则集来源，拥有自己的 Tag 前缀和已选规则集。
+_Avoid_: provider, 规则订阅源
+
 **规则源预设 (Rule Set Release Provider)**:
 提供批量规则集发布的 GitHub Release 资产源与预设配置，支持 Web Studio 自动化探测 Release 资产并提供规则勾选装配。
 _Avoid_: 规则订阅, 外部规则源, 规则抓取器

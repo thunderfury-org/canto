@@ -1,7 +1,21 @@
 <script>
   import { onMount } from 'svelte';
   import { store } from '../data/store.svelte.js';
-  import { testRegexMatch } from '../data/mock.js';
+  import {
+    clearRuleSourceTags,
+    collidingRuleTags,
+    definedRuleTags,
+    displayPattern,
+    finalRuleTag,
+    isRuleTagSelected,
+    matchNodeTags,
+    migrateLegacyRuleSets,
+    normalizeTemplateContent,
+    referencedRuleTags,
+    removeRuleSourceTag,
+    toggleRuleSourceTag,
+    writeNodeGroupPattern,
+  } from '../data/templateDocument.js';
   import MultiSelect from '../components/MultiSelect.svelte';
   import RouteRules from './RouteRules.svelte';
   import Lock from 'lucide-svelte/icons/lock';
@@ -31,16 +45,22 @@
   let savedNotice = $state(false);
 
   function switchSubTab(subTab) {
-    if (subTab === 'rule_sets') ensureRuleSets();
+    if (subTab === 'rule_sets') applyLegacyRuleSetMigration();
     if (subTab === 'experimental') ensureExperimentalDefaults();
     store.templateSubTab = subTab;
   }
 
   $effect(() => {
     const tpl = store.selectedTemplate;
+    const loaded = store.templatesLoaded;
     if (!tpl || !tpl.content) return;
-    ensureBaseOutbounds(tpl.content);
-    if (store.templateSubTab === 'rule_sets') ensureRuleSets();
+    const normalized = normalizeTemplateContent(tpl.content);
+    if (JSON.stringify(normalized) !== JSON.stringify(tpl.content)) {
+      tpl.content = normalized;
+      // Demo content stays in memory until the server list is loaded.
+      if (loaded) store.touchTemplate(tpl.id);
+    }
+    if (store.templateSubTab === 'rule_sets') applyLegacyRuleSetMigration();
     if (store.templateSubTab === 'experimental') ensureExperimentalDefaults();
   });
 
@@ -50,24 +70,6 @@
       loadPresets();
     }
   });
-
-  function ensureBaseOutbounds(content) {
-    if (!content) return;
-    if (!Array.isArray(content.policy_groups)) {
-      content.policy_groups = [];
-    }
-    const hasDirect = content.policy_groups.some(o => o && o.type === "direct");
-    if (!hasDirect) {
-      content.policy_groups.unshift({ tag: "直连", type: "direct" });
-    }
-    const hasBlock = content.policy_groups.some(o => o && o.type === "block");
-    if (!hasBlock) {
-      content.policy_groups.push({ tag: "block", type: "block" });
-    }
-    if (content.outbounds) {
-      delete content.outbounds;
-    }
-  }
 
   function triggerUpdate() {
     store.touchTemplate(store.selectedTemplateId);
@@ -262,103 +264,22 @@
     } catch (_) {}
   }
 
-  function ensureRuleSets() {
+  function applyLegacyRuleSetMigration() {
     const tpl = store.selectedTemplate;
-    if (!tpl || !tpl.content) return;
-    if (!Array.isArray(tpl.content.rule_sets)) {
-      if (Array.isArray(tpl.content.route?.rule_set)) {
-        const legacySets = tpl.content.route.rule_set;
-        const releaseTags = [];
-        for (const item of legacySets) {
-          if (typeof item.tag === 'string') releaseTags.push(item.tag);
-          else if (Array.isArray(item.tag)) releaseTags.push(...item.tag);
-        }
-        tpl.content.rule_sets = [
-          {
-            name: 'DustinWin 规则集',
-            type: 'remote',
-            tag: Array.from(new Set(releaseTags)),
-            format: 'binary',
-            url: 'https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs',
-            download_detour: 'ALL',
-            source_url: 'DustinWin/ruleset_geodata@sing-box-ruleset',
-            tag_prefix: '',
-            category: 'domain_and_ip',
-            preset_id: 'dustinwin-ruleset'
-          }
-        ];
-        delete tpl.content.route.rule_set;
-      } else {
-        tpl.content.rule_sets = [];
-      }
-    }
+    if (!tpl?.content) return;
+    const migrated = migrateLegacyRuleSets(tpl.content);
+    if (JSON.stringify(migrated) === JSON.stringify(tpl.content)) return;
+    tpl.content = migrated;
+    if (store.templatesLoaded) store.touchTemplate(tpl.id);
   }
 
-  // All defined rule tags across all rule_sets (both array tags and single string tags)
-  let allDefinedRuleTags = $derived.by(() => {
-    const tpl = store.selectedTemplate;
-    if (!tpl || !tpl.content) return [];
-    const sets = tpl.content.rule_sets || tpl.content.route?.rule_set || [];
-    const tags = [];
-    for (const rs of sets) {
-      if (Array.isArray(rs.tag)) {
-        for (const t of rs.tag) {
-          if (t && typeof t === 'string' && !tags.includes(t)) tags.push(t);
-        }
-      } else if (typeof rs.tag === 'string' && rs.tag) {
-        if (!tags.includes(rs.tag)) tags.push(rs.tag);
-      }
-    }
-    return tags;
-  });
-
-  // Referenced rule tags in route.rules and dns.rules
-  let referencedRuleTags = $derived.by(() => {
-    const tpl = store.selectedTemplate;
-    if (!tpl || !tpl.content) return new Set();
-    const set = new Set();
-    for (const r of tpl.content.route?.rules || []) {
-      if (Array.isArray(r.rule_set)) {
-        r.rule_set.forEach(t => set.add(t));
-      } else if (typeof r.rule_set === 'string') {
-        set.add(r.rule_set);
-      }
-    }
-    for (const r of tpl.content.dns?.rules || []) {
-      if (Array.isArray(r.rule_set)) {
-        r.rule_set.forEach(t => set.add(t));
-      } else if (typeof r.rule_set === 'string') {
-        set.add(r.rule_set);
-      }
-    }
-    return set;
-  });
-
-  // Duplicate tags across different providers
-  let duplicateTagsMap = $derived.by(() => {
-    const tpl = store.selectedTemplate;
-    if (!tpl || !tpl.content || !Array.isArray(tpl.content.rule_sets)) return {};
-    const tagCounts = {};
-    for (let i = 0; i < tpl.content.rule_sets.length; i++) {
-      const rs = tpl.content.rule_sets[i];
-      const tags = Array.isArray(rs.tag) ? rs.tag : (rs.tag ? [rs.tag] : []);
-      for (const t of tags) {
-        if (!tagCounts[t]) tagCounts[t] = [];
-        tagCounts[t].push(i);
-      }
-    }
-    const collisions = {};
-    for (const [t, indices] of Object.entries(tagCounts)) {
-      if (indices.length > 1) {
-        collisions[t] = indices;
-      }
-    }
-    return collisions;
-  });
+  let allDefinedRuleTags = $derived(definedRuleTags(store.selectedTemplate?.content));
+  let referencedRuleTagSet = $derived(new Set(referencedRuleTags(store.selectedTemplate?.content)));
+  let collidingRuleTagSet = $derived(new Set(collidingRuleTags(store.selectedTemplate?.content)));
 
   async function inspectProvider(pIdx) {
-    ensureRuleSets();
-    const p = store.selectedTemplate.content.rule_sets[pIdx];
+    applyLegacyRuleSetMigration();
+    const p = store.selectedTemplate.content.rule_sets?.[pIdx];
     if (!p) return;
     const url = (p.source_url || p.url || '').trim();
     if (!url) return;
@@ -402,8 +323,8 @@
   }
 
   function handleProviderPresetChange(pIdx, presetId) {
-    ensureRuleSets();
-    const p = store.selectedTemplate.content.rule_sets[pIdx];
+    applyLegacyRuleSetMigration();
+    const p = store.selectedTemplate.content.rule_sets?.[pIdx];
     if (!p) return;
     const preset = presets.find(item => item.id === presetId);
     if (!preset) return;
@@ -421,7 +342,7 @@
   }
 
   function addProvider() {
-    ensureRuleSets();
+    applyLegacyRuleSetMigration();
     const tpl = store.selectedTemplate;
     if (!Array.isArray(tpl.content.rule_sets)) tpl.content.rule_sets = [];
     const existingPresetIds = tpl.content.rule_sets.map(rs => rs.preset_id);
@@ -448,7 +369,7 @@
   }
 
   function removeProvider(pIdx) {
-    ensureRuleSets();
+    applyLegacyRuleSetMigration();
     const tpl = store.selectedTemplate;
     if (!tpl.content.rule_sets) return;
     if (!confirm(`确定删除规则源「${tpl.content.rule_sets[pIdx]?.name || '此规则源'}」吗？`)) {
@@ -469,37 +390,36 @@
     expandedProviderIndices = new Set(expandedProviderIndices);
   }
 
-  function toggleProviderTag(pIdx, rawTag) {
-    ensureRuleSets();
-    const p = store.selectedTemplate.content.rule_sets[pIdx];
-    if (!p) return;
-    const prefix = p.tag_prefix || '';
-    const finalTag = rawTag.startsWith(prefix) ? rawTag : `${prefix}${rawTag}`;
-    let tags = Array.isArray(p.tag) ? [...p.tag] : (p.tag ? [p.tag] : []);
-    if (tags.includes(finalTag)) {
-      tags = tags.filter(t => t !== finalTag);
-    } else {
-      tags.push(finalTag);
-    }
-    p.tag = tags;
+  function commitRuleSourceEdit(next) {
+    const tpl = store.selectedTemplate;
+    if (!tpl?.content || JSON.stringify(next) === JSON.stringify(tpl.content)) return;
+    tpl.content = next;
     triggerUpdate();
   }
 
-  function clearProviderTags(pIdx) {
-    ensureRuleSets();
-    const p = store.selectedTemplate.content.rule_sets[pIdx];
-    if (p) {
-      p.tag = [];
-      triggerUpdate();
-    }
+  function toggleProviderTag(pIdx, rawTag) {
+    applyLegacyRuleSetMigration();
+    const tpl = store.selectedTemplate;
+    if (!tpl?.content) return;
+    commitRuleSourceEdit(toggleRuleSourceTag(tpl.content, pIdx, rawTag));
   }
 
-  function isTagSelected(p, rawTag) {
-    if (!p || !p.tag) return false;
-    const prefix = p.tag_prefix || '';
-    const finalTag = rawTag.startsWith(prefix) ? rawTag : `${prefix}${rawTag}`;
-    const tags = Array.isArray(p.tag) ? p.tag : [p.tag];
-    return tags.includes(finalTag) || tags.includes(rawTag);
+  function removeProviderTag(pIdx, storedTag) {
+    applyLegacyRuleSetMigration();
+    const tpl = store.selectedTemplate;
+    if (!tpl?.content) return;
+    commitRuleSourceEdit(removeRuleSourceTag(tpl.content, pIdx, storedTag));
+  }
+
+  function clearProviderTags(pIdx) {
+    applyLegacyRuleSetMigration();
+    const tpl = store.selectedTemplate;
+    if (!tpl?.content) return;
+    commitRuleSourceEdit(clearRuleSourceTags(tpl.content, pIdx));
+  }
+
+  function isTagSelected(source, rawTag) {
+    return isRuleTagSelected(source, rawTag);
   }
 
   function openBrowseModal(pIdx) {
@@ -554,14 +474,6 @@
     }
   }
 
-  function getMatchedNodesForPattern(pattern) {
-    let clean = pattern;
-    if (clean.startsWith('{') && clean.endsWith('}')) {
-      clean = clean.slice(1, -1);
-    }
-    return allAvailableTags.filter(tag => testRegexMatch(clean, tag));
-  }
-
   // --- Policy Groups operations ---
   function addPolicyGroup() {
     const tpl = store.selectedTemplate;
@@ -614,51 +526,10 @@
     }
   }
 
-  function getDisplayPattern(outbounds) {
-    if (!Array.isArray(outbounds) || outbounds.length === 0) return "";
-    const first = outbounds[0];
-    if (typeof first !== "string") return "";
-    let clean = first.trim();
-    if (clean.startsWith("{") && clean.endsWith("}") && clean.length >= 2) {
-      clean = clean.slice(1, -1).trim();
-    }
-    if (clean.startsWith("(?i)")) {
-      clean = clean.slice(4).trim();
-    }
-    return clean;
-  }
-
-  function checkRegexValid(pattern) {
-    if (!pattern) return true;
-    let clean = pattern.trim();
-    if (clean.startsWith("(?i)")) {
-      clean = clean.slice(4).trim();
-    }
-    try {
-      new RegExp(clean, "i");
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   function updateNodeGroupPattern(ngIdx, rawInput) {
     const tpl = store.selectedTemplate;
-    const ng = tpl.content.node_groups?.[ngIdx];
-    if (!ng) return;
-    let s = (rawInput || "").trim();
-    if (s.startsWith("{") && s.endsWith("}") && s.length >= 2) {
-      s = s.slice(1, -1).trim();
-    }
-    if (s.startsWith("(?i)")) {
-      s = s.slice(4).trim();
-    }
-    if (!s) {
-      ng.outbounds = [];
-    } else {
-      const stored = s === ".*" ? "{.*}" : `{(?i)${s}}`;
-      ng.outbounds = [stored];
-    }
+    if (!tpl?.content?.node_groups?.[ngIdx]) return;
+    tpl.content = writeNodeGroupPattern(tpl.content, ngIdx, rawInput);
     triggerUpdate();
   }
 
@@ -903,9 +774,10 @@
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
             {#each store.selectedTemplate.content?.node_groups || [] as ng, ngIdx}
-              {@const currentPattern = getDisplayPattern(ng.outbounds)}
-              {@const matchedNodes = getMatchedNodesForPattern(ng.outbounds?.[0] || "")}
-              {@const isValidRegex = checkRegexValid(currentPattern)}
+              {@const currentPattern = displayPattern(ng.outbounds)}
+              {@const matched = matchNodeTags(currentPattern, allAvailableTags)}
+              {@const matchedNodes = matched.tags}
+              {@const isValidRegex = matched.ok}
               <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-3.5 space-y-3">
                 <!-- Group Header: Type + Tag + Delete -->
                 <div class="flex items-center justify-between gap-2">
@@ -1184,7 +1056,7 @@
             {#each (store.selectedTemplate.content?.rule_sets || []) as p, pIdx}
               {@const isExpanded = expandedProviderIndices.has(pIdx)}
               {@const inspectState = providerInspectStates[pIdx] || { rules: [], inspecting: false, error: '', searchQuery: '', searchDropdownOpen: false }}
-              {@const providerCollisions = (Array.isArray(p.tag) ? p.tag : [p.tag]).filter(t => t && duplicateTagsMap[t])}
+              {@const providerCollisions = (Array.isArray(p.tag) ? p.tag : (p.tag ? [p.tag] : [])).filter(t => collidingRuleTagSet.has(String(t).trim()))}
 
               <div class="bg-slate-900/90 border {providerCollisions.length > 0 ? 'border-amber-600/70' : 'border-slate-800'} rounded-lg overflow-hidden transition-all shadow-sm">
                 <!-- Card Header -->
@@ -1376,7 +1248,7 @@
                             <div class="absolute left-0 right-0 top-full mt-1 bg-slate-950 border border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto divide-y divide-slate-800/60 font-mono text-xs">
                               {#each searchMatches as m}
                                 {@const isChecked = isTagSelected(p, m.tag)}
-                                {@const displayTag = `${p.tag_prefix || ''}${m.tag}`}
+                                {@const displayTag = finalRuleTag(p.tag_prefix, m.tag)}
                                 <button
                                   type="button"
                                   onmousedown={() => { toggleProviderTag(pIdx, m.tag); }}
@@ -1423,7 +1295,7 @@
 
                       <div class="flex flex-wrap gap-1.5">
                         {#each (Array.isArray(p.tag) ? p.tag : (p.tag ? [p.tag] : [])) as t}
-                          {@const isRef = referencedRuleTags.has(t)}
+                          {@const isRef = referencedRuleTagSet.has(t)}
                           <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-200 font-mono text-[11px]">
                             <span class="font-bold text-emerald-400">{t}</span>
                             {#if isRef}
@@ -1431,7 +1303,7 @@
                             {/if}
                             <button
                               type="button"
-                              onclick={() => toggleProviderTag(pIdx, t)}
+                              onclick={() => removeProviderTag(pIdx, t)}
                               class="text-slate-500 hover:text-rose-400 ml-0.5 cursor-pointer"
                               title="移除此规则"
                             >
@@ -1570,14 +1442,14 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                   {#each visibleModalRules as r}
                     {@const isChecked = isTagSelected(p, r.tag)}
-                    {@const isRef = referencedRuleTags.has(`${p?.tag_prefix || ''}${r.tag}`)}
+                    {@const isRef = referencedRuleTagSet.has(finalRuleTag(p?.tag_prefix, r.tag))}
                     <button
                       type="button"
                       onclick={() => toggleProviderTag(pIdx, r.tag)}
                       class="px-2.5 py-2 rounded-lg border text-left transition-all flex items-center justify-between gap-1.5 cursor-pointer {isChecked ? 'bg-emerald-950/40 border-emerald-500/70 text-emerald-200' : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700'}"
                     >
                       <div class="truncate">
-                        <span class="font-mono font-bold">{p?.tag_prefix || ''}{r.tag}</span>
+                        <span class="font-mono font-bold">{finalRuleTag(p?.tag_prefix, r.tag)}</span>
                         {#if r.raw_name && r.raw_name !== r.tag}
                           <span class="text-[10px] text-slate-500 block truncate">{r.raw_name}</span>
                         {/if}
