@@ -809,6 +809,240 @@ async fn test_templates_crud_persist_and_schema_validation() {
 }
 
 #[tokio::test]
+async fn test_template_update_honors_baseline_and_force() {
+    let (state, _dir) = test_state(test_settings());
+    let app = create_app(state);
+    let create_body = json!({
+        "name": "网关模板",
+        "description": "家里",
+        "content": { "log": { "level": "warn" } }
+    });
+    let (status, created) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/templates",
+                Body::from(create_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let id = created["id"].as_str().unwrap();
+    let updated_at = created["updatedAt"].as_str().unwrap().to_string();
+
+    let stale = json!({
+        "name": "被拒绝",
+        "description": "家里",
+        "content": { "log": { "level": "info" } },
+        "baseUpdatedAt": "2000-01-01T00:00:00Z",
+        "force": false
+    });
+    let (status, err) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/templates/{id}"),
+                Body::from(stale.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{err}");
+    assert!(err["error"].as_str().unwrap().contains("updated"), "{err}");
+
+    let (status, fetched) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "GET",
+                &format!("/api/templates/{id}"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(fetched["name"], "网关模板");
+    assert_eq!(fetched["updatedAt"], updated_at);
+    assert_eq!(fetched["content"]["log"]["level"], "warn");
+
+    let invalid = json!({
+        "name": "坏模板",
+        "content": { "log": [] },
+        "baseUpdatedAt": updated_at,
+        "force": true
+    });
+    let (status, err) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/templates/{id}"),
+                Body::from(invalid.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{err}");
+
+    let (_status, fetched) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "GET",
+                &format!("/api/templates/{id}"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(fetched["name"], "网关模板");
+    assert_eq!(fetched["updatedAt"], updated_at);
+
+    let matched = json!({
+        "name": "网关模板-改",
+        "description": "家里",
+        "content": { "log": { "level": "info" } },
+        "baseUpdatedAt": updated_at
+    });
+    let (status, updated) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/templates/{id}"),
+                Body::from(matched.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{updated}");
+    assert_eq!(updated["name"], "网关模板-改");
+    assert_eq!(updated["content"]["log"]["level"], "info");
+
+    let forced = json!({
+        "name": "强制",
+        "description": "家里",
+        "content": { "log": { "level": "debug" } },
+        "baseUpdatedAt": updated_at,
+        "force": true
+    });
+    let (status, forced_body) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/templates/{id}"),
+                Body::from(forced.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{forced_body}");
+    assert_eq!(forced_body["name"], "强制");
+    assert_eq!(forced_body["content"]["log"]["level"], "debug");
+
+    let missing = app
+        .clone()
+        .oneshot(auth_req(
+            "PUT",
+            "/api/templates/tpl_missing",
+            Body::from(forced.to_string()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+
+    let unconditional = json!({
+        "name": "无基准",
+        "content": { "log": { "level": "warn" } }
+    });
+    let (status, replaced) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/templates/{id}"),
+                Body::from(unconditional.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{replaced}");
+    assert_eq!(replaced["name"], "无基准");
+    assert_eq!(replaced["content"]["log"]["level"], "warn");
+}
+
+#[tokio::test]
+async fn test_concurrent_template_saves_with_the_same_baseline_one_conflicts() {
+    let (state, _dir) = test_state(test_settings());
+    let app = create_app(state);
+    let (status, created) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/templates",
+                Body::from(
+                    json!({
+                        "name": "并发",
+                        "content": { "log": { "level": "warn" } }
+                    })
+                    .to_string(),
+                ),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let id = created["id"].as_str().unwrap().to_string();
+    let updated_at = created["updatedAt"].as_str().unwrap().to_string();
+    let uri = format!("/api/templates/{id}");
+    let left_body = json!({
+        "name": "左边",
+        "content": { "log": { "level": "info" } },
+        "baseUpdatedAt": updated_at,
+    });
+    let right_body = json!({
+        "name": "右边",
+        "content": { "log": { "level": "debug" } },
+        "baseUpdatedAt": updated_at,
+    });
+    let (left, right) = tokio::join!(
+        app.clone()
+            .oneshot(auth_req("PUT", &uri, Body::from(left_body.to_string()),)),
+        app.clone()
+            .oneshot(auth_req("PUT", &uri, Body::from(right_body.to_string()))),
+    );
+    let mut statuses = vec![left.unwrap().status(), right.unwrap().status()];
+    statuses.sort();
+    assert_eq!(
+        statuses,
+        vec![StatusCode::OK, StatusCode::CONFLICT],
+        "one save must win and the other must keep the previous template"
+    );
+
+    let (status, fetched) = json_body(
+        app.oneshot(auth_req("GET", &uri, Body::empty()))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let name = fetched["name"].as_str().unwrap();
+    assert!(name == "左边" || name == "右边", "{fetched}");
+    let level = fetched["content"]["log"]["level"].as_str().unwrap();
+    if name == "左边" {
+        assert_eq!(level, "info");
+    } else {
+        assert_eq!(level, "debug");
+    }
+}
+
+#[tokio::test]
 async fn test_profiles_crud_preview_and_public_subscription() {
     let (state, dir) = test_state(test_settings());
     let app = create_app(state);

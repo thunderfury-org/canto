@@ -12,6 +12,7 @@
     migrateLegacyRuleSets,
     normalizeTemplateContent,
     referencedRuleTags,
+    withExperimentalDefaults,
     removeRuleSourceTag,
     toggleRuleSourceTag,
     writeNodeGroupPattern,
@@ -42,7 +43,27 @@
   let currentSubTab = $derived(store.templateSubTab);
   let saveError = $state('');
   let creating = $state(false);
+  let saving = $state(false);
+  let discarding = $state(false);
   let savedNotice = $state(false);
+
+  let templateChoices = $derived.by(() => {
+    const epoch = store.draftEpoch;
+    return store.templates.map((tpl) => ({
+      id: tpl.id,
+      label: epoch >= 0 && store.isTemplateDirty(tpl.id) ? `${tpl.name} · 未保存` : tpl.name,
+    }));
+  });
+
+  let currentDraft = $derived.by(() => {
+    const id = store.selectedTemplateId;
+    const epoch = store.draftEpoch;
+    return {
+      dirty: epoch >= 0 && store.isTemplateDirty(id),
+      stale: store.isTemplateStale(id),
+      missing: store.isTemplateMissing(id),
+    };
+  });
 
   function switchSubTab(subTab) {
     if (subTab === 'rule_sets') applyLegacyRuleSetMigration();
@@ -57,11 +78,10 @@
     const normalized = normalizeTemplateContent(tpl.content);
     if (JSON.stringify(normalized) !== JSON.stringify(tpl.content)) {
       tpl.content = normalized;
-      // Demo content stays in memory until the server list is loaded.
-      if (loaded) store.touchTemplate(tpl.id);
     }
     if (store.templateSubTab === 'rule_sets') applyLegacyRuleSetMigration();
     if (store.templateSubTab === 'experimental') ensureExperimentalDefaults();
+    if (store.isAuthenticated && loaded) store.noteProgrammaticRewrite(tpl.id);
   });
 
   onMount(() => {
@@ -72,9 +92,35 @@
   });
 
   function triggerUpdate() {
+    if (store.isAuthenticated) {
+      store.noteUserEdit(store.selectedTemplateId);
+      return;
+    }
     store.touchTemplate(store.selectedTemplateId);
     savedNotice = true;
     setTimeout(() => (savedNotice = false), 1500);
+  }
+
+  async function handleSaveTemplate() {
+    saving = true;
+    saveError = '';
+    await store.saveTemplate(store.selectedTemplateId);
+    saving = false;
+  }
+
+  async function handleDiscardTemplate() {
+    discarding = true;
+    saveError = '';
+    await store.discardTemplate(store.selectedTemplateId);
+    discarding = false;
+  }
+
+  async function handleForceSave() {
+    if (!confirm('服务器上的模板已更新。用当前草稿强制保存？')) return;
+    saving = true;
+    saveError = '';
+    await store.saveTemplate(store.selectedTemplateId, { force: true });
+    saving = false;
   }
 
   // Collect all available node tags from all sources for live regex matching preview
@@ -270,7 +316,7 @@
     const migrated = migrateLegacyRuleSets(tpl.content);
     if (JSON.stringify(migrated) === JSON.stringify(tpl.content)) return;
     tpl.content = migrated;
-    if (store.templatesLoaded) store.touchTemplate(tpl.id);
+    if (store.isAuthenticated && store.templatesLoaded) store.noteProgrammaticRewrite(tpl.id);
   }
 
   let allDefinedRuleTags = $derived(definedRuleTags(store.selectedTemplate?.content));
@@ -301,6 +347,11 @@
         }
         const data = await res.json();
         providerInspectStates[pIdx].rules = data.rules || [];
+        const before = JSON.stringify({
+          url: p.url,
+          tag_prefix: p.tag_prefix,
+          category: p.category,
+        });
         if (data.downloadUrlTemplateSrs && (!p.url || p.url.includes('example'))) {
           p.url = p.format === 'source' ? data.downloadUrlTemplateJson : data.downloadUrlTemplateSrs;
         }
@@ -310,6 +361,12 @@
         if (data.category && !p.category) {
           p.category = data.category;
         }
+        const after = JSON.stringify({
+          url: p.url,
+          tag_prefix: p.tag_prefix,
+          category: p.category,
+        });
+        if (before !== after) triggerUpdate();
       } else {
         // Demo fallback
         providerInspectStates[pIdx].rules = [];
@@ -462,16 +519,10 @@
   }
 
   function ensureExperimentalDefaults() {
-    const content = store.selectedTemplate?.content;
-    if (!content) return;
-    if (!content.log) content.log = { level: 'warn', timestamp: true };
-    if (!content.experimental) content.experimental = {};
-    if (!content.experimental.clash_api) {
-      content.experimental.clash_api = {
-        external_controller: '127.0.0.1:9090',
-        default_mode: 'rule'
-      };
-    }
+    const tpl = store.selectedTemplate;
+    if (!tpl?.content) return;
+    const next = withExperimentalDefaults(tpl.content);
+    if (next !== tpl.content) tpl.content = next;
   }
 
   // --- Policy Groups operations ---
@@ -636,8 +687,8 @@
         bind:value={store.selectedTemplateId}
         class="bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-cyan-500 font-medium"
       >
-        {#each store.templates as tpl}
-          <option value={tpl.id}>{tpl.name}</option>
+        {#each templateChoices as tpl}
+          <option value={tpl.id}>{tpl.label}</option>
         {/each}
       </select>
 
@@ -647,7 +698,7 @@
       <input
         type="text"
         bind:value={store.selectedTemplate.name}
-        onchange={triggerUpdate}
+        oninput={triggerUpdate}
         title="点击直接修改模板名称"
         placeholder="模板名称"
         class="bg-slate-950/80 border border-slate-700/60 rounded px-2.5 py-1 text-xs text-slate-100 font-semibold focus:border-cyan-500 focus:outline-none max-w-[200px]"
@@ -657,7 +708,7 @@
       <input
         type="text"
         bind:value={store.selectedTemplate.description}
-        onchange={triggerUpdate}
+        oninput={triggerUpdate}
         title="修改用途描述"
         placeholder="用途描述..."
         class="bg-slate-950/80 border border-slate-700/60 rounded px-2.5 py-1 text-xs text-slate-300 focus:border-cyan-500 focus:outline-none hidden lg:block max-w-[300px]"
@@ -682,7 +733,45 @@
       </button>
     </div>
 
-    {#if savedNotice}
+    {#if store.isAuthenticated}
+      <div class="flex flex-wrap items-center gap-2">
+        {#if currentDraft.dirty}
+          <span class="text-xs text-amber-300 font-mono">未保存</span>
+        {/if}
+        {#if currentDraft.stale}
+          <span class="text-xs text-amber-200">服务器上的模板已更新</span>
+        {/if}
+        {#if currentDraft.missing}
+          <span class="text-xs text-rose-300">模板已不在服务器上</span>
+        {/if}
+        <button
+          type="button"
+          onclick={handleSaveTemplate}
+          disabled={!currentDraft.dirty || currentDraft.stale || saving || discarding}
+          class="px-2.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium disabled:opacity-40 disabled:hover:bg-cyan-600"
+        >
+          {saving ? '保存中' : '保存'}
+        </button>
+        <button
+          type="button"
+          onclick={handleDiscardTemplate}
+          disabled={!currentDraft.dirty || saving || discarding}
+          class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 disabled:opacity-40"
+        >
+          放弃
+        </button>
+        {#if currentDraft.dirty && currentDraft.stale && !currentDraft.missing}
+          <button
+            type="button"
+            onclick={handleForceSave}
+            disabled={saving || discarding}
+            class="px-2.5 py-1 rounded bg-amber-700 hover:bg-amber-600 text-white text-xs font-medium disabled:opacity-40"
+          >
+            强制保存
+          </button>
+        {/if}
+      </div>
+    {:else if savedNotice}
       <span class="text-xs text-emerald-400 flex items-center gap-1 font-mono">
         <Check size={13} /> 已同步更新
       </span>

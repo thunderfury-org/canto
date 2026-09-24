@@ -323,6 +323,13 @@ fn persist_profiles(path: &Path, profiles: &[Profile]) -> Result<()> {
 }
 
 #[derive(Debug)]
+pub enum TemplateWrite {
+    Saved(Template),
+    Missing,
+    Conflict,
+}
+
+#[derive(Debug)]
 pub struct TemplateStore {
     dir: PathBuf,
     inner: RwLock<Vec<Template>>,
@@ -378,6 +385,21 @@ impl TemplateStore {
     }
 
     pub async fn replace(&self, template: Template) -> Result<Option<Template>> {
+        match self.replace_matching(template, None, false).await? {
+            TemplateWrite::Saved(saved) => Ok(Some(saved)),
+            TemplateWrite::Missing => Ok(None),
+            TemplateWrite::Conflict => Ok(None),
+        }
+    }
+
+    /// Compare `base_updated_at` and write while holding the same lock.
+    /// `force` skips the baseline check. An omitted baseline still replaces.
+    pub async fn replace_matching(
+        &self,
+        template: Template,
+        base_updated_at: Option<&str>,
+        force: bool,
+    ) -> Result<TemplateWrite> {
         if !is_safe_id(&template.id) {
             return Err(CantoError::Web(format!(
                 "invalid template id '{}'",
@@ -386,11 +408,20 @@ impl TemplateStore {
         }
         let mut guard = self.inner.write().await;
         let Some(existing) = guard.iter_mut().find(|item| item.id == template.id) else {
-            return Ok(None);
+            return Ok(TemplateWrite::Missing);
         };
+        if !force {
+            if let Some(base) = base_updated_at {
+                if existing.updated_at.as_deref() != Some(base) {
+                    return Ok(TemplateWrite::Conflict);
+                }
+            }
+        }
+        let mut template = template;
+        template.updated_at = Some(distinct_stamp(existing.updated_at.as_deref()));
         persist_template(&self.dir, &template)?;
         *existing = template.clone();
-        Ok(Some(template))
+        Ok(TemplateWrite::Saved(template))
     }
 
     pub async fn delete(&self, id: &str) -> Result<bool> {
@@ -408,6 +439,22 @@ impl TemplateStore {
         }
         guard.retain(|template| template.id != id);
         Ok(true)
+    }
+}
+
+fn distinct_stamp(previous: Option<&str>) -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let sub = (nanos % 1_000_000_000) as u32;
+    let whole = crate::web::studio::model::now_rfc3339();
+    let prefix = whole.trim_end_matches('Z');
+    let stamp = format!("{prefix}.{sub:09}Z");
+    if previous == Some(stamp.as_str()) {
+        format!("{prefix}.{:09}Z", sub.wrapping_add(1))
+    } else {
+        stamp
     }
 }
 

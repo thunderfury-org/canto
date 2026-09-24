@@ -4,6 +4,7 @@ use crate::web::studio::model::{
     NodeSource, Profile, SourceKind, Template, new_profile_id, new_source_id, new_template_id,
     now_rfc3339, validate_template_content,
 };
+use crate::web::studio::store::TemplateWrite;
 use axum::Json;
 use axum::body::Body;
 use axum::extract::{Path, State};
@@ -183,6 +184,12 @@ pub struct UpdateTemplateRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub content: Option<Value>,
+    /// Baseline `updatedAt` the editor loaded. When set and different from the
+    /// stored template, the update is rejected unless `force` is true.
+    /// Omitted means replace unconditionally, for callers that predate drafts.
+    pub base_updated_at: Option<String>,
+    #[serde(default)]
+    pub force: bool,
 }
 
 pub async fn list_templates(State(state): State<WebState>) -> Response {
@@ -231,27 +238,38 @@ pub async fn update_template(
         return json_error(StatusCode::NOT_FOUND, "template not found");
     };
 
-    if let Some(name) = req.name {
-        let name = name.trim();
-        if name.is_empty() {
+    if let Some(name) = req.name.as_deref() {
+        if name.trim().is_empty() {
             return json_error(StatusCode::BAD_REQUEST, "name is required");
         }
-        template.name = name.to_string();
+    }
+    if let Some(content) = req.content.as_ref() {
+        if let Err(err) = validate_template_content(content) {
+            return json_error(StatusCode::BAD_REQUEST, &err);
+        }
+    }
+    if let Some(name) = req.name {
+        template.name = name.trim().to_string();
     }
     if let Some(description) = req.description {
         template.description = description.trim().to_string();
     }
     if let Some(content) = req.content {
-        if let Err(err) = validate_template_content(&content) {
-            return json_error(StatusCode::BAD_REQUEST, &err);
-        }
         template.content = content;
     }
     template.updated_at = Some(now_rfc3339());
 
-    match state.templates.replace(template).await {
-        Ok(Some(saved)) => (StatusCode::OK, Json(saved)).into_response(),
-        Ok(None) => json_error(StatusCode::NOT_FOUND, "template not found"),
+    match state
+        .templates
+        .replace_matching(template, req.base_updated_at.as_deref(), req.force)
+        .await
+    {
+        Ok(TemplateWrite::Saved(saved)) => (StatusCode::OK, Json(saved)).into_response(),
+        Ok(TemplateWrite::Missing) => json_error(StatusCode::NOT_FOUND, "template not found"),
+        Ok(TemplateWrite::Conflict) => json_error(
+            StatusCode::CONFLICT,
+            "template was updated since it was loaded",
+        ),
         Err(err) => json_error(StatusCode::INTERNAL_SERVER_ERROR, &err.to_string()),
     }
 }
