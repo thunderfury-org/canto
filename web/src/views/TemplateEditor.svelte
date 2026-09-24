@@ -39,7 +39,8 @@
 
   $effect(() => {
     const tpl = store.selectedTemplate;
-    if (!tpl) return;
+    if (!tpl || !tpl.content) return;
+    ensureBaseOutbounds(tpl.content);
     if (store.templateSubTab === 'rule_sets') ensureRuleSets();
     if (store.templateSubTab === 'experimental') ensureExperimentalDefaults();
   });
@@ -68,13 +69,6 @@
       delete content.outbounds;
     }
   }
-
-  $effect(() => {
-    const tpl = store.selectedTemplate;
-    if (tpl) {
-      ensureBaseOutbounds(tpl.content);
-    }
-  });
 
   function triggerUpdate() {
     store.touchTemplate(store.selectedTemplateId);
@@ -547,7 +541,6 @@
         default_mode: 'rule'
       };
     }
-    triggerUpdate();
   }
 
   function getMatchedNodesForPattern(pattern) {
