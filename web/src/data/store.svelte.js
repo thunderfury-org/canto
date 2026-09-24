@@ -1,4 +1,4 @@
-import { initialTemplates, initialSources, initialProfiles, compileProfile } from './mock.js';
+import { initialTemplates, initialSources, initialProfiles } from './mock.js';
 import defaultTemplateRaw from './defaultTemplate.json';
 import { getInitialRoute, navigate } from './router.js';
 
@@ -33,6 +33,8 @@ class StudioStore {
   authStatusMessage = $state('');
   templatePersistTimers = {};
   templateSaveError = $state('');
+  // True only after /api/templates replaces the in-memory demo.
+  templatesLoaded = $state(false);
   profilePersistTimers = {};
   profileSaveError = $state('');
   preview = $state({ config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 });
@@ -53,17 +55,11 @@ class StudioStore {
     this.sources.reduce((sum, s) => sum + (s.nodes?.length || 0), 0)
   );
 
-  // Compilation result for selected profile
-  currentCompiled = $derived.by(() => {
-    if (this.isAuthenticated) {
-      return this.preview || { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 };
-    }
-    const prof = this.selectedProfile;
-    if (!prof) return { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 };
-    const tpl = this.templates.find(t => t.id === prof.templateId);
-    const boundSources = this.sources.filter(s => prof.sourceIds.includes(s.id));
-    return compileProfile(tpl, boundSources);
-  });
+  currentCompiled = $derived(
+    this.isAuthenticated
+      ? (this.preview || { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 })
+      : { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 }
+  );
 
   navigate(tab, params = {}, options = {}) {
     navigate(tab, params, options);
@@ -117,6 +113,7 @@ class StudioStore {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch (_) {}
     this.isAuthenticated = false;
+    this.templatesLoaded = false;
     this.adminToken = '';
     this.authStatusMessage = '已退出登录';
     this.studioStatus = null;
@@ -184,6 +181,7 @@ class StudioStore {
   }
 
   async loadTemplates() {
+    this.templatesLoaded = false;
     try {
       const res = await fetch('/api/templates', { headers: this.authHeaders() });
       if (!res.ok) {
@@ -194,6 +192,7 @@ class StudioStore {
       if (!this.templates.some(t => t.id === this.selectedTemplateId)) {
         this.selectedTemplateId = this.templates[0]?.id || '';
       }
+      this.templatesLoaded = true;
       return true;
     } catch {
       return false;
