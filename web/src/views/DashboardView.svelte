@@ -199,14 +199,14 @@
 
       <div class="flex items-center gap-2 shrink-0">
         <button
-          onclick={() => (store.currentTab = 'templates')}
+          onclick={() => store.navigate('templates')}
           class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 transition-colors flex items-center gap-1 text-xs"
         >
           <span>编辑模板</span>
           <ArrowRight size={12} />
         </button>
         <button
-          onclick={() => (store.currentTab = 'profiles')}
+          onclick={() => store.navigate('profiles')}
           class="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors flex items-center gap-1 text-xs"
         >
           <span>组装配置</span>
@@ -223,7 +223,7 @@
           <h2 class="text-sm font-semibold text-slate-200">节点源最近刷新</h2>
         </div>
         <button
-          onclick={() => (store.currentTab = 'sources')}
+          onclick={() => store.navigate('sources')}
           class="text-xs text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
         >
           <span>管理节点源</span>
@@ -235,7 +235,7 @@
           <p class="text-sm text-slate-300">还没有节点源</p>
           <p class="text-xs text-slate-500">添加外部节点源或手动录入节点后，才能组装给网关用的 Profile。</p>
           <button
-            onclick={() => (store.currentTab = 'sources')}
+            onclick={() => store.navigate('sources')}
             class="mt-1 inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
           >
             <Plus size={12} />
@@ -275,7 +275,7 @@
           <h2 class="text-sm font-semibold text-slate-200">当前活跃分发配置</h2>
         </div>
         <button
-          onclick={() => (store.currentTab = 'profiles')}
+          onclick={() => store.navigate('profiles')}
           class="text-xs text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
         >
           <span>管理全部</span>
@@ -291,7 +291,7 @@
             <span class="font-mono text-slate-400">[singbox].source</span> 拉取。
           </p>
           <button
-            onclick={() => (store.currentTab = 'profiles')}
+            onclick={() => store.navigate('profiles')}
             class="mt-2 inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white"
           >
             <Plus size={12} />
@@ -343,10 +343,7 @@
                 </button>
 
                 <button
-                  onclick={() => {
-                    store.selectedProfileId = prof.id;
-                    store.currentTab = 'profiles';
-                  }}
+                  onclick={() => store.navigate('profiles', { id: prof.id })}
                   class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-800/50 transition-colors"
                 >
                   <Eye size={13} />

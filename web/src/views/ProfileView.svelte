@@ -245,7 +245,7 @@
           <div class="flex items-center justify-between">
             <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider font-mono">2. 选定基础配置模板</h3>
             <button
-              onclick={() => (store.currentTab = 'templates')}
+              onclick={() => store.navigate('templates', { id: activeProfile?.templateId })}
               class="text-xs text-cyan-400 hover:text-cyan-300"
             >
               编辑模板细节 &rarr;
@@ -279,7 +279,7 @@
           <div class="flex items-center justify-between">
             <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider font-mono">3. 绑定节点池来源</h3>
             <button
-              onclick={() => (store.currentTab = 'sources')}
+              onclick={() => store.navigate('sources')}
               class="text-xs text-cyan-400 hover:text-cyan-300"
             >
               管理节点源 &rarr;

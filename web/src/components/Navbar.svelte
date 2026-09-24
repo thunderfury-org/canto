@@ -52,16 +52,18 @@
 
     <!-- Navigation Tabs -->
     <nav class="flex items-center bg-slate-950/70 p-1 rounded-lg border border-slate-800 text-sm">
-      <button
-        onclick={() => (store.currentTab = 'dashboard')}
+      <a
+        href="#/dashboard"
+        onclick={(e) => { e.preventDefault(); store.navigate('dashboard'); }}
         class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab === 'dashboard' ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
       >
         <LayoutDashboard size={15} />
         <span>仪表盘</span>
-      </button>
+      </a>
 
-      <button
-        onclick={() => (store.currentTab = 'sources')}
+      <a
+        href="#/sources"
+        onclick={(e) => { e.preventDefault(); store.navigate('sources'); }}
         class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab === 'sources' ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
       >
         <Network size={15} />
@@ -69,10 +71,11 @@
         <span class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono">
           {store.sources.length}
         </span>
-      </button>
+      </a>
 
-      <button
-        onclick={() => (store.currentTab = 'templates')}
+      <a
+        href="#/templates"
+        onclick={(e) => { e.preventDefault(); store.navigate('templates', { id: store.selectedTemplateId, subtab: store.templateSubTab }); }}
         class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab === 'templates' ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
       >
         <FileCode2 size={15} />
@@ -80,10 +83,11 @@
         <span class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono">
           {store.templates.length}
         </span>
-      </button>
+      </a>
 
-      <button
-        onclick={() => (store.currentTab = 'profiles')}
+      <a
+        href="#/profiles"
+        onclick={(e) => { e.preventDefault(); store.navigate('profiles', { id: store.selectedProfileId }); }}
         class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab === 'profiles' ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
       >
         <Boxes size={15} />
@@ -91,7 +95,7 @@
         <span class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono">
           {store.profiles.length}
         </span>
-      </button>
+      </a>
     </nav>
 
     <!-- Top Right Status & Utilities -->
