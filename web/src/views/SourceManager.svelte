@@ -68,7 +68,7 @@
       name: newName.trim(),
       type: newType,
       url: newType === 'subscription' ? newUrl.trim() : '',
-      content: newType === 'manual' ? newRawContent : ''
+      content: newType === 'manual' ? newRawContent : '',
     };
     try {
       if (editingId) {
@@ -105,12 +105,16 @@
 
 <div class="space-y-4">
   <!-- Top Bar -->
-  <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+  <div
+    class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+  >
     <div class="flex items-center gap-2">
       <Network size={18} class="text-emerald-400" />
       <div>
         <h2 class="text-sm font-semibold text-slate-100">代理节点源管理 (Node Sources)</h2>
-        <p class="text-xs text-slate-400">汇聚外部机场订阅链接与自建私有 VPS 节点，供 Profile 策略组按正则匹配引用</p>
+        <p class="text-xs text-slate-400">
+          汇聚外部机场订阅链接与自建私有 VPS 节点，供 Profile 策略组按正则匹配引用
+        </p>
       </div>
     </div>
 
@@ -127,16 +131,18 @@
 
   <!-- Add Source Modal -->
   {#if showModal}
-    <div class="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 max-w-lg w-full space-y-4 shadow-2xl">
+    <div
+      class="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 z-50"
+    >
+      <div
+        class="bg-slate-900 border border-slate-800 rounded-xl p-5 max-w-lg w-full space-y-4 shadow-2xl"
+      >
         <div class="flex items-center justify-between border-b border-slate-800 pb-3">
           <h3 class="text-sm font-semibold text-slate-100 flex items-center gap-2">
             <Network size={16} class="text-emerald-400" />
             <span>{editingId ? '编辑节点源' : '添加新代理节点源'}</span>
           </h3>
-          <button onclick={resetForm} class="text-slate-400 hover:text-slate-200">
-            &times;
-          </button>
+          <button onclick={resetForm} class="text-slate-400 hover:text-slate-200"> &times; </button>
         </div>
 
         <div class="space-y-3 text-xs">
@@ -157,14 +163,18 @@
               <button
                 type="button"
                 onclick={() => (newType = 'subscription')}
-                class="p-2 rounded border text-center transition-colors {newType === 'subscription' ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300 font-medium' : 'bg-slate-950 border-slate-800 text-slate-400'}"
+                class="p-2 rounded border text-center transition-colors {newType === 'subscription'
+                  ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300 font-medium'
+                  : 'bg-slate-950 border-slate-800 text-slate-400'}"
               >
                 外部 HTTP(S) 订阅 URL
               </button>
               <button
                 type="button"
                 onclick={() => (newType = 'manual')}
-                class="p-2 rounded border text-center transition-colors {newType === 'manual' ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300 font-medium' : 'bg-slate-950 border-slate-800 text-slate-400'}"
+                class="p-2 rounded border text-center transition-colors {newType === 'manual'
+                  ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300 font-medium'
+                  : 'bg-slate-950 border-slate-800 text-slate-400'}"
               >
                 自建/手动录入节点
               </button>
@@ -173,7 +183,9 @@
 
           {#if newType === 'subscription'}
             <div>
-              <label for="src-url" class="block text-slate-300 font-medium mb-1">订阅链接 (URL)</label>
+              <label for="src-url" class="block text-slate-300 font-medium mb-1"
+                >订阅链接 (URL)</label
+              >
               <input
                 id="src-url"
                 type="text"
@@ -181,11 +193,15 @@
                 placeholder="https://airport.com/api/v1/client/subscribe?token=xxx"
                 class="w-full bg-slate-950 border border-slate-700/80 rounded px-3 py-1.5 text-slate-100 font-mono focus:outline-none focus:border-cyan-500"
               />
-              <span class="text-[11px] text-slate-500 mt-1 block">支持标准 Base64 订阅（SS/VMess/VLESS/Trojan/Hysteria2）及 sing-box 原生 JSON</span>
+              <span class="text-[11px] text-slate-500 mt-1 block"
+                >支持标准 Base64 订阅（SS/VMess/VLESS/Trojan/Hysteria2）及 sing-box 原生 JSON</span
+              >
             </div>
           {:else}
             <div>
-              <label for="src-raw" class="block text-slate-300 font-medium mb-1">节点配置 / 链接</label>
+              <label for="src-raw" class="block text-slate-300 font-medium mb-1"
+                >节点配置 / 链接</label
+              >
               <textarea
                 id="src-raw"
                 bind:value={newRawContent}
@@ -198,7 +214,9 @@
         </div>
 
         {#if formError}
-          <div class="text-xs px-3 py-2 rounded bg-rose-950/40 border border-rose-800/40 text-rose-300">
+          <div
+            class="text-xs px-3 py-2 rounded bg-rose-950/40 border border-rose-800/40 text-rose-300"
+          >
             {formError}
           </div>
         {/if}
@@ -215,7 +233,7 @@
             disabled={saving}
             class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-50"
           >
-            {saving ? '保存中...' : (editingId ? '保存修改' : '确认并导入')}
+            {saving ? '保存中...' : editingId ? '保存修改' : '确认并导入'}
           </button>
         </div>
       </div>
@@ -242,25 +260,34 @@
   <!-- Sources Cards List -->
   <div class="space-y-4">
     {#if store.sources.length === 0}
-      <div class="bg-slate-900/80 border border-dashed border-slate-800 rounded-lg p-8 text-center text-xs text-slate-500">
+      <div
+        class="bg-slate-900/80 border border-dashed border-slate-800 rounded-lg p-8 text-center text-xs text-slate-500"
+      >
         还没有节点源。添加外部订阅 URL 或手动录入自建节点。
       </div>
     {/if}
     {#each store.sources as src}
-      {@const filteredNodes = (src.nodes || []).filter(n => 
-        !searchKeyword || 
-        n.tag.toLowerCase().includes(searchKeyword.toLowerCase()) || 
-        n.type.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-        (n.server && n.server.toLowerCase().includes(searchKeyword.toLowerCase()))
+      {@const filteredNodes = (src.nodes || []).filter(
+        (n) =>
+          !searchKeyword ||
+          n.tag.toLowerCase().includes(searchKeyword.toLowerCase()) ||
+          n.type.toLowerCase().includes(searchKeyword.toLowerCase()) ||
+          (n.server && n.server.toLowerCase().includes(searchKeyword.toLowerCase())),
       )}
 
       <div class="bg-slate-900/80 border border-slate-800 rounded-lg overflow-hidden">
         <!-- Source Header -->
-        <div class="p-3.5 bg-slate-950/60 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div
+          class="p-3.5 bg-slate-950/60 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+        >
           <div class="space-y-1">
             <div class="flex items-center gap-2">
               <span class="font-semibold text-slate-100 text-sm">{src.name}</span>
-              <span class="px-2 py-0.5 rounded text-[11px] font-mono {src.type === 'subscription' ? 'bg-cyan-950 text-cyan-300 border border-cyan-800/60' : 'bg-indigo-950 text-indigo-300 border border-indigo-800/60'}">
+              <span
+                class="px-2 py-0.5 rounded text-[11px] font-mono {src.type === 'subscription'
+                  ? 'bg-cyan-950 text-cyan-300 border border-cyan-800/60'
+                  : 'bg-indigo-950 text-indigo-300 border border-indigo-800/60'}"
+              >
                 {src.type === 'subscription' ? 'HTTP 订阅源' : '自建/手动源'}
               </span>
               <span class="text-xs text-slate-500">
@@ -280,8 +307,12 @@
           </div>
 
           <div class="flex items-center gap-2 text-xs">
-            <span class="px-1.5 py-0.5 rounded font-mono {src.status === 'error' ? 'bg-rose-950 text-rose-300 border border-rose-800/60' : 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'}">
-              {src.status === 'error' ? 'error' : (src.status || 'active')}
+            <span
+              class="px-1.5 py-0.5 rounded font-mono {src.status === 'error'
+                ? 'bg-rose-950 text-rose-300 border border-rose-800/60'
+                : 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'}"
+            >
+              {src.status === 'error' ? 'error' : src.status || 'active'}
             </span>
             <span class="text-slate-500">更新于: {formatTime(src.lastUpdated)}</span>
             <button
@@ -297,7 +328,10 @@
               class="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 disabled:opacity-50"
               title="重新拉取并解析"
             >
-              <RefreshCw size={13} class={refreshingId === src.id ? 'animate-spin text-cyan-400' : ''} />
+              <RefreshCw
+                size={13}
+                class={refreshingId === src.id ? 'animate-spin text-cyan-400' : ''}
+              />
             </button>
             <button
               onclick={() => handleDeleteSource(src.id)}
@@ -323,18 +357,25 @@
             <tbody class="divide-y divide-slate-800/40 font-mono">
               {#each filteredNodes as node}
                 <tr class="hover:bg-slate-850/40">
-                  <td class="py-2.5 px-3.5 font-sans font-medium text-slate-100 flex items-center gap-1.5">
+                  <td
+                    class="py-2.5 px-3.5 font-sans font-medium text-slate-100 flex items-center gap-1.5"
+                  >
                     <Server size={12} class="text-slate-500 shrink-0" />
                     <span>{node.tag}</span>
                   </td>
                   <td class="py-2.5 px-3">
-                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase {
-                      node.type === 'hysteria2' ? 'bg-purple-950 text-purple-300 border border-purple-800/60' :
-                      node.type === 'vless' ? 'bg-cyan-950 text-cyan-300 border border-cyan-800/60' :
-                      node.type === 'vmess' ? 'bg-blue-950 text-blue-300 border border-blue-800/60' :
-                      node.type === 'trojan' ? 'bg-amber-950 text-amber-300 border border-amber-800/60' :
-                      'bg-slate-800 text-slate-300'
-                    }">
+                    <span
+                      class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase {node.type ===
+                      'hysteria2'
+                        ? 'bg-purple-950 text-purple-300 border border-purple-800/60'
+                        : node.type === 'vless'
+                          ? 'bg-cyan-950 text-cyan-300 border border-cyan-800/60'
+                          : node.type === 'vmess'
+                            ? 'bg-blue-950 text-blue-300 border border-blue-800/60'
+                            : node.type === 'trojan'
+                              ? 'bg-amber-950 text-amber-300 border border-amber-800/60'
+                              : 'bg-slate-800 text-slate-300'}"
+                    >
                       {node.type}
                     </span>
                   </td>
@@ -350,7 +391,9 @@
                       <span>-</span>
                     {/if}
                     {#if node.transport?.type}
-                      <span class="ml-1 px-1 rounded bg-slate-800 text-slate-300">{node.transport.type}</span>
+                      <span class="ml-1 px-1 rounded bg-slate-800 text-slate-300"
+                        >{node.transport.type}</span
+                      >
                     {/if}
                   </td>
                 </tr>

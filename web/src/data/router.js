@@ -6,12 +6,12 @@ export const VALID_SUBTABS = [
   'route',
   'dns',
   'inbounds',
-  'experimental'
+  'experimental',
 ];
 
 export function parseRoute(
   rawHash = typeof window !== 'undefined' ? window.location.hash : '',
-  pathname = typeof window !== 'undefined' ? window.location.pathname : ''
+  pathname = typeof window !== 'undefined' ? window.location.pathname : '',
 ) {
   let hash = (rawHash || '').trim();
   let pathPart = '';

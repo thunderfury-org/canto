@@ -124,74 +124,80 @@
   }
 
   // Collect all available node tags from all sources for live regex matching preview
-  let allAvailableTags = $derived(
-    store.sources.flatMap(s => (s.nodes || []).map(n => n.tag))
-  );
+  let allAvailableTags = $derived(store.sources.flatMap((s) => (s.nodes || []).map((n) => n.tag)));
 
   // Collect node group tags
   let availableNodeGroupTags = $derived(
-    (store.selectedTemplate?.content?.node_groups || []).map(g => g.tag).filter(Boolean)
+    (store.selectedTemplate?.content?.node_groups || []).map((g) => g.tag).filter(Boolean),
   );
 
   // User-configurable policy groups (excluding built-in direct and block)
   let userPolicyGroups = $derived(
     (store.selectedTemplate?.content?.policy_groups || []).filter(
-      p => p?.type !== "direct" && p?.type !== "block"
-    )
+      (p) => p?.type !== 'direct' && p?.type !== 'block',
+    ),
   );
 
   // Collect policy group tags
   let availablePolicyGroupTags = $derived(
-    (store.selectedTemplate?.content?.policy_groups || []).map(p => p.tag).filter(Boolean)
+    (store.selectedTemplate?.content?.policy_groups || []).map((p) => p.tag).filter(Boolean),
   );
 
   // Built-in base outbounds in policy_groups
   let directOutbound = $derived(
-    store.selectedTemplate?.content?.policy_groups?.find(o => o?.type === "direct")
+    store.selectedTemplate?.content?.policy_groups?.find((o) => o?.type === 'direct'),
   );
   let blockOutbound = $derived(
-    store.selectedTemplate?.content?.policy_groups?.find(o => o?.type === "block")
+    store.selectedTemplate?.content?.policy_groups?.find((o) => o?.type === 'block'),
   );
 
   // Collect base outbound tags from policy_groups
   let availableBaseOutboundTags = $derived(
     (store.selectedTemplate?.content?.policy_groups || [])
-      .filter(o => o?.type === "direct" || o?.type === "block")
-      .map(o => o.tag)
-      .filter(Boolean)
+      .filter((o) => o?.type === 'direct' || o?.type === 'block')
+      .map((o) => o.tag)
+      .filter(Boolean),
   );
 
   // Candidates that a policy group can select from (node groups + base outbounds)
   let availablePolicyCandidates = $derived(
-    Array.from(new Set([...availableNodeGroupTags, ...availableBaseOutboundTags]))
+    Array.from(new Set([...availableNodeGroupTags, ...availableBaseOutboundTags])),
   );
 
   let policyCandidateOptions = $derived([
-    ...(directOutbound?.tag ? [{ value: directOutbound.tag, label: directOutbound.tag, type: "direct" }] : []),
-    ...(blockOutbound?.tag ? [{ value: blockOutbound.tag, label: blockOutbound.tag, type: "block" }] : []),
-    ...availableNodeGroupTags.map(tag => ({ value: tag, label: tag, type: "node_group" }))
+    ...(directOutbound?.tag
+      ? [{ value: directOutbound.tag, label: directOutbound.tag, type: 'direct' }]
+      : []),
+    ...(blockOutbound?.tag
+      ? [{ value: blockOutbound.tag, label: blockOutbound.tag, type: 'block' }]
+      : []),
+    ...availableNodeGroupTags.map((tag) => ({ value: tag, label: tag, type: 'node_group' })),
   ]);
 
   // Outbounds available for route rules and DNS detour
   let availableRouteOutboundTags = $derived(
-    Array.from(new Set([...availablePolicyGroupTags, ...availableBaseOutboundTags]))
+    Array.from(new Set([...availablePolicyGroupTags, ...availableBaseOutboundTags])),
   );
 
   // All outbounds (including node groups) for rule_set download_detour
   let allOutboundTags = $derived(
-    Array.from(new Set([...availablePolicyGroupTags, ...availableNodeGroupTags, ...availableBaseOutboundTags]))
+    Array.from(
+      new Set([
+        ...availablePolicyGroupTags,
+        ...availableNodeGroupTags,
+        ...availableBaseOutboundTags,
+      ]),
+    ),
   );
 
   let endpointTags = $derived(
-    (store.selectedTemplate?.content?.endpoints || [])
-      .map((ep) => ep?.tag)
-      .filter(Boolean)
+    (store.selectedTemplate?.content?.endpoints || []).map((ep) => ep?.tag).filter(Boolean),
   );
 
   let dnsServerTags = $derived(
     (store.selectedTemplate?.content?.dns?.servers || [])
       .map((server) => server?.tag)
-      .filter(Boolean)
+      .filter(Boolean),
   );
 
   async function handleCreateTemplate() {
@@ -202,7 +208,7 @@
       await store.createTemplate({
         name: source ? `自定义模板 ${store.templates.length + 1}` : '新配置模板',
         description: source ? '基于当前模板克隆' : '新建的自定义配置模板',
-        content: source
+        content: source,
       });
       lastSyncedTplId = null;
     } catch (err) {
@@ -233,10 +239,11 @@
       repo: 'DustinWin/ruleset_geodata',
       tag: 'sing-box-ruleset',
       description: '主流 DNS 与路由分流规则（cn, ai, netflix, youtube, proxy, private 等）',
-      urlPattern: 'https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs',
+      urlPattern:
+        'https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs',
       format: 'binary',
       defaultPrefix: '',
-      category: 'domain_and_ip'
+      category: 'domain_and_ip',
     },
     {
       id: 'sagernet-geosite',
@@ -247,7 +254,7 @@
       urlPattern: 'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/{tag}.srs',
       format: 'binary',
       defaultPrefix: 'geosite-',
-      category: 'geosite'
+      category: 'geosite',
     },
     {
       id: 'sagernet-geoip',
@@ -258,7 +265,7 @@
       urlPattern: 'https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/{tag}.srs',
       format: 'binary',
       defaultPrefix: 'geoip-',
-      category: 'geoip'
+      category: 'geoip',
     },
     {
       id: 'metacubex-geosite',
@@ -266,10 +273,11 @@
       repo: 'MetaCubeX/meta-rules-dat',
       tag: 'sing/geo/geosite',
       description: 'MetaCubeX 维护的完整 GeoSite 域名分流规则',
-      urlPattern: 'https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/{tag}.srs',
+      urlPattern:
+        'https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/{tag}.srs',
       format: 'binary',
       defaultPrefix: 'geosite-',
-      category: 'geosite'
+      category: 'geosite',
     },
     {
       id: 'metacubex-geoip',
@@ -277,14 +285,44 @@
       repo: 'MetaCubeX/meta-rules-dat',
       tag: 'sing/geo/geoip',
       description: 'MetaCubeX 维护的 GeoIP 规则',
-      urlPattern: 'https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/{tag}.srs',
+      urlPattern:
+        'https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/{tag}.srs',
       format: 'binary',
       defaultPrefix: 'geoip-',
-      category: 'geoip'
-    }
+      category: 'geoip',
+    },
   ];
 
-  const ALPHABET_LIST = ['ALL', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
+  const ALPHABET_LIST = [
+    'ALL',
+    'A',
+    'B',
+    'C',
+    'D',
+    'E',
+    'F',
+    'G',
+    'H',
+    'I',
+    'J',
+    'K',
+    'L',
+    'M',
+    'N',
+    'O',
+    'P',
+    'Q',
+    'R',
+    'S',
+    'T',
+    'U',
+    'V',
+    'W',
+    'X',
+    'Y',
+    'Z',
+    '#',
+  ];
 
   let presets = $state(fallbackPresets);
   let expandedProviderIndices = $state(new Set([0]));
@@ -294,7 +332,7 @@
     open: false,
     providerIdx: -1,
     search: '',
-    letterFilter: 'ALL'
+    letterFilter: 'ALL',
   });
   let modalDisplayLimit = $state(240);
 
@@ -331,7 +369,13 @@
     if (!url) return;
 
     if (!providerInspectStates[pIdx]) {
-      providerInspectStates[pIdx] = { rules: [], inspecting: false, error: '', searchQuery: '', searchDropdownOpen: false };
+      providerInspectStates[pIdx] = {
+        rules: [],
+        inspecting: false,
+        error: '',
+        searchQuery: '',
+        searchDropdownOpen: false,
+      };
     }
     providerInspectStates[pIdx].inspecting = true;
     providerInspectStates[pIdx].error = '';
@@ -340,7 +384,7 @@
         const res = await fetch('/api/rulesets/inspect-release', {
           method: 'POST',
           headers: store.authHeaders(),
-          body: JSON.stringify({ url })
+          body: JSON.stringify({ url }),
         });
         if (!res.ok) {
           throw new Error(await store.apiError(res));
@@ -353,7 +397,8 @@
           category: p.category,
         });
         if (data.downloadUrlTemplateSrs && (!p.url || p.url.includes('example'))) {
-          p.url = p.format === 'source' ? data.downloadUrlTemplateJson : data.downloadUrlTemplateSrs;
+          p.url =
+            p.format === 'source' ? data.downloadUrlTemplateJson : data.downloadUrlTemplateSrs;
         }
         if (data.suggestedPrefix && p.tag_prefix === undefined) {
           p.tag_prefix = data.suggestedPrefix;
@@ -383,7 +428,7 @@
     applyLegacyRuleSetMigration();
     const p = store.selectedTemplate.content.rule_sets?.[pIdx];
     if (!p) return;
-    const preset = presets.find(item => item.id === presetId);
+    const preset = presets.find((item) => item.id === presetId);
     if (!preset) return;
     p.name = preset.name;
     p.preset_id = preset.id;
@@ -391,9 +436,10 @@
     p.tag_prefix = preset.defaultPrefix || '';
     p.category = preset.category || 'general';
     p.url = preset.urlPattern;
-    p.source_url = preset.id === 'dustinwin-ruleset'
-      ? `${preset.repo}@${preset.tag}`
-      : `${preset.repo}#${preset.tag}`;
+    p.source_url =
+      preset.id === 'dustinwin-ruleset'
+        ? `${preset.repo}@${preset.tag}`
+        : `${preset.repo}#${preset.tag}`;
     triggerUpdate();
     inspectProvider(pIdx);
   }
@@ -402,8 +448,8 @@
     applyLegacyRuleSetMigration();
     const tpl = store.selectedTemplate;
     if (!Array.isArray(tpl.content.rule_sets)) tpl.content.rule_sets = [];
-    const existingPresetIds = tpl.content.rule_sets.map(rs => rs.preset_id);
-    const nextPreset = presets.find(p => !existingPresetIds.includes(p.id)) || presets[0];
+    const existingPresetIds = tpl.content.rule_sets.map((rs) => rs.preset_id);
+    const nextPreset = presets.find((p) => !existingPresetIds.includes(p.id)) || presets[0];
     const newIdx = tpl.content.rule_sets.length;
     tpl.content.rule_sets.push({
       name: nextPreset.name,
@@ -413,11 +459,12 @@
       format: nextPreset.format || 'binary',
       url: nextPreset.urlPattern,
       download_detour: 'ALL',
-      source_url: nextPreset.id === 'dustinwin-ruleset'
-        ? `${nextPreset.repo}@${nextPreset.tag}`
-        : `${nextPreset.repo}#${nextPreset.tag}`,
+      source_url:
+        nextPreset.id === 'dustinwin-ruleset'
+          ? `${nextPreset.repo}@${nextPreset.tag}`
+          : `${nextPreset.repo}#${nextPreset.tag}`,
       category: nextPreset.category || 'general',
-      preset_id: nextPreset.id
+      preset_id: nextPreset.id,
     });
     expandedProviderIndices.add(newIdx);
     expandedProviderIndices = new Set(expandedProviderIndices);
@@ -485,7 +532,7 @@
       open: true,
       providerIdx: pIdx,
       search: '',
-      letterFilter: 'ALL'
+      letterFilter: 'ALL',
     };
   }
 
@@ -494,7 +541,7 @@
       open: false,
       providerIdx: -1,
       search: '',
-      letterFilter: 'ALL'
+      letterFilter: 'ALL',
     };
   }
 
@@ -505,7 +552,7 @@
       type: 'tailscale',
       tag: 'ts-ep-' + (tpl.content.endpoints.length + 1),
       auth_key: '',
-      accept_routes: true
+      accept_routes: true,
     });
     triggerUpdate();
   }
@@ -529,12 +576,12 @@
   function addPolicyGroup() {
     const tpl = store.selectedTemplate;
     if (!tpl.content.policy_groups) tpl.content.policy_groups = [];
-    const firstCand = availableNodeGroupTags[0] || directOutbound?.tag || "直连";
+    const firstCand = availableNodeGroupTags[0] || directOutbound?.tag || '直连';
     tpl.content.policy_groups.push({
-      tag: "新策略组 " + (userPolicyGroups.length + 1),
-      type: "selector",
+      tag: '新策略组 ' + (userPolicyGroups.length + 1),
+      type: 'selector',
       outbounds: [firstCand],
-      default: firstCand
+      default: firstCand,
     });
     triggerUpdate();
   }
@@ -552,7 +599,7 @@
 
   function handlePolicyGroupOutboundsChange(pg) {
     if (pg.default && (!pg.outbounds || !pg.outbounds.includes(pg.default))) {
-      pg.default = pg.outbounds?.[0] || "";
+      pg.default = pg.outbounds?.[0] || '';
     }
     triggerUpdate();
   }
@@ -564,7 +611,7 @@
     tpl.content.node_groups.push({
       tag: '新节点分组 ' + (tpl.content.node_groups.length + 1),
       type: 'urltest',
-      outbounds: ['{.*}']
+      outbounds: ['{.*}'],
     });
     triggerUpdate();
   }
@@ -593,7 +640,7 @@
       tag: 'dns_' + (tpl.content.dns.servers.length + 1),
       type: 'https',
       server: '1.1.1.1',
-      detour: '直连'
+      detour: '直连',
     });
     triggerUpdate();
   }
@@ -612,7 +659,7 @@
     if (!tpl.content.dns.rules) tpl.content.dns.rules = [];
     tpl.content.dns.rules.push({
       rule_set: ['cn'],
-      server: 'dns_direct'
+      server: 'dns_direct',
     });
     triggerUpdate();
   }
@@ -641,7 +688,7 @@
       type: 'mixed',
       tag: 'mixed-in',
       listen: '0.0.0.0',
-      listen_port: 7890
+      listen_port: 7890,
     });
     triggerUpdate();
   }
@@ -657,7 +704,9 @@
 
 <div class="space-y-4">
   {#if saveError || store.templateSaveError}
-    <div class="p-2.5 bg-rose-950/60 border border-rose-800/60 rounded text-xs text-rose-300 flex items-center gap-2">
+    <div
+      class="p-2.5 bg-rose-950/60 border border-rose-800/60 rounded text-xs text-rose-300 flex items-center gap-2"
+    >
       <AlertCircle size={14} class="shrink-0" />
       <span>{saveError || store.templateSaveError}</span>
     </div>
@@ -667,7 +716,9 @@
     <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-8 text-center space-y-3">
       <FileCode2 size={28} class="mx-auto text-indigo-400" />
       <h2 class="text-sm font-semibold text-slate-100">还没有配置模板</h2>
-      <p class="text-xs text-slate-400">创建一份配置模板后，即可分模块编辑 DNS、入站、策略组和路由规则。</p>
+      <p class="text-xs text-slate-400">
+        创建一份配置模板后，即可分模块编辑 DNS、入站、策略组和路由规则。
+      </p>
       <button
         onclick={handleCreateTemplate}
         disabled={creating}
@@ -678,168 +729,204 @@
       </button>
     </div>
   {:else}
-  <!-- Top Control Bar -->
-  <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
-    <!-- Template Switcher & Quick Meta Edit -->
-    <div class="flex flex-wrap items-center gap-2.5">
-      <FileCode2 size={18} class="text-indigo-400 shrink-0" />
-      <select
-        bind:value={store.selectedTemplateId}
-        class="bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-cyan-500 font-medium"
-      >
-        {#each templateChoices as tpl}
-          <option value={tpl.id}>{tpl.label}</option>
-        {/each}
-      </select>
-
-      <div class="h-4 w-px bg-slate-800 hidden sm:block"></div>
-
-      <!-- Editable Template Name -->
-      <input
-        type="text"
-        bind:value={store.selectedTemplate.name}
-        oninput={triggerUpdate}
-        title="点击直接修改模板名称"
-        placeholder="模板名称"
-        class="bg-slate-950/80 border border-slate-700/60 rounded px-2.5 py-1 text-xs text-slate-100 font-semibold focus:border-cyan-500 focus:outline-none max-w-[200px]"
-      />
-
-      <!-- Editable Template Description -->
-      <input
-        type="text"
-        bind:value={store.selectedTemplate.description}
-        oninput={triggerUpdate}
-        title="修改用途描述"
-        placeholder="用途描述..."
-        class="bg-slate-950/80 border border-slate-700/60 rounded px-2.5 py-1 text-xs text-slate-300 focus:border-cyan-500 focus:outline-none hidden lg:block max-w-[300px]"
-      />
-
-      <button
-        onclick={handleCreateTemplate}
-        disabled={creating}
-        title="基于当前模板新建克隆"
-        class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700 disabled:opacity-50"
-      >
-        <Plus size={13} />
-        <span>克隆新建</span>
-      </button>
-
-      <button
-        onclick={() => handleDeleteTemplate(store.selectedTemplateId)}
-        title="删除当前模板"
-        class="p-1 rounded bg-slate-800/80 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700/80 hover:border-rose-800 text-xs"
-      >
-        <Trash2 size={13} />
-      </button>
-    </div>
-
-    {#if store.isAuthenticated}
-      <div class="flex flex-wrap items-center gap-2">
-        {#if currentDraft.dirty}
-          <span class="text-xs text-amber-300 font-mono">未保存</span>
-        {/if}
-        {#if currentDraft.stale}
-          <span class="text-xs text-amber-200">服务器上的模板已更新</span>
-        {/if}
-        {#if currentDraft.missing}
-          <span class="text-xs text-rose-300">模板已不在服务器上</span>
-        {/if}
-        <button
-          type="button"
-          onclick={handleSaveTemplate}
-          disabled={!currentDraft.dirty || currentDraft.stale || saving || discarding}
-          class="px-2.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium disabled:opacity-40 disabled:hover:bg-cyan-600"
+    <!-- Top Control Bar -->
+    <div
+      class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3"
+    >
+      <!-- Template Switcher & Quick Meta Edit -->
+      <div class="flex flex-wrap items-center gap-2.5">
+        <FileCode2 size={18} class="text-indigo-400 shrink-0" />
+        <select
+          bind:value={store.selectedTemplateId}
+          class="bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-cyan-500 font-medium"
         >
-          {saving ? '保存中' : '保存'}
-        </button>
+          {#each templateChoices as tpl}
+            <option value={tpl.id}>{tpl.label}</option>
+          {/each}
+        </select>
+
+        <div class="h-4 w-px bg-slate-800 hidden sm:block"></div>
+
+        <!-- Editable Template Name -->
+        <input
+          type="text"
+          bind:value={store.selectedTemplate.name}
+          oninput={triggerUpdate}
+          title="点击直接修改模板名称"
+          placeholder="模板名称"
+          class="bg-slate-950/80 border border-slate-700/60 rounded px-2.5 py-1 text-xs text-slate-100 font-semibold focus:border-cyan-500 focus:outline-none max-w-[200px]"
+        />
+
+        <!-- Editable Template Description -->
+        <input
+          type="text"
+          bind:value={store.selectedTemplate.description}
+          oninput={triggerUpdate}
+          title="修改用途描述"
+          placeholder="用途描述..."
+          class="bg-slate-950/80 border border-slate-700/60 rounded px-2.5 py-1 text-xs text-slate-300 focus:border-cyan-500 focus:outline-none hidden lg:block max-w-[300px]"
+        />
+
         <button
-          type="button"
-          onclick={handleDiscardTemplate}
-          disabled={!currentDraft.dirty || saving || discarding}
-          class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 disabled:opacity-40"
+          onclick={handleCreateTemplate}
+          disabled={creating}
+          title="基于当前模板新建克隆"
+          class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700 disabled:opacity-50"
         >
-          放弃
+          <Plus size={13} />
+          <span>克隆新建</span>
         </button>
-        {#if currentDraft.dirty && currentDraft.stale && !currentDraft.missing}
+
+        <button
+          onclick={() => handleDeleteTemplate(store.selectedTemplateId)}
+          title="删除当前模板"
+          class="p-1 rounded bg-slate-800/80 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700/80 hover:border-rose-800 text-xs"
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
+
+      {#if store.isAuthenticated}
+        <div class="flex flex-wrap items-center gap-2">
+          {#if currentDraft.dirty}
+            <span class="text-xs text-amber-300 font-mono">未保存</span>
+          {/if}
+          {#if currentDraft.stale}
+            <span class="text-xs text-amber-200">服务器上的模板已更新</span>
+          {/if}
+          {#if currentDraft.missing}
+            <span class="text-xs text-rose-300">模板已不在服务器上</span>
+          {/if}
           <button
             type="button"
-            onclick={handleForceSave}
-            disabled={saving || discarding}
-            class="px-2.5 py-1 rounded bg-amber-700 hover:bg-amber-600 text-white text-xs font-medium disabled:opacity-40"
+            onclick={handleSaveTemplate}
+            disabled={!currentDraft.dirty || currentDraft.stale || saving || discarding}
+            class="px-2.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium disabled:opacity-40 disabled:hover:bg-cyan-600"
           >
-            强制保存
+            {saving ? '保存中' : '保存'}
           </button>
-        {/if}
-      </div>
-    {:else if savedNotice}
-      <span class="text-xs text-emerald-400 flex items-center gap-1 font-mono">
-        <Check size={13} /> 已同步更新
-      </span>
-    {/if}
-  </div>
+          <button
+            type="button"
+            onclick={handleDiscardTemplate}
+            disabled={!currentDraft.dirty || saving || discarding}
+            class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 disabled:opacity-40"
+          >
+            放弃
+          </button>
+          {#if currentDraft.dirty && currentDraft.stale && !currentDraft.missing}
+            <button
+              type="button"
+              onclick={handleForceSave}
+              disabled={saving || discarding}
+              class="px-2.5 py-1 rounded bg-amber-700 hover:bg-amber-600 text-white text-xs font-medium disabled:opacity-40"
+            >
+              强制保存
+            </button>
+          {/if}
+        </div>
+      {:else if savedNotice}
+        <span class="text-xs text-emerald-400 flex items-center gap-1 font-mono">
+          <Check size={13} /> 已同步更新
+        </span>
+      {/if}
+    </div>
 
-  <!-- Modular Visual Editor Mode -->
-  <div class="space-y-3">
+    <!-- Modular Visual Editor Mode -->
+    <div class="space-y-3">
       <!-- Sub-module Navigation -->
-      <div class="flex flex-wrap items-center gap-1.5 bg-slate-900/60 p-1 rounded-lg border border-slate-800 text-xs">
+      <div
+        class="flex flex-wrap items-center gap-1.5 bg-slate-900/60 p-1 rounded-lg border border-slate-800 text-xs"
+      >
         <button
           onclick={() => switchSubTab('node_groups')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'node_groups' ? 'bg-slate-800 text-amber-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          'node_groups'
+            ? 'bg-slate-800 text-amber-300 shadow-sm border border-slate-700/60'
+            : 'text-slate-400 hover:text-slate-200'}"
         >
           <Layers size={13} class="text-amber-400" />
           <span>节点分组</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.node_groups?.length || 0}</span>
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
+            >{store.selectedTemplate.content?.node_groups?.length || 0}</span
+          >
         </button>
 
         <button
           onclick={() => switchSubTab('policy_groups')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'policy_groups' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          'policy_groups'
+            ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+            : 'text-slate-400 hover:text-slate-200'}"
         >
           <Sparkles size={13} class="text-cyan-400" />
           <span>出站策略组</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{userPolicyGroups.length}</span>
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
+            >{userPolicyGroups.length}</span
+          >
         </button>
 
         <button
           onclick={() => switchSubTab('rule_sets')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'rule_sets' ? 'bg-slate-800 text-emerald-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          'rule_sets'
+            ? 'bg-slate-800 text-emerald-300 shadow-sm border border-slate-700/60'
+            : 'text-slate-400 hover:text-slate-200'}"
         >
           <Bookmark size={13} class="text-emerald-400" />
           <span>规则集</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{allDefinedRuleTags.length}</span>
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
+            >{allDefinedRuleTags.length}</span
+          >
         </button>
 
         <button
           onclick={() => switchSubTab('route')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'route' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          'route'
+            ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+            : 'text-slate-400 hover:text-slate-200'}"
         >
           <Layers size={13} />
           <span>路由分流规则</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.route?.rules?.length || 0}</span>
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
+            >{store.selectedTemplate.content?.route?.rules?.length || 0}</span
+          >
         </button>
 
         <button
           onclick={() => switchSubTab('dns')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'dns' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          'dns'
+            ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+            : 'text-slate-400 hover:text-slate-200'}"
         >
           <Radio size={13} />
           <span>DNS 服务器与分流</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">{store.selectedTemplate.content?.dns?.servers?.length || 0}</span>
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
+            >{store.selectedTemplate.content?.dns?.servers?.length || 0}</span
+          >
         </button>
 
         <button
           onclick={() => switchSubTab('inbounds')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'inbounds' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          'inbounds'
+            ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+            : 'text-slate-400 hover:text-slate-200'}"
         >
           <span>入站与端点</span>
           <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">
-            {(store.selectedTemplate.content?.inbounds?.length || 0) + (store.selectedTemplate.content?.endpoints?.length || 0)}
+            {(store.selectedTemplate.content?.inbounds?.length || 0) +
+              (store.selectedTemplate.content?.endpoints?.length || 0)}
           </span>
         </button>
 
         <button
           onclick={() => switchSubTab('experimental')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab === 'experimental' ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          'experimental'
+            ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+            : 'text-slate-400 hover:text-slate-200'}"
         >
           <span>日志与 Clash API</span>
         </button>
@@ -874,7 +961,10 @@
                     <select
                       bind:value={ng.type}
                       onchange={triggerUpdate}
-                      class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold {ng.type === 'urltest' ? 'text-amber-300' : 'text-cyan-300'}"
+                      class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold {ng.type ===
+                      'urltest'
+                        ? 'text-amber-300'
+                        : 'text-cyan-300'}"
                     >
                       <option value="urltest">URLTest</option>
                       <option value="selector">Selector</option>
@@ -900,7 +990,9 @@
 
                 <!-- Urltest specific options -->
                 {#if ng.type === 'urltest'}
-                  <div class="grid grid-cols-2 gap-2 bg-slate-950/60 p-2 rounded border border-slate-800/80 text-xs">
+                  <div
+                    class="grid grid-cols-2 gap-2 bg-slate-950/60 p-2 rounded border border-slate-800/80 text-xs"
+                  >
                     <div>
                       <span class="text-slate-400 text-[11px] block">容差</span>
                       <input
@@ -931,7 +1023,12 @@
                     {#if !isValidRegex}
                       <span class="text-rose-400 font-medium">正则格式错误</span>
                     {:else}
-                      <span class="text-[11px] {matchedNodes.length > 0 ? "text-amber-400 font-medium" : "text-slate-500"}" title={matchedNodes.join(", ")}>
+                      <span
+                        class="text-[11px] {matchedNodes.length > 0
+                          ? 'text-amber-400 font-medium'
+                          : 'text-slate-500'}"
+                        title={matchedNodes.join(', ')}
+                      >
                         命中 {matchedNodes.length} 个节点
                       </span>
                     {/if}
@@ -943,7 +1040,9 @@
                       value={currentPattern}
                       oninput={(e) => updateNodeGroupPattern(ngIdx, e.currentTarget.value)}
                       placeholder="例如：港|hk 或 .*"
-                      class="w-full bg-slate-950 text-xs px-3 py-2 rounded border {isValidRegex ? "border-slate-800 focus:border-amber-500/80" : "border-rose-800 text-rose-200"} text-slate-200 focus:outline-none font-mono"
+                      class="w-full bg-slate-950 text-xs px-3 py-2 rounded border {isValidRegex
+                        ? 'border-slate-800 focus:border-amber-500/80'
+                        : 'border-rose-800 text-rose-200'} text-slate-200 focus:outline-none font-mono"
                     />
                     {#if isValidRegex && matchedNodes.length > 0}
                       <span
@@ -961,12 +1060,14 @@
       {/if}
 
       <!-- 2. Policy Groups View -->
-      {#if currentSubTab === "policy_groups"}
+      {#if currentSubTab === 'policy_groups'}
         <div class="space-y-4">
           <!-- Subtab Header & Action -->
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
             <div class="text-xs text-slate-400">
-              管理业务分流策略组与系统基础出站。策略组均为 <strong class="text-cyan-300 font-mono">Selector</strong> 类型，候选目标由节点分组及内置直连/阻断组成。
+              管理业务分流策略组与系统基础出站。策略组均为 <strong class="text-cyan-300 font-mono"
+                >Selector</strong
+              > 类型，候选目标由节点分组及内置直连/阻断组成。
             </div>
             <button
               type="button"
@@ -985,14 +1086,20 @@
                 <Shield size={14} class="text-emerald-400" />
                 <span>系统内置基础出站 (Base Outbounds)</span>
               </div>
-              <span class="text-[11px] text-slate-500">内置出站不可删除；支持编辑标签名称以对接路由规则</span>
+              <span class="text-[11px] text-slate-500"
+                >内置出站不可删除；支持编辑标签名称以对接路由规则</span
+              >
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
               <!-- Direct outbound -->
               {#if directOutbound}
-                <div class="flex items-center gap-2.5 bg-slate-950/70 border border-slate-800/90 rounded-lg p-2.5">
-                  <span class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-950/80 border border-emerald-800/60 text-emerald-400 shrink-0">
+                <div
+                  class="flex items-center gap-2.5 bg-slate-950/70 border border-slate-800/90 rounded-lg p-2.5"
+                >
+                  <span
+                    class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-950/80 border border-emerald-800/60 text-emerald-400 shrink-0"
+                  >
                     direct
                   </span>
                   <div class="flex items-center gap-1.5 flex-1 min-w-0">
@@ -1006,7 +1113,10 @@
                       class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-100 font-mono font-medium focus:border-cyan-500 focus:outline-none flex-1 text-xs"
                     />
                   </div>
-                  <div class="flex items-center gap-1 text-[11px] text-slate-500 shrink-0 font-mono" title="系统核心直连出站，不可删除">
+                  <div
+                    class="flex items-center gap-1 text-[11px] text-slate-500 shrink-0 font-mono"
+                    title="系统核心直连出站，不可删除"
+                  >
                     <Lock size={12} class="text-slate-500" />
                     <span>内置不可删</span>
                   </div>
@@ -1015,8 +1125,12 @@
 
               <!-- Block outbound -->
               {#if blockOutbound}
-                <div class="flex items-center gap-2.5 bg-slate-950/70 border border-slate-800/90 rounded-lg p-2.5">
-                  <span class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-rose-950/80 border border-rose-800/60 text-rose-400 shrink-0">
+                <div
+                  class="flex items-center gap-2.5 bg-slate-950/70 border border-slate-800/90 rounded-lg p-2.5"
+                >
+                  <span
+                    class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-rose-950/80 border border-rose-800/60 text-rose-400 shrink-0"
+                  >
                     block
                   </span>
                   <div class="flex items-center gap-1.5 flex-1 min-w-0">
@@ -1030,7 +1144,10 @@
                       class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-100 font-mono font-medium focus:border-cyan-500 focus:outline-none flex-1 text-xs"
                     />
                   </div>
-                  <div class="flex items-center gap-1 text-[11px] text-slate-500 shrink-0 font-mono" title="系统核心阻断出站，不可删除">
+                  <div
+                    class="flex items-center gap-1 text-[11px] text-slate-500 shrink-0 font-mono"
+                    title="系统核心阻断出站，不可删除"
+                  >
                     <Lock size={12} class="text-slate-500" />
                     <span>内置不可删</span>
                   </div>
@@ -1043,7 +1160,9 @@
           <div class="bg-slate-900/80 border border-slate-800 rounded-lg overflow-visible">
             <div class="overflow-x-auto md:overflow-visible">
               <table class="w-full text-xs text-left text-slate-300">
-                <thead class="bg-slate-950/90 text-slate-400 uppercase font-mono border-b border-slate-800 text-[11px]">
+                <thead
+                  class="bg-slate-950/90 text-slate-400 uppercase font-mono border-b border-slate-800 text-[11px]"
+                >
                   <tr>
                     <th class="py-2.5 px-3.5 w-[200px]">策略组标签 (Tag)</th>
                     <th class="py-2.5 px-3 min-w-[340px]">包含节点分组 (多选下拉)</th>
@@ -1082,7 +1201,7 @@
                           onchange={triggerUpdate}
                           class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-cyan-200 font-mono focus:border-cyan-500 focus:outline-none"
                         >
-                          <option value="">(首项: {pg.outbounds?.[0] || "空"})</option>
+                          <option value="">(首项: {pg.outbounds?.[0] || '空'})</option>
                           {#each pg.outbounds || [] as cand}
                             <option value={cand}>{cand}</option>
                           {/each}
@@ -1120,14 +1239,17 @@
       {#if currentSubTab === 'rule_sets'}
         <div class="space-y-4">
           <!-- Multi-Provider Header -->
-          <div class="flex items-center justify-between bg-slate-900/80 border border-slate-800 rounded-lg p-3.5">
+          <div
+            class="flex items-center justify-between bg-slate-900/80 border border-slate-800 rounded-lg p-3.5"
+          >
             <div>
               <h3 class="text-sm font-semibold text-slate-100 flex items-center gap-1.5">
                 <Bookmark size={16} class="text-emerald-400" />
                 <span>外部规则源管理 (Rule Set Providers)</span>
               </h3>
               <p class="text-xs text-slate-400 mt-0.5">
-                支持同时引入多个规则源（如同时引入 SagerNet GeoSite 与 MetaCubeX GeoIP），通过独立 Tag 前缀（如 geosite- / geoip-）彻底隔离同名冲突。
+                支持同时引入多个规则源（如同时引入 SagerNet GeoSite 与 MetaCubeX GeoIP），通过独立
+                Tag 前缀（如 geosite- / geoip-）彻底隔离同名冲突。
               </p>
             </div>
             <button
@@ -1142,20 +1264,34 @@
 
           <!-- Provider Cards List -->
           <div class="space-y-3.5">
-            {#each (store.selectedTemplate.content?.rule_sets || []) as p, pIdx}
+            {#each store.selectedTemplate.content?.rule_sets || [] as p, pIdx}
               {@const isExpanded = expandedProviderIndices.has(pIdx)}
-              {@const inspectState = providerInspectStates[pIdx] || { rules: [], inspecting: false, error: '', searchQuery: '', searchDropdownOpen: false }}
-              {@const providerCollisions = (Array.isArray(p.tag) ? p.tag : (p.tag ? [p.tag] : [])).filter(t => collidingRuleTagSet.has(String(t).trim()))}
+              {@const inspectState = providerInspectStates[pIdx] || {
+                rules: [],
+                inspecting: false,
+                error: '',
+                searchQuery: '',
+                searchDropdownOpen: false,
+              }}
+              {@const providerCollisions = (
+                Array.isArray(p.tag) ? p.tag : p.tag ? [p.tag] : []
+              ).filter((t) => collidingRuleTagSet.has(String(t).trim()))}
 
-              <div class="bg-slate-900/90 border {providerCollisions.length > 0 ? 'border-amber-600/70' : 'border-slate-800'} rounded-lg overflow-hidden transition-all shadow-sm">
+              <div
+                class="bg-slate-900/90 border {providerCollisions.length > 0
+                  ? 'border-amber-600/70'
+                  : 'border-slate-800'} rounded-lg overflow-hidden transition-all shadow-sm"
+              >
                 <!-- Card Header -->
-                <div class="bg-slate-950/70 p-3 flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-800/80">
+                <div
+                  class="bg-slate-950/70 p-3 flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-800/80"
+                >
                   <div class="flex items-center gap-2 flex-1 min-w-[280px]">
                     <button
                       type="button"
                       onclick={() => toggleProviderExpanded(pIdx)}
                       class="p-1 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-                      title={isExpanded ? "折叠此源" : "展开此源"}
+                      title={isExpanded ? '折叠此源' : '展开此源'}
                     >
                       {#if isExpanded}
                         <ChevronDown size={15} />
@@ -1186,13 +1322,19 @@
                     </select>
 
                     <!-- Enabled Rules Count Badge -->
-                    <span class="px-2 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-800 font-mono text-[11px]">
-                      已选 <span class="text-emerald-400 font-bold">{(Array.isArray(p.tag) ? p.tag.length : (p.tag ? 1 : 0))}</span> 条
+                    <span
+                      class="px-2 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-800 font-mono text-[11px]"
+                    >
+                      已选 <span class="text-emerald-400 font-bold"
+                        >{Array.isArray(p.tag) ? p.tag.length : p.tag ? 1 : 0}</span
+                      > 条
                     </span>
 
                     <!-- Collision Warning Badge -->
                     {#if providerCollisions.length > 0}
-                      <span class="px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800 font-mono text-[11px] flex items-center gap-1">
+                      <span
+                        class="px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800 font-mono text-[11px] flex items-center gap-1"
+                      >
                         <AlertCircle size={11} class="text-amber-400" />
                         <span>{providerCollisions.length} 个 Tag 重名冲突</span>
                       </span>
@@ -1215,7 +1357,9 @@
                 {#if isExpanded}
                   <div class="p-4 space-y-3.5">
                     <!-- Source Configuration Bar -->
-                    <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/60">
+                    <div
+                      class="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/60"
+                    >
                       <div class="md:col-span-5 space-y-1">
                         <span class="text-[11px] text-slate-400 flex items-center gap-1 font-sans">
                           <Globe size={11} class="text-indigo-400" />
@@ -1231,7 +1375,10 @@
                       </div>
 
                       <div class="md:col-span-2 space-y-1">
-                        <span class="text-[11px] text-slate-400 font-sans block" title="为本源所有规则 Tag 添加前缀，避免与其它规则源（如 IP 源与域名源）发生同名冲突">
+                        <span
+                          class="text-[11px] text-slate-400 font-sans block"
+                          title="为本源所有规则 Tag 添加前缀，避免与其它规则源（如 IP 源与域名源）发生同名冲突"
+                        >
                           Tag 前缀 (命名空间)
                         </span>
                         <input
@@ -1279,7 +1426,10 @@
                           disabled={inspectState.inspecting}
                           class="w-full py-1 px-2.5 rounded bg-emerald-700/40 hover:bg-emerald-600/60 border border-emerald-500/50 text-emerald-100 text-xs font-medium flex items-center justify-center gap-1 shadow-sm disabled:opacity-50 transition-colors cursor-pointer"
                         >
-                          <RefreshCw size={12} class={inspectState.inspecting ? "animate-spin" : ""} />
+                          <RefreshCw
+                            size={12}
+                            class={inspectState.inspecting ? 'animate-spin' : ''}
+                          />
                           <span>{inspectState.inspecting ? '探测中...' : '同步规则清单'}</span>
                         </button>
                       </div>
@@ -1287,36 +1437,57 @@
 
                     <!-- Collision Warning Banner -->
                     {#if providerCollisions.length > 0}
-                      <div class="p-2.5 bg-amber-950/60 border border-amber-800/80 rounded-lg text-xs text-amber-200 flex items-start gap-2 font-mono">
+                      <div
+                        class="p-2.5 bg-amber-950/60 border border-amber-800/80 rounded-lg text-xs text-amber-200 flex items-start gap-2 font-mono"
+                      >
                         <AlertCircle size={14} class="text-amber-400 shrink-0 mt-0.5" />
                         <div>
                           <span class="font-bold">⚠️ 检测到重名冲突：</span>
-                          <span>当前源以下 Tag 与其它规则源冲突：[{providerCollisions.join(', ')}]。建议在上方为本源配置独立的 Tag 前缀（如 geosite- 或 geoip-）进行隔离！</span>
+                          <span
+                            >当前源以下 Tag 与其它规则源冲突：[{providerCollisions.join(
+                              ', ',
+                            )}]。建议在上方为本源配置独立的 Tag 前缀（如 geosite- 或
+                            geoip-）进行隔离！</span
+                          >
                         </div>
                       </div>
                     {/if}
 
                     {#if inspectState.error}
-                      <div class="p-2.5 bg-rose-950/60 border border-rose-800/60 rounded text-xs text-rose-300 flex items-center gap-2">
+                      <div
+                        class="p-2.5 bg-rose-950/60 border border-rose-800/60 rounded text-xs text-rose-300 flex items-center gap-2"
+                      >
                         <AlertCircle size={14} class="shrink-0" />
                         <span>{inspectState.error}</span>
                       </div>
                     {/if}
 
                     <!-- Row 3: Instant Search & Add + Browse All Modal Trigger -->
-                    <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                    <div
+                      class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5"
+                    >
                       <!-- Search & Add Input with instant autocomplete -->
                       <div class="relative flex-1">
                         <Search size={13} class="absolute left-2.5 top-2.5 text-slate-500" />
                         <input
                           type="text"
                           bind:value={inspectState.searchQuery}
-                          onfocus={() => { inspectState.searchDropdownOpen = true; providerInspectStates = { ...providerInspectStates }; }}
-                          onblur={() => { setTimeout(() => { inspectState.searchDropdownOpen = false; providerInspectStates = { ...providerInspectStates }; }, 200); }}
+                          onfocus={() => {
+                            inspectState.searchDropdownOpen = true;
+                            providerInspectStates = { ...providerInspectStates };
+                          }}
+                          onblur={() => {
+                            setTimeout(() => {
+                              inspectState.searchDropdownOpen = false;
+                              providerInspectStates = { ...providerInspectStates };
+                            }, 200);
+                          }}
                           onkeydown={(e) => {
                             if (e.key === 'Enter' && inspectState.searchQuery.trim()) {
                               const q = inspectState.searchQuery.trim().toLowerCase();
-                              const matched = (inspectState.rules || []).find(r => r.tag.toLowerCase().includes(q));
+                              const matched = (inspectState.rules || []).find((r) =>
+                                r.tag.toLowerCase().includes(q),
+                              );
                               if (matched) {
                                 toggleProviderTag(pIdx, matched.tag);
                                 inspectState.searchQuery = '';
@@ -1332,19 +1503,35 @@
 
                         <!-- Live Suggestion Dropdown -->
                         {#if inspectState.searchDropdownOpen && inspectState.searchQuery.trim() && (inspectState.rules || []).length > 0}
-                          {@const searchMatches = (inspectState.rules || []).filter(r => r.tag.toLowerCase().includes(inspectState.searchQuery.trim().toLowerCase())).slice(0, 8)}
+                          {@const searchMatches = (inspectState.rules || [])
+                            .filter((r) =>
+                              r.tag
+                                .toLowerCase()
+                                .includes(inspectState.searchQuery.trim().toLowerCase()),
+                            )
+                            .slice(0, 8)}
                           {#if searchMatches.length > 0}
-                            <div class="absolute left-0 right-0 top-full mt-1 bg-slate-950 border border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto divide-y divide-slate-800/60 font-mono text-xs">
+                            <div
+                              class="absolute left-0 right-0 top-full mt-1 bg-slate-950 border border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto divide-y divide-slate-800/60 font-mono text-xs"
+                            >
                               {#each searchMatches as m}
                                 {@const isChecked = isTagSelected(p, m.tag)}
                                 {@const displayTag = finalRuleTag(p.tag_prefix, m.tag)}
                                 <button
                                   type="button"
-                                  onmousedown={() => { toggleProviderTag(pIdx, m.tag); }}
+                                  onmousedown={() => {
+                                    toggleProviderTag(pIdx, m.tag);
+                                  }}
                                   class="w-full text-left px-3 py-1.5 flex items-center justify-between hover:bg-slate-800 transition-colors cursor-pointer"
                                 >
-                                  <span class="font-bold {isChecked ? 'text-emerald-300' : 'text-slate-200'}">{displayTag}</span>
-                                  <span class="text-[10px] text-slate-500">{isChecked ? '✓ 已添加 (点击移除)' : '+ 点击添加'}</span>
+                                  <span
+                                    class="font-bold {isChecked
+                                      ? 'text-emerald-300'
+                                      : 'text-slate-200'}">{displayTag}</span
+                                  >
+                                  <span class="text-[10px] text-slate-500"
+                                    >{isChecked ? '✓ 已添加 (点击移除)' : '+ 点击添加'}</span
+                                  >
                                 </button>
                               {/each}
                             </div>
@@ -1366,10 +1553,12 @@
                     </div>
 
                     <!-- Row 4: Currently Selected Rules Pool (已选规则池) -->
-                    <div class="bg-slate-950/70 border border-slate-800/80 rounded-lg p-3 space-y-2 text-xs">
+                    <div
+                      class="bg-slate-950/70 border border-slate-800/80 rounded-lg p-3 space-y-2 text-xs"
+                    >
                       <div class="flex items-center justify-between">
                         <span class="text-slate-300 font-medium font-sans">
-                          本源已启用规则池 ({Array.isArray(p.tag) ? p.tag.length : (p.tag ? 1 : 0)} 个规则):
+                          本源已启用规则池 ({Array.isArray(p.tag) ? p.tag.length : p.tag ? 1 : 0} 个规则):
                         </span>
                         {#if (Array.isArray(p.tag) ? p.tag.length : 0) > 0}
                           <button
@@ -1383,12 +1572,17 @@
                       </div>
 
                       <div class="flex flex-wrap gap-1.5">
-                        {#each (Array.isArray(p.tag) ? p.tag : (p.tag ? [p.tag] : [])) as t}
+                        {#each Array.isArray(p.tag) ? p.tag : p.tag ? [p.tag] : [] as t}
                           {@const isRef = referencedRuleTagSet.has(t)}
-                          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-200 font-mono text-[11px]">
+                          <span
+                            class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-200 font-mono text-[11px]"
+                          >
                             <span class="font-bold text-emerald-400">{t}</span>
                             {#if isRef}
-                              <span class="text-[9px] text-cyan-400 font-sans" title="已在路由或 DNS 分流规则中被引用">(已引用)</span>
+                              <span
+                                class="text-[9px] text-cyan-400 font-sans"
+                                title="已在路由或 DNS 分流规则中被引用">(已引用)</span
+                              >
                             {/if}
                             <button
                               type="button"
@@ -1413,7 +1607,9 @@
             {/each}
 
             {#if !store.selectedTemplate.content?.rule_sets || store.selectedTemplate.content.rule_sets.length === 0}
-              <div class="bg-slate-900/40 border border-slate-800 rounded-lg p-8 text-center space-y-2">
+              <div
+                class="bg-slate-900/40 border border-slate-800 rounded-lg p-8 text-center space-y-2"
+              >
                 <Bookmark size={24} class="mx-auto text-slate-600" />
                 <p class="text-xs text-slate-400">尚未添加任何规则源</p>
                 <button
@@ -1437,17 +1633,25 @@
         {@const state = providerInspectStates[pIdx]}
         {@const allRules = state?.rules || []}
         {@const searchQ = browseModal.search.toLowerCase().trim()}
-        {@const filteredByLetter = allRules.filter(r => {
+        {@const filteredByLetter = allRules.filter((r) => {
           if (browseModal.letterFilter === 'ALL') return true;
           if (browseModal.letterFilter === '#') return !/^[A-Za-z]/.test(r.tag);
           return r.tag.toUpperCase().startsWith(browseModal.letterFilter);
         })}
-        {@const modalFilteredRules = filteredByLetter.filter(r => !searchQ || r.tag.toLowerCase().includes(searchQ))}
+        {@const modalFilteredRules = filteredByLetter.filter(
+          (r) => !searchQ || r.tag.toLowerCase().includes(searchQ),
+        )}
 
-        <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
-          <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden text-xs">
+        <div
+          class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5"
+        >
+          <div
+            class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden text-xs"
+          >
             <!-- Modal Header -->
-            <div class="p-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2">
+            <div
+              class="p-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2"
+            >
               <div class="flex items-center gap-2">
                 <Bookmark size={16} class="text-emerald-400" />
                 <div>
@@ -1455,7 +1659,9 @@
                     规则全库 — {p?.name || '规则源'} (共 {allRules.length} 条)
                   </h4>
                   <p class="text-[11px] text-slate-400 font-sans">
-                    当前源 Tag 前缀为 <span class="text-amber-300 font-mono font-bold">"{p?.tag_prefix || '(无)'}"</span>
+                    当前源 Tag 前缀为 <span class="text-amber-300 font-mono font-bold"
+                      >"{p?.tag_prefix || '(无)'}"</span
+                    >
                   </p>
                 </div>
               </div>
@@ -1477,7 +1683,10 @@
                   <Search size={13} class="absolute left-2.5 top-2.5 text-slate-500" />
                   <input
                     type="text"
-                    bind:value={browseModal.search} oninput={() => { modalDisplayLimit = 240; }}
+                    bind:value={browseModal.search}
+                    oninput={() => {
+                      modalDisplayLimit = 240;
+                    }}
                     placeholder="按规则名模糊检索..."
                     class="w-full bg-slate-900 border border-slate-800 rounded pl-8 pr-3 py-1.5 text-xs text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
                   />
@@ -1511,8 +1720,14 @@
                 {#each ALPHABET_LIST as letter}
                   <button
                     type="button"
-                    onclick={() => { browseModal.letterFilter = letter; modalDisplayLimit = 240; }}
-                    class="px-1.5 py-0.5 rounded transition-colors {browseModal.letterFilter === letter ? 'bg-cyan-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}"
+                    onclick={() => {
+                      browseModal.letterFilter = letter;
+                      modalDisplayLimit = 240;
+                    }}
+                    class="px-1.5 py-0.5 rounded transition-colors {browseModal.letterFilter ===
+                    letter
+                      ? 'bg-cyan-600 text-white font-bold'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}"
                   >
                     {letter}
                   </button>
@@ -1535,18 +1750,25 @@
                     <button
                       type="button"
                       onclick={() => toggleProviderTag(pIdx, r.tag)}
-                      class="px-2.5 py-2 rounded-lg border text-left transition-all flex items-center justify-between gap-1.5 cursor-pointer {isChecked ? 'bg-emerald-950/40 border-emerald-500/70 text-emerald-200' : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700'}"
+                      class="px-2.5 py-2 rounded-lg border text-left transition-all flex items-center justify-between gap-1.5 cursor-pointer {isChecked
+                        ? 'bg-emerald-950/40 border-emerald-500/70 text-emerald-200'
+                        : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700'}"
                     >
                       <div class="truncate">
-                        <span class="font-mono font-bold">{finalRuleTag(p?.tag_prefix, r.tag)}</span>
+                        <span class="font-mono font-bold">{finalRuleTag(p?.tag_prefix, r.tag)}</span
+                        >
                         {#if r.raw_name && r.raw_name !== r.tag}
-                          <span class="text-[10px] text-slate-500 block truncate">{r.raw_name}</span>
+                          <span class="text-[10px] text-slate-500 block truncate">{r.raw_name}</span
+                          >
                         {/if}
                       </div>
 
                       <div class="flex items-center gap-1.5 shrink-0">
                         {#if isRef}
-                          <span class="px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 text-[10px]" title="已在当前模板路由或 DNS 中被引用">已引用</span>
+                          <span
+                            class="px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 text-[10px]"
+                            title="已在当前模板路由或 DNS 中被引用">已引用</span
+                          >
                         {/if}
                         {#if isChecked}
                           <CheckSquare size={14} class="text-emerald-400" />
@@ -1562,14 +1784,18 @@
                   <div class="pt-3 pb-1 text-center flex items-center justify-center gap-2">
                     <button
                       type="button"
-                      onclick={() => { modalDisplayLimit += 240; }}
+                      onclick={() => {
+                        modalDisplayLimit += 240;
+                      }}
                       class="px-3.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 font-mono text-xs cursor-pointer"
                     >
                       加载更多 (+240 条，已显示 {visibleModalRules.length} / {modalFilteredRules.length})
                     </button>
                     <button
                       type="button"
-                      onclick={() => { modalDisplayLimit = modalFilteredRules.length; }}
+                      onclick={() => {
+                        modalDisplayLimit = modalFilteredRules.length;
+                      }}
                       class="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs cursor-pointer"
                     >
                       全部显示
@@ -1580,9 +1806,13 @@
             </div>
 
             <!-- Modal Footer -->
-            <div class="p-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between">
+            <div
+              class="p-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between"
+            >
               <span class="text-slate-300 font-mono">
-                当前规则源已启用 <span class="text-emerald-400 font-bold">{Array.isArray(p?.tag) ? p.tag.length : 0}</span> 条规则
+                当前规则源已启用 <span class="text-emerald-400 font-bold"
+                  >{Array.isArray(p?.tag) ? p.tag.length : 0}</span
+                > 条规则
               </span>
               <button
                 type="button"
@@ -1602,9 +1832,9 @@
           route={store.selectedTemplate.content?.route}
           policyTags={availablePolicyGroupTags}
           nodeGroupTags={availableNodeGroupTags}
-          endpointTags={endpointTags}
+          {endpointTags}
           ruleTags={allDefinedRuleTags}
-          dnsServerTags={dnsServerTags}
+          {dnsServerTags}
           onCommit={commitRoute}
         />
       {/if}
@@ -1620,7 +1850,9 @@
                   <Radio size={15} class="text-indigo-400" />
                   <span>上游 DNS 服务器 (DNS Servers)</span>
                 </h3>
-                <span class="text-xs text-slate-400">配置各 DNS 服务协议、上游地址与前置代理 detour</span>
+                <span class="text-xs text-slate-400"
+                  >配置各 DNS 服务协议、上游地址与前置代理 detour</span
+                >
               </div>
               <button
                 onclick={addDnsServer}
@@ -1713,7 +1945,9 @@
 
             <div class="overflow-x-auto">
               <table class="w-full text-xs text-left text-slate-300">
-                <thead class="bg-slate-950/80 text-slate-400 uppercase font-mono border-b border-slate-800">
+                <thead
+                  class="bg-slate-950/80 text-slate-400 uppercase font-mono border-b border-slate-800"
+                >
                   <tr>
                     <th class="py-2 px-3">匹配条件</th>
                     <th class="py-2 px-3">指定 DNS 服务器</th>
@@ -1727,10 +1961,21 @@
                         <div class="space-y-1">
                           <input
                             type="text"
-                            value={r.domain_keyword ? r.domain_keyword.join(', ') : r.rule_set ? (Array.isArray(r.rule_set) ? r.rule_set.join(', ') : r.rule_set) : r.outbound || r.clash_mode || '规则条件'}
+                            value={r.domain_keyword
+                              ? r.domain_keyword.join(', ')
+                              : r.rule_set
+                                ? Array.isArray(r.rule_set)
+                                  ? r.rule_set.join(', ')
+                                  : r.rule_set
+                                : r.outbound || r.clash_mode || '规则条件'}
                             onchange={(e) => {
-                              if (r.domain_keyword) r.domain_keyword = e.target.value.split(',').map(s => s.trim());
-                              else if (r.rule_set) r.rule_set = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                              if (r.domain_keyword)
+                                r.domain_keyword = e.target.value.split(',').map((s) => s.trim());
+                              else if (r.rule_set)
+                                r.rule_set = e.target.value
+                                  .split(',')
+                                  .map((s) => s.trim())
+                                  .filter(Boolean);
                               else r.outbound = e.target.value;
                               triggerUpdate();
                             }}
@@ -1740,20 +1985,28 @@
                             <div class="flex flex-wrap gap-1 items-center pt-0.5">
                               <span class="text-[10px] text-slate-500 font-sans">候选:</span>
                               {#each allDefinedRuleTags as cTag}
-                                {@const isSelected = (Array.isArray(r.rule_set) ? r.rule_set : [r.rule_set]).includes(cTag)}
+                                {@const isSelected = (
+                                  Array.isArray(r.rule_set) ? r.rule_set : [r.rule_set]
+                                ).includes(cTag)}
                                 <button
                                   type="button"
                                   onclick={() => {
-                                    let arr = Array.isArray(r.rule_set) ? [...r.rule_set] : (r.rule_set ? [r.rule_set] : []);
+                                    let arr = Array.isArray(r.rule_set)
+                                      ? [...r.rule_set]
+                                      : r.rule_set
+                                        ? [r.rule_set]
+                                        : [];
                                     if (arr.includes(cTag)) {
-                                      arr = arr.filter(t => t !== cTag);
+                                      arr = arr.filter((t) => t !== cTag);
                                     } else {
                                       arr.push(cTag);
                                     }
                                     r.rule_set = arr;
                                     triggerUpdate();
                                   }}
-                                  class="text-[10px] px-1.5 py-0.2 rounded font-mono transition-colors {isSelected ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 font-semibold' : 'bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800'}"
+                                  class="text-[10px] px-1.5 py-0.2 rounded font-mono transition-colors {isSelected
+                                    ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 font-semibold'
+                                    : 'bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800'}"
                                 >
                                   {isSelected ? '✓ ' : '+ '}{cTag}
                                 </button>
@@ -1769,7 +2022,7 @@
                           class="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-indigo-300 font-mono"
                         >
                           <option value="">(继承 final)</option>
-                          {#each (store.selectedTemplate.content?.dns?.servers || []) as srv}
+                          {#each store.selectedTemplate.content?.dns?.servers || [] as srv}
                             <option value={srv.tag}>{srv.tag}</option>
                           {/each}
                         </select>
@@ -1808,7 +2061,9 @@
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {#each store.selectedTemplate.content?.inbounds || [] as ib, idx}
-                <div class="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-2.5 text-xs">
+                <div
+                  class="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-2.5 text-xs"
+                >
                   <div class="flex items-center justify-between">
                     <input
                       type="text"
@@ -1829,7 +2084,10 @@
                         <option value="redirect">redirect</option>
                         <option value="direct">direct</option>
                       </select>
-                      <button onclick={() => removeInbound(idx)} class="text-slate-500 hover:text-rose-400 p-1">
+                      <button
+                        onclick={() => removeInbound(idx)}
+                        class="text-slate-500 hover:text-rose-400 p-1"
+                      >
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -1877,7 +2135,9 @@
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {#each store.selectedTemplate.content?.endpoints || [] as ep, epIdx}
-                <div class="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-2 text-xs">
+                <div
+                  class="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-2 text-xs"
+                >
                   <div class="flex items-center justify-between gap-2">
                     <input
                       type="text"
@@ -1894,7 +2154,10 @@
                       <option value="tailscale">tailscale</option>
                       <option value="wireguard">wireguard</option>
                     </select>
-                    <button onclick={() => removeEndpoint(epIdx)} class="text-slate-500 hover:text-rose-400 p-1">
+                    <button
+                      onclick={() => removeEndpoint(epIdx)}
+                      class="text-slate-500 hover:text-rose-400 p-1"
+                    >
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -1919,69 +2182,75 @@
       {#if currentSubTab === 'experimental'}
         <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-4">
           <h3 class="text-sm font-semibold text-slate-200">日志与 Clash API 配置 (Experimental)</h3>
-          
+
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div class="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
               <span class="font-bold text-slate-200 text-sm">日志配置 (Log)</span>
               {#if store.selectedTemplate.content?.log}
-              <div>
-                <label for="log-level" class="block text-slate-400 mb-1">日志级别</label>
-                <select
-                  id="log-level"
-                  bind:value={store.selectedTemplate.content.log.level}
-                  onchange={triggerUpdate}
-                  class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-200 font-mono"
-                >
-                  <option value="trace">trace</option>
-                  <option value="debug">debug</option>
-                  <option value="info">info</option>
-                  <option value="warn">warn (推荐)</option>
-                  <option value="error">error</option>
-                </select>
-              </div>
-              <div class="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="log-ts"
-                  bind:checked={store.selectedTemplate.content.log.timestamp}
-                  onchange={triggerUpdate}
-                  class="rounded text-cyan-500"
-                />
-                <label for="log-ts" class="text-slate-300 cursor-pointer">在日志输出中包含时间戳</label>
-              </div>
+                <div>
+                  <label for="log-level" class="block text-slate-400 mb-1">日志级别</label>
+                  <select
+                    id="log-level"
+                    bind:value={store.selectedTemplate.content.log.level}
+                    onchange={triggerUpdate}
+                    class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-200 font-mono"
+                  >
+                    <option value="trace">trace</option>
+                    <option value="debug">debug</option>
+                    <option value="info">info</option>
+                    <option value="warn">warn (推荐)</option>
+                    <option value="error">error</option>
+                  </select>
+                </div>
+                <div class="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="log-ts"
+                    bind:checked={store.selectedTemplate.content.log.timestamp}
+                    onchange={triggerUpdate}
+                    class="rounded text-cyan-500"
+                  />
+                  <label for="log-ts" class="text-slate-300 cursor-pointer"
+                    >在日志输出中包含时间戳</label
+                  >
+                </div>
               {:else}
-              <p class="text-slate-500">当前模板没有 log 段，可在 Raw JSON 中添加。</p>
+                <p class="text-slate-500">当前模板没有 log 段，可在 Raw JSON 中添加。</p>
               {/if}
             </div>
 
             <div class="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
               <span class="font-bold text-slate-200 text-sm">Clash API 面板</span>
               {#if store.selectedTemplate.content?.experimental?.clash_api}
-              <div>
-                <label for="clash-ctrl" class="block text-slate-400 mb-1">控制器监听地址 (External Controller)</label>
-                <input
-                  id="clash-ctrl"
-                  type="text"
-                  bind:value={store.selectedTemplate.content.experimental.clash_api.external_controller}
-                  oninput={triggerUpdate}
-                  class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-200 font-mono"
-                />
-              </div>
-              <div>
-                <label for="clash-mode" class="block text-slate-400 mb-1">默认模式</label>
-                <select
-                  id="clash-mode"
-                  bind:value={store.selectedTemplate.content.experimental.clash_api.default_mode}
-                  onchange={triggerUpdate}
-                  class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-200 font-mono"
-                >
-                  <option value="rule">rule (规则模式)</option>
-                  <option value="global">global (全局代理)</option>
-                  <option value="direct">direct (全部直连)</option>
-                </select>
-              </div>
+                <div>
+                  <label for="clash-ctrl" class="block text-slate-400 mb-1"
+                    >控制器监听地址 (External Controller)</label
+                  >
+                  <input
+                    id="clash-ctrl"
+                    type="text"
+                    bind:value={
+                      store.selectedTemplate.content.experimental.clash_api.external_controller
+                    }
+                    oninput={triggerUpdate}
+                    class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-200 font-mono"
+                  />
+                </div>
+                <div>
+                  <label for="clash-mode" class="block text-slate-400 mb-1">默认模式</label>
+                  <select
+                    id="clash-mode"
+                    bind:value={store.selectedTemplate.content.experimental.clash_api.default_mode}
+                    onchange={triggerUpdate}
+                    class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-200 font-mono"
+                  >
+                    <option value="rule">rule (规则模式)</option>
+                    <option value="global">global (全局代理)</option>
+                    <option value="direct">direct (全部直连)</option>
+                  </select>
+                </div>
               {:else}
-              <p class="text-slate-500">当前模板未启用外部 Clash API 扩展控制。</p>
+                <p class="text-slate-500">当前模板未启用外部 Clash API 扩展控制。</p>
               {/if}
             </div>
           </div>

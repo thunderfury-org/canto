@@ -45,14 +45,11 @@ test('buildHash formats hash strings accurately', () => {
   assert.equal(buildHash({ tab: 'sources' }), '#/sources');
   assert.equal(
     buildHash({ tab: 'templates', id: 'tpl_1', subtab: 'route' }),
-    '#/templates?id=tpl_1&subtab=route'
+    '#/templates?id=tpl_1&subtab=route',
   );
   assert.equal(
     buildHash({ tab: 'templates', id: 'tpl_1', subtab: 'node_groups' }),
-    '#/templates?id=tpl_1'
+    '#/templates?id=tpl_1',
   );
-  assert.equal(
-    buildHash({ tab: 'profiles', id: 'prof_1' }),
-    '#/profiles?id=prof_1'
-  );
+  assert.equal(buildHash({ tab: 'profiles', id: 'prof_1' }), '#/profiles?id=prof_1');
 });

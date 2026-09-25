@@ -28,7 +28,9 @@ export function isMissing(session, id) {
 }
 
 export function dirtyIds(session, templates) {
-  return (templates || []).filter((template) => isDirty(session, template)).map((template) => template.id);
+  return (templates || [])
+    .filter((template) => isDirty(session, template))
+    .map((template) => template.id);
 }
 
 export function adoptTemplate(session, template) {

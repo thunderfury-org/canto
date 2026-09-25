@@ -28,6 +28,8 @@ canto 是基于 Rust (Edition 2024) 构建的 sing-box 透明代理与配置编�
 
 ## Coding Style & Naming Conventions
 
+以下约定只约束 Rust。前端见 Web Studio。
+
 - **代码格式**：遵循 Rust 官方规范，使用 4 空格缩进，提交前须通过 `cargo fmt`。
 - **命名规范**：
   - 结构体、枚举、Trait：大驼峰（`PascalCase`，如 `NetworkGuard`、`ProcessSupervisor`）。
@@ -38,10 +40,22 @@ canto 是基于 Rust (Edition 2024) 构建的 sing-box 透明代理与配置编�
 
 ## Testing Guidelines
 
+以下约定只约束 Rust。前端测试见 Web Studio。
+
 - **测试组织**：单元测试统一置于对应文件底部的 `#[cfg(test)] mod tests { ... }` 中。
 - **测试命名**：测试函数采用 `test_<被测行为或功能>` 命名模式（例如 `test_replaces_tun_inbound_with_tproxy_set`、`test_inserts_hijack_dns_at_head_when_missing`）。
 - **测试要求**：核心逻辑（模板合并、锚点注入、配置转换）必须编写单元测试；网络规则相关逻辑应避免污染宿主网络，尽量依托 mock 或参数生成校验。
 - **执行指令**：提交前确保 `cargo test` 全部通过。
+
+## Web Studio
+
+改 `web/` 时保持 JavaScript（`.js` / `.svelte`），使用 Svelte 5 runes、Vite 和 Tailwind 4。界面由 canto 二进制嵌入。
+
+领域计算放在 `web/src/data` 的纯函数里，测试放在 `web/test/<module>.test.js`。`/api` 调用放在 `StudioStore`（`web/src/data/store.svelte.js`）。视图负责展示并调用这两处。`TemplateEditor.svelte` 里已有的 `/api/rulesets/*` 保持原位；新的接口调用写进 store。
+
+前端标识符用 camelCase，组件文件用 PascalCase。JSON 字段对齐 `src/web/studio/model.rs` 的 serde camelCase。模板 `content` 保持普通 JSON。
+
+格式以 `web/.prettierrc.json` 为准。提交前在 `web/` 执行 `npm test` 和 `npm run format:check`。
 
 ## Commit & Pull Request Guidelines
 
@@ -52,7 +66,7 @@ canto 是基于 Rust (Edition 2024) 构建的 sing-box 透明代理与配置编�
 - **Pull Request 要求**：
   - 附带清晰的变更背景、改动点与自测验证说明。
   - 若涉及网络防火墙或进程监督改动，须提供异常退出场景下的网络状态恢复验证。
-  - CI 检查项（`cargo check`、`cargo test`、`cargo clippy`）必须全绿。
+  - CI 检查项（`cargo check`、`cargo test`、`cargo clippy`，以及 Web Studio 一节中的前端检查）必须全绿。
 
 ## Agent skills
 

@@ -157,13 +157,20 @@ test('reloading the list preserves drafts and marks stale or missing templates',
     content: { log: { level: 'info' } },
   });
 
-  const merged = mergeTemplateList(session, [local, template({ id: 'tpl_old_clean' })], [staleServer, cleanServer]);
+  const merged = mergeTemplateList(
+    session,
+    [local, template({ id: 'tpl_old_clean' })],
+    [staleServer, cleanServer],
+  );
   assert.equal(merged.templates[0], local);
   assert.equal(merged.templates[0].name, '草稿名');
   assert.equal(isStale(merged.session, 'tpl_1'), true);
   assert.equal(isDirty(merged.session, local), true);
   assert.equal(merged.templates[1].name, '干净');
-  assert.equal(merged.templates.some((item) => item.id === 'tpl_old_clean'), false);
+  assert.equal(
+    merged.templates.some((item) => item.id === 'tpl_old_clean'),
+    false,
+  );
 
   const gone = mergeTemplateList(session, [local], []);
   assert.equal(gone.templates.length, 1);
@@ -220,7 +227,11 @@ test('saving every draft fails closed and keeps successful saves', async () => {
       if (url.endsWith('tpl_ok')) {
         return { ok: true, status: 200, json: async () => ({ updatedAt: '2026-05-01T00:00:00Z' }) };
       }
-      return { ok: false, status: 409, json: async () => ({ error: 'template was updated since it was loaded' }) };
+      return {
+        ok: false,
+        status: 409,
+        json: async () => ({ error: 'template was updated since it was loaded' }),
+      };
     },
     session,
     templates: [first, second],
