@@ -43,9 +43,7 @@
     ],
     "rules": [
       {
-        "domain_keyword": [
-          "_dns-sd._udp"
-        ],
+        "domain_keyword": ["_dns-sd._udp"],
         "action": "predefined",
         "rcode": "NXDOMAIN"
       },
@@ -54,41 +52,27 @@
         "server": "dns_direct"
       },
       {
-        "wifi_ssid": [
-          "sanzhixiaoxiong"
-        ],
+        "wifi_ssid": ["sanzhixiaoxiong"],
         "server": "dns_direct"
       },
       {
-        "domain_keyword": [
-          "stun."
-        ],
+        "domain_keyword": ["stun."],
         "server": "dns_direct"
       },
       {
-        "domain_suffix": [
-          "sensorsdata.cn",
-          "courier.push.apple.com",
-          "opencode.ai"
-        ],
+        "domain_suffix": ["sensorsdata.cn", "courier.push.apple.com", "opencode.ai"],
         "server": "dns_direct"
       },
       {
-        "rule_set": [
-          "cn"
-        ],
+        "rule_set": ["cn"],
         "server": "dns_direct"
       },
       {
-        "rule_set": [
-          "ai"
-        ],
+        "rule_set": ["ai"],
         "server": "dns_ai"
       },
       {
-        "rule_set": [
-          "proxy"
-        ],
+        "rule_set": ["proxy"],
         "server": "dns_proxy"
       }
     ],
@@ -105,9 +89,7 @@
       "tag": "tun-in",
       "mtu": 1500,
       "interface_name": "sing-box-utun",
-      "address": [
-        "192.168.255.1/30"
-      ],
+      "address": ["192.168.255.1/30"],
       "auto_route": true,
       "strict_route": true
     }
@@ -115,9 +97,7 @@
   "route": {
     "rules": [
       {
-        "ip_cidr": [
-          "192.168.5.0/24"
-        ],
+        "ip_cidr": ["192.168.5.0/24"],
         "outbound": "ts-ep"
       },
       {
@@ -125,16 +105,11 @@
         "outbound": "直连"
       },
       {
-        "wifi_ssid": [
-          "sanzhixiaoxiong"
-        ],
+        "wifi_ssid": ["sanzhixiaoxiong"],
         "outbound": "直连"
       },
       {
-        "ip_cidr": [
-          "104.223.57.43",
-          "154.217.255.166"
-        ],
+        "ip_cidr": ["104.223.57.43", "154.217.255.166"],
         "outbound": "直连"
       },
       {
@@ -162,30 +137,19 @@
         "outbound": "直连"
       },
       {
-        "domain_suffix": [
-          "sensorsdata.cn",
-          "courier.push.apple.com",
-          "opencode.ai"
-        ],
+        "domain_suffix": ["sensorsdata.cn", "courier.push.apple.com", "opencode.ai"],
         "outbound": "直连"
       },
       {
-        "rule_set": [
-          "private",
-          "privateip"
-        ],
+        "rule_set": ["private", "privateip"],
         "outbound": "直连"
       },
       {
-        "rule_set": [
-          "cnip"
-        ],
+        "rule_set": ["cnip"],
         "outbound": "直连"
       },
       {
-        "rule_set": [
-          "cn"
-        ],
+        "rule_set": ["cn"],
         "outbound": "直连"
       },
       {
@@ -193,22 +157,15 @@
         "action": "reject"
       },
       {
-        "rule_set": [
-          "ai"
-        ],
+        "rule_set": ["ai"],
         "outbound": "AI"
       },
       {
-        "rule_set": [
-          "netflix",
-          "netflixip"
-        ],
+        "rule_set": ["netflix", "netflixip"],
         "outbound": "Netflix"
       },
       {
-        "rule_set": [
-          "youtube"
-        ],
+        "rule_set": ["youtube"],
         "outbound": "YouTube"
       }
     ],
@@ -325,73 +282,55 @@
     {
       "tag": "My 节点",
       "type": "selector",
-      "outbounds": [
-        "{My-}"
-      ],
+      "outbounds": ["{My-}"],
       "interrupt_exist_connections": false
     },
     {
       "tag": "World 节点",
       "type": "selector",
-      "outbounds": [
-        "{World-}"
-      ],
+      "outbounds": ["{World-}"],
       "interrupt_exist_connections": false
     },
     {
       "tag": "良心云节点",
       "type": "selector",
-      "outbounds": [
-        "{良心云-}"
-      ],
+      "outbounds": ["{良心云-}"],
       "interrupt_exist_connections": false
     },
     {
       "tag": "ALL",
       "type": "urltest",
-      "outbounds": [
-        "{.*}"
-      ],
+      "outbounds": ["{.*}"],
       "interrupt_exist_connections": false
     },
     {
       "tag": "香港节点",
       "type": "urltest",
-      "outbounds": [
-        "{(?i)(港|香港|hk|hongkong|hong kong)}"
-      ],
+      "outbounds": ["{(?i)(港|香港|hk|hongkong|hong kong)}"],
       "interrupt_exist_connections": false
     },
     {
       "tag": "台湾节点",
       "type": "urltest",
-      "outbounds": [
-        "{(?i)(台|台湾|tw|taiwan)}"
-      ],
+      "outbounds": ["{(?i)(台|台湾|tw|taiwan)}"],
       "interrupt_exist_connections": false
     },
     {
       "tag": "日本节点",
       "type": "urltest",
-      "outbounds": [
-        "{(?i)(日本|jp|japan)}"
-      ],
+      "outbounds": ["{(?i)(日本|jp|japan)}"],
       "interrupt_exist_connections": false
     },
     {
       "tag": "新加坡节点",
       "type": "urltest",
-      "outbounds": [
-        "{(?i)(新加坡|新|sg|singapore)}"
-      ],
+      "outbounds": ["{(?i)(新加坡|新|sg|singapore)}"],
       "interrupt_exist_connections": false
     },
     {
       "tag": "美国节点",
       "type": "urltest",
-      "outbounds": [
-        "{(?i)(美国|美|\\bus\\b|unitedstates|united states)}"
-      ],
+      "outbounds": ["{(?i)(美国|美|\\bus\\b|unitedstates|united states)}"],
       "interrupt_exist_connections": false
     }
   ],

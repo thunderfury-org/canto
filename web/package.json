@@ -7,12 +7,16 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.0",
     "@tailwindcss/vite": "^4.3.3",
     "lucide-svelte": "^1.0.1",
+    "prettier": "^3.9.9",
+    "prettier-plugin-svelte": "^3.5.2",
     "svelte": "^5.57.0",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.0"

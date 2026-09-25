@@ -39,7 +39,9 @@
   });
 </script>
 
-<div class="min-h-screen bg-[#090d16] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
+<div
+  class="min-h-screen bg-[#090d16] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200"
+>
   <Navbar />
 
   <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6">

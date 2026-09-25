@@ -38,14 +38,12 @@
   }
 
   function getTemplateName(tplId) {
-    const t = store.templates.find(x => x.id === tplId);
+    const t = store.templates.find((x) => x.id === tplId);
     return t ? t.name : tplId;
   }
 
   function getSourceNames(sourceIds) {
-    return store.sources
-      .filter(s => sourceIds.includes(s.id))
-      .map(s => s.name);
+    return store.sources.filter((s) => sourceIds.includes(s.id)).map((s) => s.name);
   }
 
   function formatUptimeFromStart(startedAt, fallbackSecs) {
@@ -81,10 +79,10 @@
 
   let latestSourceRefresh = $derived.by(() => {
     const stamps = store.sources
-      .map(s => s.lastUpdated)
+      .map((s) => s.lastUpdated)
       .filter(Boolean)
-      .map(value => Date.parse(value))
-      .filter(value => !Number.isNaN(value));
+      .map((value) => Date.parse(value))
+      .filter((value) => !Number.isNaN(value));
     if (stamps.length === 0) return null;
     return new Date(Math.max(...stamps)).toISOString();
   });
@@ -92,9 +90,13 @@
 
 <div class="space-y-6">
   {#if !store.isAuthenticated}
-    <div class="bg-slate-900/80 border border-amber-800/50 rounded-lg p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div
+      class="bg-slate-900/80 border border-amber-800/50 rounded-lg p-6 flex flex-col md:flex-row md:items-center justify-between gap-4"
+    >
       <div class="flex items-start gap-3">
-        <div class="w-10 h-10 rounded-md bg-amber-950/60 border border-amber-800/40 flex items-center justify-center text-amber-400 shrink-0">
+        <div
+          class="w-10 h-10 rounded-md bg-amber-950/60 border border-amber-800/40 flex items-center justify-center text-amber-400 shrink-0"
+        >
           <ShieldAlert size={20} />
         </div>
         <div class="space-y-1">
@@ -121,71 +123,103 @@
 
     <!-- Stats Row -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-      <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between">
+      <div
+        class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between"
+      >
         <div>
           <div class="text-xs font-medium text-slate-400">服务运行时间</div>
-          <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">{formatUptimeFromStart(store.studioStatus?.startedAt, store.studioStatus?.uptimeSecs)}</div>
+          <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">
+            {formatUptimeFromStart(store.studioStatus?.startedAt, store.studioStatus?.uptimeSecs)}
+          </div>
           <div class="text-xs text-slate-400 mt-1 font-mono truncate max-w-[140px]">
             {store.studioStatus?.startedAt || '同步中'}
           </div>
         </div>
-        <div class="w-10 h-10 rounded-md bg-sky-950/60 border border-sky-800/40 flex items-center justify-center text-sky-400">
+        <div
+          class="w-10 h-10 rounded-md bg-sky-950/60 border border-sky-800/40 flex items-center justify-center text-sky-400"
+        >
           <Clock size={20} />
         </div>
       </div>
 
-      <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between">
+      <div
+        class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between"
+      >
         <div>
           <div class="text-xs font-medium text-slate-400">分发配置</div>
-          <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">{store.profiles.length}</div>
+          <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">
+            {store.profiles.length}
+          </div>
           <div class="text-xs text-cyan-400/80 mt-1 flex items-center gap-1">
             <Radio size={11} class="animate-pulse text-emerald-400" />
             <span>HTTP 订阅端点</span>
           </div>
         </div>
-        <div class="w-10 h-10 rounded-md bg-cyan-950/60 border border-cyan-800/40 flex items-center justify-center text-cyan-400">
+        <div
+          class="w-10 h-10 rounded-md bg-cyan-950/60 border border-cyan-800/40 flex items-center justify-center text-cyan-400"
+        >
           <Boxes size={20} />
         </div>
       </div>
 
-      <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between">
+      <div
+        class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between"
+      >
         <div>
           <div class="text-xs font-medium text-slate-400">配置模板库</div>
-          <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">{store.templates.length}</div>
+          <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">
+            {store.templates.length}
+          </div>
           <div class="text-xs text-slate-400 mt-1">DNS / 策略组 / 路由</div>
         </div>
-        <div class="w-10 h-10 rounded-md bg-indigo-950/60 border border-indigo-800/40 flex items-center justify-center text-indigo-400">
+        <div
+          class="w-10 h-10 rounded-md bg-indigo-950/60 border border-indigo-800/40 flex items-center justify-center text-indigo-400"
+        >
           <FileCode2 size={20} />
         </div>
       </div>
 
-      <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between">
+      <div
+        class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between"
+      >
         <div>
           <div class="text-xs font-medium text-slate-400">接入节点源</div>
           <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">{store.sources.length}</div>
           <div class="text-xs text-slate-400 mt-1">{formatFreshness(latestSourceRefresh)}</div>
         </div>
-        <div class="w-10 h-10 rounded-md bg-emerald-950/60 border border-emerald-800/40 flex items-center justify-center text-emerald-400">
+        <div
+          class="w-10 h-10 rounded-md bg-emerald-950/60 border border-emerald-800/40 flex items-center justify-center text-emerald-400"
+        >
           <Network size={20} />
         </div>
       </div>
 
-      <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between">
+      <div
+        class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between"
+      >
         <div>
           <div class="text-xs font-medium text-slate-400">汇聚代理节点</div>
-          <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">{store.totalNodesCount}</div>
+          <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">
+            {store.totalNodesCount}
+          </div>
           <div class="text-xs text-slate-400 mt-1">正则动态分流展开</div>
         </div>
-        <div class="w-10 h-10 rounded-md bg-amber-950/60 border border-amber-800/40 flex items-center justify-center text-amber-400">
+        <div
+          class="w-10 h-10 rounded-md bg-amber-950/60 border border-amber-800/40 flex items-center justify-center text-amber-400"
+        >
           <Server size={20} />
         </div>
       </div>
     </div>
 
     <!-- Mental Model Banner -->
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-4 text-xs text-slate-300 flex flex-col md:flex-row items-center justify-between gap-4">
+    <div
+      class="bg-slate-900 border border-slate-800 rounded-lg p-4 text-xs text-slate-300 flex flex-col md:flex-row items-center justify-between gap-4"
+    >
       <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+        <div
+          class="w-8 h-8 rounded bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0"
+        >
           <Sparkles size={16} />
         </div>
         <div>
@@ -233,7 +267,9 @@
       {#if store.sources.length === 0}
         <div class="p-6 text-center space-y-2">
           <p class="text-sm text-slate-300">还没有节点源</p>
-          <p class="text-xs text-slate-500">添加外部节点源或手动录入节点后，才能组装给网关用的 Profile。</p>
+          <p class="text-xs text-slate-500">
+            添加外部节点源或手动录入节点后，才能组装给网关用的 Profile。
+          </p>
           <button
             onclick={() => store.navigate('sources')}
             class="mt-1 inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
@@ -256,8 +292,10 @@
                 </div>
               </div>
               <div class="text-right shrink-0">
-                <div class="font-mono {src.status === 'error' ? 'text-rose-300' : 'text-emerald-400'}">
-                  {src.status === 'error' ? 'error' : (src.status || 'active')}
+                <div
+                  class="font-mono {src.status === 'error' ? 'text-rose-300' : 'text-emerald-400'}"
+                >
+                  {src.status === 'error' ? 'error' : src.status || 'active'}
                 </div>
                 <div class="text-slate-500 mt-0.5">{formatFreshness(src.lastUpdated)}</div>
               </div>
@@ -301,11 +339,15 @@
       {:else}
         <div class="divide-y divide-slate-800/80">
           {#each store.profiles as prof}
-            <div class="p-4 hover:bg-slate-850/40 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div
+              class="p-4 hover:bg-slate-850/40 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4"
+            >
               <div class="space-y-1.5">
                 <div class="flex items-center gap-2 flex-wrap">
                   <span class="font-medium text-slate-100 text-sm">{prof.name}</span>
-                  <span class="font-mono text-xs px-2 py-0.5 rounded bg-slate-950 text-cyan-400 border border-slate-800">
+                  <span
+                    class="font-mono text-xs px-2 py-0.5 rounded bg-slate-950 text-cyan-400 border border-slate-800"
+                  >
                     {prof.token}
                   </span>
                   <span class="text-xs text-slate-500">{formatFreshness(prof.updatedAt)}</span>
@@ -316,12 +358,16 @@
 
                 <div class="flex flex-wrap items-center gap-2 pt-1 text-xs">
                   <span class="text-slate-400">模板:</span>
-                  <span class="px-2 py-0.5 rounded bg-indigo-950/60 text-indigo-300 border border-indigo-800/40 font-medium">
+                  <span
+                    class="px-2 py-0.5 rounded bg-indigo-950/60 text-indigo-300 border border-indigo-800/40 font-medium"
+                  >
                     {getTemplateName(prof.templateId)}
                   </span>
                   <span class="text-slate-400 ml-1">节点源:</span>
                   {#each getSourceNames(prof.sourceIds) as sName}
-                    <span class="px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/40">
+                    <span
+                      class="px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/40"
+                    >
                       {sName}
                     </span>
                   {/each}

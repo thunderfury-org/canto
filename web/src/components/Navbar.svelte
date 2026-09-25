@@ -65,16 +65,22 @@
   }
 </script>
 
-<header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-30 px-4 py-2.5">
+<header
+  class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-30 px-4 py-2.5"
+>
   <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
     <!-- Brand -->
     <div class="flex items-center gap-3">
-      <div class="w-8 h-8 rounded bg-cyan-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-mono font-bold text-base">
+      <div
+        class="w-8 h-8 rounded bg-cyan-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-mono font-bold text-base"
+      >
         C
       </div>
       <div class="flex items-baseline gap-2">
         <span class="font-semibold text-slate-100 tracking-tight text-base">canto studio</span>
-        <span class="text-xs px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-mono">
+        <span
+          class="text-xs px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-mono"
+        >
           Web Studio
         </span>
       </div>
@@ -84,8 +90,14 @@
     <nav class="flex items-center bg-slate-950/70 p-1 rounded-lg border border-slate-800 text-sm">
       <a
         href="#/dashboard"
-        onclick={(e) => { e.preventDefault(); store.navigate('dashboard'); }}
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab === 'dashboard' ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+        onclick={(e) => {
+          e.preventDefault();
+          store.navigate('dashboard');
+        }}
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab ===
+        'dashboard'
+          ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60'
+          : 'text-slate-400 hover:text-slate-200'}"
       >
         <LayoutDashboard size={15} />
         <span>仪表盘</span>
@@ -93,36 +105,63 @@
 
       <a
         href="#/sources"
-        onclick={(e) => { e.preventDefault(); store.navigate('sources'); }}
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab === 'sources' ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+        onclick={(e) => {
+          e.preventDefault();
+          store.navigate('sources');
+        }}
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab ===
+        'sources'
+          ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60'
+          : 'text-slate-400 hover:text-slate-200'}"
       >
         <Network size={15} />
         <span>节点源</span>
-        <span class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono">
+        <span
+          class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono"
+        >
           {store.sources.length}
         </span>
       </a>
 
       <a
         href="#/templates"
-        onclick={(e) => { e.preventDefault(); store.navigate('templates', { id: store.selectedTemplateId, subtab: store.templateSubTab }); }}
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab === 'templates' ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+        onclick={(e) => {
+          e.preventDefault();
+          store.navigate('templates', {
+            id: store.selectedTemplateId,
+            subtab: store.templateSubTab,
+          });
+        }}
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab ===
+        'templates'
+          ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60'
+          : 'text-slate-400 hover:text-slate-200'}"
       >
         <FileCode2 size={15} />
         <span>配置模板</span>
-        <span class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono">
+        <span
+          class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono"
+        >
           {store.templates.length}
         </span>
       </a>
 
       <a
         href="#/profiles"
-        onclick={(e) => { e.preventDefault(); store.navigate('profiles', { id: store.selectedProfileId }); }}
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab === 'profiles' ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60' : 'text-slate-400 hover:text-slate-200'}"
+        onclick={(e) => {
+          e.preventDefault();
+          store.navigate('profiles', { id: store.selectedProfileId });
+        }}
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab ===
+        'profiles'
+          ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60'
+          : 'text-slate-400 hover:text-slate-200'}"
       >
         <Boxes size={15} />
         <span>分发配置</span>
-        <span class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono">
+        <span
+          class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono"
+        >
           {store.profiles.length}
         </span>
       </a>
@@ -132,9 +171,14 @@
     <div class="flex items-center gap-2.5">
       <!-- Admin Auth Trigger Button -->
       <button
-        onclick={() => { tokenInput = store.adminToken; showAuthModal = true; }}
+        onclick={() => {
+          tokenInput = store.adminToken;
+          showAuthModal = true;
+        }}
         title="管理认证与 Token 设置"
-        class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded transition-all border cursor-pointer {store.isAuthenticated ? 'text-emerald-400 bg-emerald-950/40 border-emerald-800/40 hover:bg-emerald-900/50' : 'text-amber-400 bg-amber-950/40 border-amber-800/40 hover:bg-amber-900/50'}"
+        class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded transition-all border cursor-pointer {store.isAuthenticated
+          ? 'text-emerald-400 bg-emerald-950/40 border-emerald-800/40 hover:bg-emerald-900/50'
+          : 'text-amber-400 bg-amber-950/40 border-amber-800/40 hover:bg-amber-900/50'}"
       >
         {#if store.isAuthenticated}
           <ShieldCheck size={14} />
@@ -151,9 +195,13 @@
 <!-- Logout with unsaved template drafts -->
 {#if logoutPrompt}
   <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
-    <div class="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl max-w-md w-full p-5 text-slate-100">
+    <div
+      class="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl max-w-md w-full p-5 text-slate-100"
+    >
       <h3 class="text-sm font-semibold text-slate-100">还有未保存的配置模板</h3>
-      <p class="mt-2 text-xs text-slate-400">保存会尝试保存每一份草稿。某一份失败时不会退出。基准已旧的草稿不会被强行保存。</p>
+      <p class="mt-2 text-xs text-slate-400">
+        保存会尝试保存每一份草稿。某一份失败时不会退出。基准已旧的草稿不会被强行保存。
+      </p>
       <div class="mt-4 flex flex-wrap justify-end gap-2">
         <button
           type="button"
@@ -187,7 +235,9 @@
 <!-- Admin Authentication Modal -->
 {#if showAuthModal}
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-    <div class="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl max-w-md w-full p-6 text-slate-100 relative">
+    <div
+      class="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl max-w-md w-full p-6 text-slate-100 relative"
+    >
       <button
         onclick={() => (showAuthModal = false)}
         class="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition-colors"
@@ -196,7 +246,11 @@
       </button>
 
       <div class="flex items-center gap-3 mb-4">
-        <div class="p-2.5 rounded-lg {store.isAuthenticated ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50' : 'bg-amber-950/60 text-amber-400 border border-amber-800/50'}">
+        <div
+          class="p-2.5 rounded-lg {store.isAuthenticated
+            ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50'
+            : 'bg-amber-950/60 text-amber-400 border border-amber-800/50'}"
+        >
           <Key size={20} />
         </div>
         <div>
@@ -220,7 +274,11 @@
         </div>
 
         {#if store.authStatusMessage}
-          <div class="text-xs px-3 py-2 rounded-md {store.isAuthenticated ? 'bg-emerald-950/40 border border-emerald-800/40 text-emerald-400' : 'bg-rose-950/40 border border-rose-800/40 text-rose-400'}">
+          <div
+            class="text-xs px-3 py-2 rounded-md {store.isAuthenticated
+              ? 'bg-emerald-950/40 border border-emerald-800/40 text-emerald-400'
+              : 'bg-rose-950/40 border border-rose-800/40 text-rose-400'}"
+          >
             {store.authStatusMessage}
           </div>
         {/if}

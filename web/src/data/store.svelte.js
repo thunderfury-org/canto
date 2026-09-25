@@ -1,7 +1,11 @@
 import { initialTemplates, initialSources, initialProfiles } from './mock.js';
 import defaultTemplateRaw from './defaultTemplate.json';
 import { getInitialRoute, navigate } from './router.js';
-import { migrateLegacyRuleSets, normalizeTemplateContent, withExperimentalDefaults } from './templateDocument.js';
+import {
+  migrateLegacyRuleSets,
+  normalizeTemplateContent,
+  withExperimentalDefaults,
+} from './templateDocument.js';
 import {
   commitTemplateSave,
   createTemplateRequest,
@@ -27,24 +31,18 @@ class StudioStore {
   sources = $state(JSON.parse(JSON.stringify(initialSources)));
   profiles = $state(JSON.parse(JSON.stringify(initialProfiles)));
   selectedTemplateId = $state(
-    initialRoute.tab === 'templates' && initialRoute.id
-      ? initialRoute.id
-      : 'tpl_tailscale_gateway'
+    initialRoute.tab === 'templates' && initialRoute.id ? initialRoute.id : 'tpl_tailscale_gateway',
   );
   selectedProfileId = $state(
-    initialRoute.tab === 'profiles' && initialRoute.id
-      ? initialRoute.id
-      : 'prof_home_router'
+    initialRoute.tab === 'profiles' && initialRoute.id ? initialRoute.id : 'prof_home_router',
   );
   templateSubTab = $state(
-    initialRoute.tab === 'templates' && initialRoute.subtab
-      ? initialRoute.subtab
-      : 'node_groups'
+    initialRoute.tab === 'templates' && initialRoute.subtab ? initialRoute.subtab : 'node_groups',
   );
   adminToken = $state(
     typeof window !== 'undefined' && localStorage.getItem('canto_admin_token')
       ? localStorage.getItem('canto_admin_token')
-      : 'secret_admin_tok_canto_2026'
+      : 'secret_admin_tok_canto_2026',
   );
   isAuthenticated = $state(false);
   authStatusMessage = $state('');
@@ -62,27 +60,25 @@ class StudioStore {
 
   // Computed
   selectedTemplate = $derived(
-    this.templates.find(t => t.id === this.selectedTemplateId) || this.templates[0]
+    this.templates.find((t) => t.id === this.selectedTemplateId) || this.templates[0],
   );
 
   selectedProfile = $derived(
-    this.profiles.find(p => p.id === this.selectedProfileId) || this.profiles[0]
+    this.profiles.find((p) => p.id === this.selectedProfileId) || this.profiles[0],
   );
 
-  totalNodesCount = $derived(
-    this.sources.reduce((sum, s) => sum + (s.nodes?.length || 0), 0)
-  );
+  totalNodesCount = $derived(this.sources.reduce((sum, s) => sum + (s.nodes?.length || 0), 0));
 
   currentCompiled = $derived(
     this.isAuthenticated
-      ? (this.preview || { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 })
-      : { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 }
+      ? this.preview || { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 }
+      : { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 },
   );
 
   hasDirtyTemplates = $derived(
     this.isAuthenticated &&
-    this.draftEpoch >= 0 &&
-    dirtyIds(this.templateSession, this.templates).length > 0
+      this.draftEpoch >= 0 &&
+      dirtyIds(this.templateSession, this.templates).length > 0,
   );
 
   navigate(tab, params = {}, options = {}) {
@@ -104,9 +100,9 @@ class StudioStore {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ token })
+        body: JSON.stringify({ token }),
       });
       if (res.ok) {
         this.isAuthenticated = true;
@@ -167,7 +163,7 @@ class StudioStore {
       this.noteUserEdit(tplId);
       return;
     }
-    const tpl = this.templates.find(t => t.id === tplId);
+    const tpl = this.templates.find((t) => t.id === tplId);
     if (tpl) {
       tpl.updatedAt = new Date().toISOString();
     }
@@ -175,7 +171,7 @@ class StudioStore {
   }
 
   updateTemplateContent(tplId, newContent) {
-    const tpl = this.templates.find(t => t.id === tplId);
+    const tpl = this.templates.find((t) => t.id === tplId);
     if (!tpl) return;
     tpl.content = newContent;
     if (this.isAuthenticated) {
@@ -188,7 +184,7 @@ class StudioStore {
 
   noteUserEdit(tplId) {
     if (!this.isAuthenticated || !tplId) return;
-    const template = this.templates.find(t => t.id === tplId);
+    const template = this.templates.find((t) => t.id === tplId);
     if (!template) return;
     this.templateSession = markUserEdit(this.templateSession, template);
     this.draftEpoch += 1;
@@ -196,7 +192,7 @@ class StudioStore {
 
   noteProgrammaticRewrite(tplId) {
     if (!this.isAuthenticated || !tplId) return;
-    const template = this.templates.find(t => t.id === tplId);
+    const template = this.templates.find((t) => t.id === tplId);
     if (!template) return;
     const subtab = this.templateSubTab;
     const next = markProgrammaticRewrite(this.templateSession, template, (content) => {
@@ -211,7 +207,7 @@ class StudioStore {
   }
 
   isTemplateDirty(tplId) {
-    const template = this.templates.find(t => t.id === tplId);
+    const template = this.templates.find((t) => t.id === tplId);
     return this.isAuthenticated && !!template && isDirty(this.templateSession, template);
   }
 
@@ -248,7 +244,7 @@ class StudioStore {
 
   async saveTemplate(id, { force = false } = {}) {
     if (!this.isAuthenticated || !id) return false;
-    const template = this.templates.find(t => t.id === id);
+    const template = this.templates.find((t) => t.id === id);
     if (!template) return false;
     const result = await commitTemplateSave({
       fetchImpl: (url, init) => this.templateFetch(url, init),
@@ -280,7 +276,7 @@ class StudioStore {
     this.templates = [...this.templates];
     this.draftEpoch += 1;
     if (!result.ok) {
-      const failed = result.results.find(item => !item.ok);
+      const failed = result.results.find((item) => !item.ok);
       this.templateSaveError = this.saveFailureMessage(failed);
       return false;
     }
@@ -305,7 +301,7 @@ class StudioStore {
     }
     this.templateSession = applied.session;
     this.templates = applied.templates;
-    if (!this.templates.some(t => t.id === this.selectedTemplateId)) {
+    if (!this.templates.some((t) => t.id === this.selectedTemplateId)) {
       this.selectedTemplateId = this.templates[0]?.id || '';
     }
     this.templateSaveError = '';
@@ -323,7 +319,7 @@ class StudioStore {
     }
     this.templateSession = session;
     this.templates = templates;
-    if (!this.templates.some(t => t.id === this.selectedTemplateId)) {
+    if (!this.templates.some((t) => t.id === this.selectedTemplateId)) {
       this.selectedTemplateId = this.templates[0]?.id || '';
     }
     this.templateSaveError = '';
@@ -341,7 +337,7 @@ class StudioStore {
       const merged = mergeTemplateList(this.templateSession, this.templates, serverTemplates);
       this.templateSession = merged.session;
       this.templates = merged.templates;
-      if (!this.templates.some(t => t.id === this.selectedTemplateId)) {
+      if (!this.templates.some((t) => t.id === this.selectedTemplateId)) {
         this.selectedTemplateId = this.templates[0]?.id || '';
       }
       this.templatesLoaded = true;
@@ -356,13 +352,13 @@ class StudioStore {
     const body = {
       name: payload.name || `自定义模板 ${this.templates.length + 1}`,
       description: payload.description || '新建的自定义配置模板',
-      content: JSON.parse(JSON.stringify(payload.content || defaultTemplateRaw))
+      content: JSON.parse(JSON.stringify(payload.content || defaultTemplateRaw)),
     };
     if (!this.isAuthenticated) {
       const local = {
         id: 'tpl_' + Date.now(),
         updatedAt: new Date().toISOString(),
-        ...body
+        ...body,
       };
       this.templates = [...this.templates, local];
       this.selectedTemplateId = local.id;
@@ -388,14 +384,14 @@ class StudioStore {
     if (this.isAuthenticated) {
       const res = await fetch(`/api/templates/${id}`, {
         method: 'DELETE',
-        headers: this.authHeaders()
+        headers: this.authHeaders(),
       });
       if (!res.ok && res.status !== 204) {
         throw new Error(await this.apiError(res));
       }
     }
     this.templateSession = forgetTemplate(this.templateSession, id);
-    this.templates = this.templates.filter(t => t.id !== id);
+    this.templates = this.templates.filter((t) => t.id !== id);
     this.draftEpoch += 1;
     if (this.selectedTemplateId === id) {
       this.selectedTemplateId = this.templates[0]?.id || '';
@@ -405,7 +401,7 @@ class StudioStore {
   authHeaders() {
     return {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.adminToken}`
+      Authorization: `Bearer ${this.adminToken}`,
     };
   }
 
@@ -467,7 +463,7 @@ class StudioStore {
         lastUpdated: new Date().toISOString(),
         status: 'active',
         nodes: [],
-        ...payload
+        ...payload,
       };
       this.addSource(local);
       return local;
@@ -475,7 +471,7 @@ class StudioStore {
     const res = await fetch('/api/sources', {
       method: 'POST',
       headers: this.authHeaders(),
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       throw new Error(await this.apiError(res));
@@ -487,17 +483,17 @@ class StudioStore {
 
   async updateSource(id, payload) {
     if (!this.isAuthenticated) {
-      const idx = this.sources.findIndex(s => s.id === id);
+      const idx = this.sources.findIndex((s) => s.id === id);
       if (idx !== -1) {
         this.sources[idx] = { ...this.sources[idx], ...payload };
         this.sources = [...this.sources];
       }
-      return this.sources.find(s => s.id === id);
+      return this.sources.find((s) => s.id === id);
     }
     const res = await fetch(`/api/sources/${id}`, {
       method: 'PUT',
       headers: this.authHeaders(),
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       throw new Error(await this.apiError(res));
@@ -509,7 +505,7 @@ class StudioStore {
 
   async refreshSource(sourceId) {
     if (!this.isAuthenticated) {
-      const src = this.sources.find(s => s.id === sourceId);
+      const src = this.sources.find((s) => s.id === sourceId);
       if (src) {
         src.lastUpdated = new Date().toISOString();
         this.sources = [...this.sources];
@@ -518,7 +514,7 @@ class StudioStore {
     }
     const res = await fetch(`/api/sources/${sourceId}/refresh`, {
       method: 'POST',
-      headers: this.authHeaders()
+      headers: this.authHeaders(),
     });
     if (!res.ok) {
       throw new Error(await this.apiError(res));
@@ -529,9 +525,9 @@ class StudioStore {
   }
 
   deleteSource(sourceId) {
-    this.sources = this.sources.filter(s => s.id !== sourceId);
+    this.sources = this.sources.filter((s) => s.id !== sourceId);
     for (const p of this.profiles) {
-      p.sourceIds = p.sourceIds.filter(id => id !== sourceId);
+      p.sourceIds = p.sourceIds.filter((id) => id !== sourceId);
     }
   }
 
@@ -539,7 +535,7 @@ class StudioStore {
     if (this.isAuthenticated) {
       const res = await fetch(`/api/sources/${sourceId}`, {
         method: 'DELETE',
-        headers: this.authHeaders()
+        headers: this.authHeaders(),
       });
       if (!res.ok && res.status !== 204) {
         throw new Error(await this.apiError(res));
@@ -557,14 +553,14 @@ class StudioStore {
   }
 
   deleteProfile(profileId) {
-    this.profiles = this.profiles.filter(p => p.id !== profileId);
+    this.profiles = this.profiles.filter((p) => p.id !== profileId);
     if (this.selectedProfileId === profileId) {
       this.selectedProfileId = this.profiles[0]?.id || '';
     }
   }
 
   updateProfile(updated) {
-    const idx = this.profiles.findIndex(p => p.id === updated.id);
+    const idx = this.profiles.findIndex((p) => p.id === updated.id);
     if (idx !== -1) {
       this.profiles[idx] = updated;
     }
@@ -579,7 +575,7 @@ class StudioStore {
       }
       const data = await res.json();
       this.profiles = Array.isArray(data) ? data : [];
-      if (!this.profiles.some(p => p.id === this.selectedProfileId)) {
+      if (!this.profiles.some((p) => p.id === this.selectedProfileId)) {
         this.selectedProfileId = this.profiles[0]?.id || '';
       }
       await this.refreshPreview();
@@ -598,7 +594,7 @@ class StudioStore {
     }
     try {
       const res = await fetch(`/api/profiles/${prof.id}/preview`, {
-        headers: this.authHeaders()
+        headers: this.authHeaders(),
       });
       if (!res.ok) {
         this.previewError = await this.apiError(res);
@@ -621,7 +617,7 @@ class StudioStore {
   }
 
   async flushProfile(profileId, extra = {}) {
-    const prof = this.profiles.find(p => p.id === profileId);
+    const prof = this.profiles.find((p) => p.id === profileId);
     if (!prof || !this.isAuthenticated) return;
     try {
       await this.saveProfile(prof, extra);
@@ -644,8 +640,8 @@ class StudioStore {
         description: prof.description || '',
         templateId: prof.templateId,
         sourceIds: prof.sourceIds,
-        ...extra
-      })
+        ...extra,
+      }),
     });
     if (!res.ok) {
       throw new Error(await this.apiError(res));
@@ -657,7 +653,7 @@ class StudioStore {
   }
 
   replaceProfile(updated) {
-    const idx = this.profiles.findIndex(p => p.id === updated.id);
+    const idx = this.profiles.findIndex((p) => p.id === updated.id);
     if (idx !== -1) {
       this.profiles[idx] = updated;
       this.profiles = [...this.profiles];
@@ -672,7 +668,7 @@ class StudioStore {
       name: payload.name || `新设备分发配置 ${this.profiles.length + 1}`,
       description: payload.description || '自定义组装分发配置',
       templateId: payload.templateId || this.templates[0]?.id,
-      sourceIds: payload.sourceIds || (this.sources[0] ? [this.sources[0].id] : [])
+      sourceIds: payload.sourceIds || (this.sources[0] ? [this.sources[0].id] : []),
     };
     if (!this.isAuthenticated) {
       const newToken = 'tok_' + Math.random().toString(36).substring(2, 10);
@@ -681,7 +677,7 @@ class StudioStore {
         token: newToken,
         publicUrl: `http://studio.internal.lan:8080/sub/${newToken}`,
         updatedAt: new Date().toISOString(),
-        ...body
+        ...body,
       };
       this.addProfile(local);
       return local;
@@ -689,7 +685,7 @@ class StudioStore {
     const res = await fetch('/api/profiles', {
       method: 'POST',
       headers: this.authHeaders(),
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       throw new Error(await this.apiError(res));
@@ -705,7 +701,7 @@ class StudioStore {
     if (this.isAuthenticated) {
       const res = await fetch(`/api/profiles/${profileId}`, {
         method: 'DELETE',
-        headers: this.authHeaders()
+        headers: this.authHeaders(),
       });
       if (!res.ok && res.status !== 204) {
         throw new Error(await this.apiError(res));
@@ -716,7 +712,7 @@ class StudioStore {
   }
 
   async rotateProfileToken(profileId) {
-    const prof = this.profiles.find(p => p.id === profileId);
+    const prof = this.profiles.find((p) => p.id === profileId);
     if (!prof) return;
     if (!this.isAuthenticated) {
       prof.token = 'tok_' + Math.random().toString(36).substring(2, 10);
