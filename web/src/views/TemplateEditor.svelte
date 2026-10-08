@@ -839,20 +839,6 @@
         </button>
 
         <button
-          onclick={() => switchSubTab('route')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
-          'route'
-            ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
-            : 'text-slate-400 hover:text-slate-200'}"
-        >
-          <Layers size={13} />
-          <span>路由分流规则</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
-            >{store.selectedTemplate.content?.route?.rules?.length || 0}</span
-          >
-        </button>
-
-        <button
           onclick={() => switchSubTab('dns')}
           class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
           'dns'
@@ -863,6 +849,20 @@
           <span>DNS 服务器与分流</span>
           <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
             >{store.selectedTemplate.content?.dns?.servers?.length || 0}</span
+          >
+        </button>
+
+        <button
+          onclick={() => switchSubTab('route')}
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          'route'
+            ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+            : 'text-slate-400 hover:text-slate-200'}"
+        >
+          <Layers size={13} />
+          <span>路由分流规则</span>
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
+            >{store.selectedTemplate.content?.route?.rules?.length || 0}</span
           >
         </button>
 
