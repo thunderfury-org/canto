@@ -45,7 +45,7 @@ export function forgetTemplate(session, id) {
   return { byId };
 }
 
-// Programmatic normalization, migration, and experimental defaults.
+// Programmatic normalization and migration.
 // Before any user edit, the baseline follows the editor.
 // After a user edit, `rewrite` is applied to the baseline only, so those
 // rewrites do not themselves keep an undone edit dirty.

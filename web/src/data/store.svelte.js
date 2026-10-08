@@ -1,11 +1,7 @@
 import { initialTemplates, initialSources, initialProfiles } from './mock.js';
 import defaultTemplateRaw from './defaultTemplate.json';
 import { getInitialRoute, navigate } from './router.js';
-import {
-  migrateLegacyRuleSets,
-  normalizeTemplateContent,
-  withExperimentalDefaults,
-} from './templateDocument.js';
+import { migrateLegacyRuleSets, normalizeTemplateContent } from './templateDocument.js';
 import {
   commitTemplateSave,
   createTemplateRequest,
@@ -198,7 +194,6 @@ class StudioStore {
     const next = markProgrammaticRewrite(this.templateSession, template, (content) => {
       let rewritten = normalizeTemplateContent(content);
       if (subtab === 'rule_sets') rewritten = migrateLegacyRuleSets(rewritten);
-      if (subtab === 'experimental') rewritten = withExperimentalDefaults(rewritten) ?? rewritten;
       return rewritten;
     });
     if (next === this.templateSession) return;

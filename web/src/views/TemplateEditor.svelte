@@ -12,7 +12,6 @@
     migrateLegacyRuleSets,
     normalizeTemplateContent,
     referencedRuleTags,
-    withExperimentalDefaults,
     removeRuleSourceTag,
     toggleRuleSourceTag,
     writeNodeGroupPattern,
@@ -20,6 +19,8 @@
   import MultiSelect from '../components/MultiSelect.svelte';
   import RouteRules from './RouteRules.svelte';
   import DnsEditor from './DnsEditor.svelte';
+  import InboundEditor from './InboundEditor.svelte';
+  import ExperimentalEditor from './ExperimentalEditor.svelte';
   import Lock from 'lucide-svelte/icons/lock';
   import Shield from 'lucide-svelte/icons/shield';
   import FileCode2 from 'lucide-svelte/icons/file-code-2';
@@ -40,6 +41,8 @@
   import ChevronDown from 'lucide-svelte/icons/chevron-down';
   import ChevronRight from 'lucide-svelte/icons/chevron-right';
   import X from 'lucide-svelte/icons/x';
+  import Cable from 'lucide-svelte/icons/cable';
+  import SlidersHorizontal from 'lucide-svelte/icons/sliders-horizontal';
 
   let currentSubTab = $derived(store.templateSubTab);
   let saveError = $state('');
@@ -68,7 +71,6 @@
 
   function switchSubTab(subTab) {
     if (subTab === 'rule_sets') applyLegacyRuleSetMigration();
-    if (subTab === 'experimental') ensureExperimentalDefaults();
     store.templateSubTab = subTab;
   }
 
@@ -81,7 +83,6 @@
       tpl.content = normalized;
     }
     if (store.templateSubTab === 'rule_sets') applyLegacyRuleSetMigration();
-    if (store.templateSubTab === 'experimental') ensureExperimentalDefaults();
     if (store.isAuthenticated && loaded) store.noteProgrammaticRewrite(tpl.id);
   });
 
@@ -546,33 +547,6 @@
     };
   }
 
-  function addEndpoint() {
-    const tpl = store.selectedTemplate;
-    if (!tpl.content.endpoints) tpl.content.endpoints = [];
-    tpl.content.endpoints.push({
-      type: 'tailscale',
-      tag: 'ts-ep-' + (tpl.content.endpoints.length + 1),
-      auth_key: '',
-      accept_routes: true,
-    });
-    triggerUpdate();
-  }
-
-  function removeEndpoint(idx) {
-    const tpl = store.selectedTemplate;
-    if (tpl.content.endpoints) {
-      tpl.content.endpoints.splice(idx, 1);
-      triggerUpdate();
-    }
-  }
-
-  function ensureExperimentalDefaults() {
-    const tpl = store.selectedTemplate;
-    if (!tpl?.content) return;
-    const next = withExperimentalDefaults(tpl.content);
-    if (next !== tpl.content) tpl.content = next;
-  }
-
   // --- Policy Groups operations ---
   function addPolicyGroup() {
     const tpl = store.selectedTemplate;
@@ -648,25 +622,42 @@
     triggerUpdate();
   }
 
-  // --- Inbounds operations ---
-  function addInbound() {
+  function commitInbounds(nextInbounds) {
     const tpl = store.selectedTemplate;
-    if (!tpl.content.inbounds) tpl.content.inbounds = [];
-    tpl.content.inbounds.push({
-      type: 'mixed',
-      tag: 'mixed-in',
-      listen: '0.0.0.0',
-      listen_port: 7890,
-    });
+    if (!tpl) return;
+    if (!tpl.content) tpl.content = {};
+    tpl.content.inbounds = nextInbounds;
     triggerUpdate();
   }
 
-  function removeInbound(idx) {
+  function commitEndpoints(nextEndpoints) {
     const tpl = store.selectedTemplate;
-    if (tpl.content.inbounds) {
-      tpl.content.inbounds.splice(idx, 1);
-      triggerUpdate();
-    }
+    if (!tpl) return;
+    if (!tpl.content) tpl.content = {};
+    tpl.content.endpoints = nextEndpoints;
+    triggerUpdate();
+  }
+
+  function commitLog(nextLog) {
+    const tpl = store.selectedTemplate;
+    if (!tpl) return;
+    if (!tpl.content) tpl.content = {};
+    const content = { ...tpl.content };
+    if (nextLog == null) delete content.log;
+    else content.log = nextLog;
+    tpl.content = content;
+    triggerUpdate();
+  }
+
+  function commitExperimental(nextExperimental) {
+    const tpl = store.selectedTemplate;
+    if (!tpl) return;
+    if (!tpl.content) tpl.content = {};
+    const content = { ...tpl.content };
+    if (nextExperimental == null) delete content.experimental;
+    else content.experimental = nextExperimental;
+    tpl.content = content;
+    triggerUpdate();
   }
 </script>
 
@@ -882,6 +873,7 @@
             ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
             : 'text-slate-400 hover:text-slate-200'}"
         >
+          <Cable size={13} />
           <span>入站与端点</span>
           <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">
             {(store.selectedTemplate.content?.inbounds?.length || 0) +
@@ -896,7 +888,8 @@
             ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
             : 'text-slate-400 hover:text-slate-200'}"
         >
-          <span>日志与 Clash API</span>
+          <SlidersHorizontal size={13} />
+          <span>其他</span>
         </button>
       </div>
 
@@ -1816,217 +1809,22 @@
         />
       {/if}
 
-      <!-- 4. Inbounds & Endpoints Module View -->
       {#if currentSubTab === 'inbounds'}
-        <div class="space-y-4">
-          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-              <h3 class="text-sm font-semibold text-slate-200">入站配置 (Inbounds)</h3>
-              <button
-                onclick={addInbound}
-                class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700"
-              >
-                <Plus size={13} />
-                <span>添加入站</span>
-              </button>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {#each store.selectedTemplate.content?.inbounds || [] as ib, idx}
-                <div
-                  class="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-2.5 text-xs"
-                >
-                  <div class="flex items-center justify-between">
-                    <input
-                      type="text"
-                      bind:value={ib.tag}
-                      oninput={triggerUpdate}
-                      placeholder="inbound-tag"
-                      class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-slate-100 font-mono font-bold"
-                    />
-                    <div class="flex items-center gap-2">
-                      <select
-                        bind:value={ib.type}
-                        onchange={triggerUpdate}
-                        class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-cyan-300 font-mono"
-                      >
-                        <option value="tun">tun</option>
-                        <option value="mixed">mixed</option>
-                        <option value="tproxy">tproxy</option>
-                        <option value="redirect">redirect</option>
-                        <option value="direct">direct</option>
-                      </select>
-                      <button
-                        onclick={() => removeInbound(idx)}
-                        class="text-slate-500 hover:text-rose-400 p-1"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="space-y-1.5 text-slate-400">
-                    {#if ib.type === 'tun'}
-                      <div class="flex items-center gap-2">
-                        <span class="w-16">接口名:</span>
-                        <input
-                          type="text"
-                          bind:value={ib.interface_name}
-                          oninput={triggerUpdate}
-                          class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-slate-200 font-mono flex-1"
-                        />
-                      </div>
-                    {:else}
-                      <div class="flex items-center gap-2">
-                        <span class="w-16">监听端口:</span>
-                        <input
-                          type="number"
-                          bind:value={ib.listen_port}
-                          oninput={triggerUpdate}
-                          class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-slate-200 font-mono flex-1"
-                        />
-                      </div>
-                    {/if}
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-
-          <!-- Endpoints Card -->
-          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
-            <div class="flex items-center justify-between">
-              <h3 class="text-sm font-semibold text-slate-200">端点 (Endpoints)</h3>
-              <button
-                onclick={addEndpoint}
-                class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700"
-              >
-                <Plus size={13} />
-                <span>添加端点</span>
-              </button>
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {#each store.selectedTemplate.content?.endpoints || [] as ep, epIdx}
-                <div
-                  class="bg-slate-950 border border-slate-800 rounded-lg p-3.5 space-y-2 text-xs"
-                >
-                  <div class="flex items-center justify-between gap-2">
-                    <input
-                      type="text"
-                      bind:value={ep.tag}
-                      oninput={triggerUpdate}
-                      placeholder="endpoint-tag"
-                      class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-slate-100 font-mono font-bold flex-1"
-                    />
-                    <select
-                      bind:value={ep.type}
-                      onchange={triggerUpdate}
-                      class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs text-indigo-300 font-mono"
-                    >
-                      <option value="tailscale">tailscale</option>
-                      <option value="wireguard">wireguard</option>
-                    </select>
-                    <button
-                      onclick={() => removeEndpoint(epIdx)}
-                      class="text-slate-500 hover:text-rose-400 p-1"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                  <div>
-                    <span class="text-slate-500 block mb-1">Auth Key (可选):</span>
-                    <input
-                      type="text"
-                      bind:value={ep.auth_key}
-                      oninput={triggerUpdate}
-                      placeholder="tskey-auth-..."
-                      class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-200 font-mono"
-                    />
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-        </div>
+        <InboundEditor
+          inbounds={store.selectedTemplate.content?.inbounds}
+          endpoints={store.selectedTemplate.content?.endpoints}
+          onCommitInbounds={commitInbounds}
+          onCommitEndpoints={commitEndpoints}
+        />
       {/if}
 
-      <!-- 5. Experimental Module View -->
       {#if currentSubTab === 'experimental'}
-        <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-4">
-          <h3 class="text-sm font-semibold text-slate-200">日志与 Clash API 配置 (Experimental)</h3>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-            <div class="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
-              <span class="font-bold text-slate-200 text-sm">日志配置 (Log)</span>
-              {#if store.selectedTemplate.content?.log}
-                <div>
-                  <label for="log-level" class="block text-slate-400 mb-1">日志级别</label>
-                  <select
-                    id="log-level"
-                    bind:value={store.selectedTemplate.content.log.level}
-                    onchange={triggerUpdate}
-                    class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-200 font-mono"
-                  >
-                    <option value="trace">trace</option>
-                    <option value="debug">debug</option>
-                    <option value="info">info</option>
-                    <option value="warn">warn (推荐)</option>
-                    <option value="error">error</option>
-                  </select>
-                </div>
-                <div class="flex items-center gap-2 pt-1">
-                  <input
-                    type="checkbox"
-                    id="log-ts"
-                    bind:checked={store.selectedTemplate.content.log.timestamp}
-                    onchange={triggerUpdate}
-                    class="rounded text-cyan-500"
-                  />
-                  <label for="log-ts" class="text-slate-300 cursor-pointer"
-                    >在日志输出中包含时间戳</label
-                  >
-                </div>
-              {:else}
-                <p class="text-slate-500">当前模板没有 log 段，可在 Raw JSON 中添加。</p>
-              {/if}
-            </div>
-
-            <div class="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
-              <span class="font-bold text-slate-200 text-sm">Clash API 面板</span>
-              {#if store.selectedTemplate.content?.experimental?.clash_api}
-                <div>
-                  <label for="clash-ctrl" class="block text-slate-400 mb-1"
-                    >控制器监听地址 (External Controller)</label
-                  >
-                  <input
-                    id="clash-ctrl"
-                    type="text"
-                    bind:value={
-                      store.selectedTemplate.content.experimental.clash_api.external_controller
-                    }
-                    oninput={triggerUpdate}
-                    class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-200 font-mono"
-                  />
-                </div>
-                <div>
-                  <label for="clash-mode" class="block text-slate-400 mb-1">默认模式</label>
-                  <select
-                    id="clash-mode"
-                    bind:value={store.selectedTemplate.content.experimental.clash_api.default_mode}
-                    onchange={triggerUpdate}
-                    class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-slate-200 font-mono"
-                  >
-                    <option value="rule">rule (规则模式)</option>
-                    <option value="global">global (全局代理)</option>
-                    <option value="direct">direct (全部直连)</option>
-                  </select>
-                </div>
-              {:else}
-                <p class="text-slate-500">当前模板未启用外部 Clash API 扩展控制。</p>
-              {/if}
-            </div>
-          </div>
-        </div>
+        <ExperimentalEditor
+          log={store.selectedTemplate.content?.log}
+          experimental={store.selectedTemplate.content?.experimental}
+          onCommitLog={commitLog}
+          onCommitExperimental={commitExperimental}
+        />
       {/if}
     </div>
   {/if}
