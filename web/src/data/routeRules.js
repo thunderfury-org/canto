@@ -326,6 +326,18 @@ function writeCondition(cond) {
   return writeTokens(cond);
 }
 
+export function matchConditionFromValue(field, value) {
+  return conditionFromValue(field, value);
+}
+
+export function writeMatchCondition(cond) {
+  return writeCondition(cond);
+}
+
+export function matchPhrase(field, value) {
+  return conditionPhrase(field, value);
+}
+
 function readOther(draft) {
   const text = (draft.otherText || '').trim();
   if (!text) return {};
