@@ -3,8 +3,8 @@ export const VALID_SUBTABS = [
   'node_groups',
   'policy_groups',
   'rule_sets',
-  'route',
   'dns',
+  'route',
   'inbounds',
   'experimental',
 ];
