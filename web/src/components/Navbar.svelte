@@ -79,7 +79,7 @@
       <div class="flex items-baseline gap-2">
         <span class="font-semibold text-slate-100 tracking-tight text-base">canto studio</span>
         <span
-          class="text-xs px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-mono"
+          class="text-xs px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-700 font-mono whitespace-nowrap"
         >
           Web Studio
         </span>
@@ -117,7 +117,7 @@
         <Network size={15} />
         <span>节点源</span>
         <span
-          class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono"
+          class="text-xs bg-slate-900 text-slate-400 px-1.5 rounded-full border border-slate-800 font-mono whitespace-nowrap"
         >
           {store.sources.length}
         </span>
@@ -140,7 +140,7 @@
         <FileCode2 size={15} />
         <span>配置模板</span>
         <span
-          class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono"
+          class="text-xs bg-slate-900 text-slate-400 px-1.5 rounded-full border border-slate-800 font-mono whitespace-nowrap"
         >
           {store.templates.length}
         </span>
@@ -160,7 +160,7 @@
         <Boxes size={15} />
         <span>分发配置</span>
         <span
-          class="text-xs bg-slate-900 text-slate-400 px-1.5 py-0.2 rounded-full border border-slate-800 font-mono"
+          class="text-xs bg-slate-900 text-slate-400 px-1.5 rounded-full border border-slate-800 font-mono whitespace-nowrap"
         >
           {store.profiles.length}
         </span>
@@ -207,7 +207,7 @@
           type="button"
           onclick={() => (logoutPrompt = false)}
           disabled={logoutBusy}
-          class="text-xs px-3 py-1.5 rounded-md text-slate-300 hover:bg-slate-800 disabled:opacity-40"
+          class="btn btn-ghost"
         >
           取消
         </button>
@@ -215,7 +215,7 @@
           type="button"
           onclick={confirmLogoutDiscard}
           disabled={logoutBusy}
-          class="text-xs px-3 py-1.5 rounded-md bg-slate-800 text-slate-200 border border-slate-700 disabled:opacity-40"
+          class="btn btn-secondary"
         >
           放弃
         </button>
@@ -223,7 +223,7 @@
           type="button"
           onclick={confirmLogoutSave}
           disabled={logoutBusy}
-          class="text-xs px-3 py-1.5 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white font-medium disabled:opacity-40"
+          class="btn btn-primary"
         >
           {logoutBusy ? '保存中' : '保存'}
         </button>
@@ -239,10 +239,12 @@
       class="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl max-w-md w-full p-6 text-slate-100 relative"
     >
       <button
+        type="button"
         onclick={() => (showAuthModal = false)}
-        class="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition-colors"
+        class="btn btn-ghost btn-icon absolute top-4 right-4"
+        aria-label="关闭认证"
       >
-        <X size={18} />
+        <X size={16} />
       </button>
 
       <div class="flex items-center gap-3 mb-4">
@@ -269,7 +271,7 @@
             type="password"
             bind:value={tokenInput}
             placeholder="输入管理 Token"
-            class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 font-mono"
+            class="field w-full rounded-lg px-3 py-2 text-sm font-mono"
           />
         </div>
 
@@ -297,18 +299,14 @@
           {/if}
 
           <div class="flex items-center gap-2">
-            <button
-              type="button"
-              onclick={() => (showAuthModal = false)}
-              class="text-xs px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
-            >
+            <button type="button" onclick={() => (showAuthModal = false)} class="btn btn-ghost">
               关闭
             </button>
             <button
               type="button"
               onclick={handleVerifyToken}
               disabled={isChecking}
-              class="text-xs px-4 py-1.5 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors disabled:opacity-50 cursor-pointer"
+              class="btn btn-primary"
             >
               {isChecking ? '验证中...' : '验证并保存'}
             </button>

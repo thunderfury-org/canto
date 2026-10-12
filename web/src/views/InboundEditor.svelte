@@ -181,7 +181,7 @@
     <div class="flex items-center justify-between border-b border-slate-800 pb-3 gap-3">
       <div>
         <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
-          <Cable size={15} class="text-cyan-400" />
+          <Cable size={15} class="text-slate-400" />
           <span>入站</span>
         </h3>
         <span class="text-xs text-slate-400">
@@ -189,11 +189,7 @@
           API 仍会进入运行配置。
         </span>
       </div>
-      <button
-        type="button"
-        onclick={openInboundCreate}
-        class="px-3 py-1.5 rounded-md bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-200 border border-cyan-500/40 text-xs font-medium flex items-center gap-1.5 cursor-pointer shrink-0"
-      >
+      <button type="button" onclick={openInboundCreate} class="btn btn-secondary shrink-0">
         <Plus size={13} />
         <span>添加入站</span>
       </button>
@@ -240,7 +236,7 @@
               title="删除此入站"
               aria-label="删除此入站"
               onclick={() => removeInbound(index)}
-              class="size-6 shrink-0 inline-flex items-center justify-center rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 cursor-pointer"
+              class="btn btn-ghost btn-icon btn-danger shrink-0"
             >
               <Trash2 size={13} />
             </button>
@@ -254,15 +250,11 @@
     <div class="flex items-center justify-between border-b border-slate-800 pb-3 gap-3">
       <div>
         <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
-          <Waypoints size={15} class="text-indigo-400" />
+          <Waypoints size={15} class="text-slate-400" />
           <span>端点</span>
         </h3>
       </div>
-      <button
-        type="button"
-        onclick={openEndpointCreate}
-        class="px-3 py-1.5 rounded-md bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 text-xs font-medium flex items-center gap-1.5 cursor-pointer shrink-0"
-      >
+      <button type="button" onclick={openEndpointCreate} class="btn btn-secondary shrink-0">
         <Plus size={13} />
         <span>添加端点</span>
       </button>
@@ -297,7 +289,7 @@
                   <span class="text-[10px] text-amber-300">标签重复</span>
                 {/if}
               </span>
-              <span class="font-mono text-[11px] text-indigo-300 md:w-28 md:shrink-0"
+              <span class="font-mono text-[11px] text-slate-300 md:w-28 md:shrink-0"
                 >{summary.type || '未设置'}</span
               >
               <span class="col-span-2 md:flex-1 min-w-0 truncate font-mono text-xs text-slate-300"
@@ -309,7 +301,7 @@
               title="删除此端点"
               aria-label="删除此端点"
               onclick={() => removeEndpoint(index)}
-              class="size-6 shrink-0 inline-flex items-center justify-center rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 cursor-pointer"
+              class="btn btn-ghost btn-icon btn-danger shrink-0"
             >
               <Trash2 size={13} />
             </button>
@@ -342,7 +334,7 @@
           title="取消"
           aria-label="取消"
           onclick={cancelDrawer}
-          class="p-1 text-slate-500 hover:text-slate-200 cursor-pointer"
+          class="btn btn-ghost btn-icon"
         >
           <X size={16} />
         </button>
@@ -354,7 +346,7 @@
           <input
             type="text"
             bind:value={drawer.draft.tag}
-            class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-100"
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-100"
           />
         </label>
 
@@ -362,7 +354,7 @@
           <label class="block space-y-1">
             <span class="text-xs text-slate-300">类型</span>
             <select
-              class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-cyan-300"
+              class="field w-full px-2 py-1.5 text-xs font-mono text-cyan-300"
               value={drawer.draft.type}
               onchange={onInboundType}
             >
@@ -382,7 +374,7 @@
                 oninput={() => {
                   drawer.draft.interfaceOwned = true;
                 }}
-                class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
               />
             </label>
             <label class="block space-y-1">
@@ -393,7 +385,7 @@
                 oninput={() => {
                   drawer.draft.addressOwned = true;
                 }}
-                class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
               />
             </label>
             <label class="block space-y-1">
@@ -405,7 +397,7 @@
                 oninput={() => {
                   drawer.draft.mtuOwned = true;
                 }}
-                class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
               />
             </label>
             <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
@@ -441,7 +433,7 @@
                 oninput={() => {
                   drawer.draft.listenOwned = true;
                 }}
-                class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
               />
             </label>
             <label class="block space-y-1">
@@ -453,7 +445,7 @@
                 oninput={() => {
                   drawer.draft.portOwned = true;
                 }}
-                class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
               />
             </label>
           {:else if drawer.draft.type}
@@ -463,7 +455,7 @@
           <label class="block space-y-1">
             <span class="text-xs text-slate-300">类型</span>
             <select
-              class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-indigo-300"
+              class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
               value={drawer.draft.type}
               onchange={onEndpointType}
             >
@@ -484,13 +476,13 @@
                 oninput={() => {
                   drawer.draft.authOwned = true;
                 }}
-                class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
               />
             </label>
             <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
               <input
                 type="checkbox"
-                class="rounded border-slate-700 bg-slate-900 text-indigo-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                class="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
                 checked={drawer.draft.acceptRoutes === true}
                 onchange={(event) => {
                   drawer.draft.acceptRoutes = event.currentTarget.checked;
@@ -509,7 +501,7 @@
                 oninput={() => {
                   drawer.draft.privateOwned = true;
                 }}
-                class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
               />
             </label>
             <label class="block space-y-1">
@@ -520,7 +512,7 @@
                 oninput={() => {
                   drawer.draft.addressOwned = true;
                 }}
-                class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
               />
             </label>
             <label class="block space-y-1">
@@ -532,7 +524,7 @@
                 oninput={() => {
                   drawer.draft.portOwned = true;
                 }}
-                class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
               />
             </label>
             <label class="block space-y-1">
@@ -544,7 +536,7 @@
                 oninput={() => {
                   drawer.draft.mtuOwned = true;
                 }}
-                class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
               />
             </label>
           {:else if drawer.draft.type}
@@ -566,7 +558,7 @@
             <textarea
               bind:value={drawer.draft.otherText}
               spellcheck="false"
-              class="w-full h-36 bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200"
+              class="field w-full h-36 px-3 py-2 text-xs font-mono"
             ></textarea>
           {/if}
         </section>
@@ -581,18 +573,12 @@
           {/if}
         </div>
         <div class="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onclick={cancelDrawer}
-            class="px-3 py-1.5 rounded border border-slate-700 text-xs text-slate-300 hover:bg-slate-800 cursor-pointer"
-          >
-            取消
-          </button>
+          <button type="button" onclick={cancelDrawer} class="btn btn-secondary"> 取消 </button>
           <button
             type="button"
             disabled={!!drawerProblem}
             onclick={finishDrawer}
-            class="px-3 py-1.5 rounded bg-cyan-600 text-xs text-white disabled:opacity-40 cursor-pointer"
+            class="btn {drawerProblem ? 'btn-ghost' : 'btn-primary'}"
           >
             完成
           </button>

@@ -44,7 +44,7 @@
 >
   <Navbar />
 
-  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6">
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 scroll-pt-20">
     {#if store.currentTab === 'dashboard'}
       <DashboardView />
     {:else if store.currentTab === 'templates'}

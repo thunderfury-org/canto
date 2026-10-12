@@ -108,21 +108,15 @@
   <div
     class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
   >
-    <div class="flex items-center gap-2">
-      <Network size={18} class="text-emerald-400" />
-      <div>
-        <h2 class="text-sm font-semibold text-slate-100">代理节点源管理 (Node Sources)</h2>
-        <p class="text-xs text-slate-400">
-          汇聚外部机场订阅链接与自建私有 VPS 节点，供 Profile 策略组按正则匹配引用
-        </p>
-      </div>
+    <div class="min-w-0">
+      <h1 class="text-base font-semibold text-slate-100">节点源</h1>
+      <p class="text-xs text-slate-400 mt-1">
+        汇聚外部机场订阅链接与自建私有 VPS 节点，供 Profile 策略组按正则匹配引用
+      </p>
     </div>
 
     <div class="flex items-center gap-2">
-      <button
-        onclick={openCreate}
-        class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
-      >
+      <button type="button" onclick={openCreate} class="btn btn-primary">
         <Plus size={14} />
         <span>添加节点源</span>
       </button>
@@ -138,11 +132,17 @@
         class="bg-slate-900 border border-slate-800 rounded-xl p-5 max-w-lg w-full space-y-4 shadow-2xl"
       >
         <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-          <h3 class="text-sm font-semibold text-slate-100 flex items-center gap-2">
-            <Network size={16} class="text-emerald-400" />
-            <span>{editingId ? '编辑节点源' : '添加新代理节点源'}</span>
+          <h3 class="text-sm font-semibold text-slate-100">
+            {editingId ? '编辑节点源' : '添加新代理节点源'}
           </h3>
-          <button onclick={resetForm} class="text-slate-400 hover:text-slate-200"> &times; </button>
+          <button
+            type="button"
+            onclick={resetForm}
+            class="btn btn-ghost btn-icon"
+            aria-label="关闭"
+          >
+            &times;
+          </button>
         </div>
 
         <div class="space-y-3 text-xs">
@@ -153,7 +153,7 @@
               type="text"
               bind:value={newName}
               placeholder="例如：备用专线订阅 或 阿里云日本自建"
-              class="w-full bg-slate-950 border border-slate-700/80 rounded px-3 py-1.5 text-slate-100 focus:outline-none focus:border-cyan-500"
+              class="field w-full px-3 py-1.5 text-xs"
             />
           </div>
 
@@ -163,8 +163,9 @@
               <button
                 type="button"
                 onclick={() => (newType = 'subscription')}
-                class="p-2 rounded border text-center transition-colors {newType === 'subscription'
-                  ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300 font-medium'
+                class="p-2 rounded border text-center transition-colors cursor-pointer {newType ===
+                'subscription'
+                  ? 'bg-cyan-950/50 border-cyan-700 text-cyan-200 font-medium'
                   : 'bg-slate-950 border-slate-800 text-slate-400'}"
               >
                 外部 HTTP(S) 订阅 URL
@@ -172,8 +173,9 @@
               <button
                 type="button"
                 onclick={() => (newType = 'manual')}
-                class="p-2 rounded border text-center transition-colors {newType === 'manual'
-                  ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300 font-medium'
+                class="p-2 rounded border text-center transition-colors cursor-pointer {newType ===
+                'manual'
+                  ? 'bg-cyan-950/50 border-cyan-700 text-cyan-200 font-medium'
                   : 'bg-slate-950 border-slate-800 text-slate-400'}"
               >
                 自建/手动录入节点
@@ -191,7 +193,7 @@
                 type="text"
                 bind:value={newUrl}
                 placeholder="https://airport.com/api/v1/client/subscribe?token=xxx"
-                class="w-full bg-slate-950 border border-slate-700/80 rounded px-3 py-1.5 text-slate-100 font-mono focus:outline-none focus:border-cyan-500"
+                class="field w-full px-3 py-1.5 text-xs font-mono"
               />
               <span class="text-[11px] text-slate-500 mt-1 block"
                 >支持标准 Base64 订阅（SS/VMess/VLESS/Trojan/Hysteria2）及 sing-box 原生 JSON</span
@@ -207,7 +209,7 @@
                 bind:value={newRawContent}
                 rows="4"
                 placeholder="粘贴 vless://... 链接或单个 sing-box outbound JSON 结构"
-                class="w-full bg-slate-950 border border-slate-700/80 rounded p-2.5 text-slate-100 font-mono focus:outline-none focus:border-cyan-500"
+                class="field w-full p-2.5 text-xs font-mono"
               ></textarea>
             </div>
           {/if}
@@ -222,16 +224,12 @@
         {/if}
 
         <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+          <button type="button" onclick={resetForm} class="btn btn-secondary">取消</button>
           <button
-            onclick={resetForm}
-            class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs"
-          >
-            取消
-          </button>
-          <button
+            type="button"
             onclick={handleSaveSource}
             disabled={saving}
-            class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-50"
+            class="btn btn-primary"
           >
             {saving ? '保存中...' : editingId ? '保存修改' : '确认并导入'}
           </button>
@@ -253,7 +251,7 @@
       type="text"
       bind:value={searchKeyword}
       placeholder="搜索节点名称、地区 (如 香港、日本) 或协议类型 (如 vless, hysteria2)..."
-      class="bg-transparent text-xs text-slate-200 placeholder-slate-500 focus:outline-none w-full"
+      class="bg-transparent text-xs text-slate-200 placeholder-slate-500 w-full focus-visible:outline-2 focus-visible:outline-cyan-300 focus-visible:outline-offset-2"
     />
   </div>
 
@@ -286,7 +284,7 @@
               <span
                 class="px-2 py-0.5 rounded text-[11px] font-mono {src.type === 'subscription'
                   ? 'bg-cyan-950 text-cyan-300 border border-cyan-800/60'
-                  : 'bg-indigo-950 text-indigo-300 border border-indigo-800/60'}"
+                  : 'bg-slate-900 text-slate-300 border border-slate-700'}"
               >
                 {src.type === 'subscription' ? 'HTTP 订阅源' : '自建/手动源'}
               </span>
@@ -316,27 +314,27 @@
             </span>
             <span class="text-slate-500">更新于: {formatTime(src.lastUpdated)}</span>
             <button
+              type="button"
               onclick={() => openEdit(src)}
-              class="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
-              title="编辑节点源"
+              class="btn btn-ghost btn-icon"
+              aria-label="编辑节点源"
             >
               <Pencil size={13} />
             </button>
             <button
+              type="button"
               onclick={() => handleRefreshSource(src.id)}
               disabled={refreshingId === src.id}
-              class="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 disabled:opacity-50"
-              title="重新拉取并解析"
+              class="btn btn-ghost btn-icon"
+              aria-label="重新拉取并解析"
             >
-              <RefreshCw
-                size={13}
-                class={refreshingId === src.id ? 'animate-spin text-cyan-400' : ''}
-              />
+              <RefreshCw size={13} class={refreshingId === src.id ? 'animate-spin' : ''} />
             </button>
             <button
+              type="button"
               onclick={() => handleDeleteSource(src.id)}
-              class="p-1.5 rounded bg-slate-800/80 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700/80 hover:border-rose-800"
-              title="删除此节点源"
+              class="btn btn-ghost btn-icon btn-danger"
+              aria-label="删除此节点源"
             >
               <Trash2 size={13} />
             </button>
@@ -365,16 +363,7 @@
                   </td>
                   <td class="py-2.5 px-3">
                     <span
-                      class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase {node.type ===
-                      'hysteria2'
-                        ? 'bg-purple-950 text-purple-300 border border-purple-800/60'
-                        : node.type === 'vless'
-                          ? 'bg-cyan-950 text-cyan-300 border border-cyan-800/60'
-                          : node.type === 'vmess'
-                            ? 'bg-blue-950 text-blue-300 border border-blue-800/60'
-                            : node.type === 'trojan'
-                              ? 'bg-amber-950 text-amber-300 border border-amber-800/60'
-                              : 'bg-slate-800 text-slate-300'}"
+                      class="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-slate-300"
                     >
                       {node.type}
                     </span>
@@ -386,7 +375,7 @@
                     {#if node.tls?.reality}
                       <span class="text-emerald-400 font-semibold">Reality</span>
                     {:else if node.tls?.enabled}
-                      <span class="text-cyan-400">TLS ({node.tls.server_name || 'SNI'})</span>
+                      <span class="text-slate-300">TLS ({node.tls.server_name || 'SNI'})</span>
                     {:else}
                       <span>-</span>
                     {/if}

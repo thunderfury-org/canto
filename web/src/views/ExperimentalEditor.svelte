@@ -169,14 +169,14 @@
 <div class="space-y-4">
   <section class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
     <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
-      <ScrollText size={15} class="text-cyan-400" />
+      <ScrollText size={15} class="text-slate-400" />
       <span>日志</span>
     </h3>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <label class="block space-y-1">
         <span class="text-xs text-slate-400">日志级别</span>
         <select
-          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+          class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
           value={typeof log?.level === 'string' ? log.level : ''}
           onchange={(event) => commitLog(withLogLevel(log, event.currentTarget.value))}
         >
@@ -192,7 +192,7 @@
         <span class="text-xs text-slate-400">日志文件</span>
         <input
           type="text"
-          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+          class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
           value={outputOverride ?? (typeof log?.output === 'string' ? log.output : '')}
           oninput={(event) => {
             outputOverride = event.currentTarget.value;
@@ -221,7 +221,7 @@
     <div class="space-y-2">
       <button
         type="button"
-        class="text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+        class="btn btn-ghost"
         onclick={() => {
           logOtherOpen = !logOtherOpen;
         }}
@@ -231,7 +231,7 @@
       {#if logOtherOpen}
         <textarea
           spellcheck="false"
-          class="w-full h-28 bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200"
+          class="field w-full h-28 px-3 py-2 text-xs font-mono"
           value={logOtherOverride ?? logOtherText(log)}
           oninput={(event) => {
             logOtherOverride = event.currentTarget.value;
@@ -249,14 +249,14 @@
   <section class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
     <div class="flex items-center justify-between gap-3">
       <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
-        <Radio size={15} class="text-indigo-400" />
+        <Radio size={15} class="text-slate-400" />
         <span>Clash API</span>
       </h3>
       {#if clash}
         <button
           type="button"
           onclick={() => commitExperimental(disableClashApi(experimental))}
-          class="px-3 py-1.5 rounded-md border border-slate-700 text-xs text-slate-300 hover:bg-slate-800 cursor-pointer"
+          class="btn btn-secondary"
         >
           停用
         </button>
@@ -264,7 +264,7 @@
         <button
           type="button"
           onclick={() => commitExperimental(enableClashApi(experimental))}
-          class="px-3 py-1.5 rounded-md bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 text-xs font-medium cursor-pointer"
+          class="btn btn-secondary"
         >
           启用
         </button>
@@ -278,7 +278,7 @@
           <span class="text-xs text-slate-400">控制器监听地址</span>
           <input
             type="text"
-            class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
             value={controllerOverride ??
               (typeof clash.external_controller === 'string' ? clash.external_controller : '')}
             oninput={(event) => {
@@ -301,7 +301,7 @@
           <input
             type="password"
             autocomplete="off"
-            class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
             value={secretOverride ?? (typeof clash.secret === 'string' ? clash.secret : '')}
             oninput={(event) => {
               secretOverride = event.currentTarget.value;
@@ -320,7 +320,7 @@
         <label class="block space-y-1">
           <span class="text-xs text-slate-400">默认模式</span>
           <select
-            class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
             value={clash.default_mode || ''}
             onchange={(event) =>
               commitExperimental(
@@ -339,7 +339,7 @@
           <span class="text-xs text-slate-400">外部面板</span>
           <input
             type="text"
-            class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
             value={uiOverride ?? (typeof clash.external_ui === 'string' ? clash.external_ui : '')}
             oninput={(event) => {
               uiOverride = event.currentTarget.value;
@@ -359,7 +359,7 @@
           <span class="text-xs text-slate-400">面板下载地址</span>
           <input
             type="text"
-            class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
             value={downloadOverride ??
               (typeof clash.external_ui_download_url === 'string'
                 ? clash.external_ui_download_url
@@ -387,7 +387,7 @@
       <div class="space-y-2">
         <button
           type="button"
-          class="text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+          class="btn btn-ghost"
           onclick={() => {
             clashOtherOpen = !clashOtherOpen;
           }}
@@ -397,7 +397,7 @@
         {#if clashOtherOpen}
           <textarea
             spellcheck="false"
-            class="w-full h-28 bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200"
+            class="field w-full h-28 px-3 py-2 text-xs font-mono"
             value={clashOtherOverride ?? clashOtherText(experimental)}
             oninput={(event) => {
               clashOtherOverride = event.currentTarget.value;
@@ -428,7 +428,7 @@
     <div class="space-y-2">
       <button
         type="button"
-        class="text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+        class="btn btn-ghost"
         onclick={() => {
           cacheOtherOpen = !cacheOtherOpen;
         }}
@@ -438,7 +438,7 @@
       {#if cacheOtherOpen}
         <textarea
           spellcheck="false"
-          class="w-full h-28 bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200"
+          class="field w-full h-28 px-3 py-2 text-xs font-mono"
           value={cacheOtherOverride ?? cacheOtherText(experimental)}
           oninput={(event) => {
             cacheOtherOverride = event.currentTarget.value;

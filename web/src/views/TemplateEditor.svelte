@@ -673,217 +673,248 @@
 
   {#if !store.selectedTemplate}
     <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-8 text-center space-y-3">
-      <FileCode2 size={28} class="mx-auto text-indigo-400" />
+      <FileCode2 size={28} class="mx-auto text-slate-400" />
       <h2 class="text-sm font-semibold text-slate-100">还没有配置模板</h2>
       <p class="text-xs text-slate-400">
         创建一份配置模板后，即可分模块编辑 DNS、入站、策略组和路由规则。
       </p>
       <button
+        type="button"
         onclick={handleCreateTemplate}
         disabled={creating}
-        class="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium inline-flex items-center gap-1.5"
+        class="btn btn-primary"
       >
         <Plus size={13} />
         <span>{creating ? '创建中...' : '新建配置模板'}</span>
       </button>
     </div>
   {:else}
-    <!-- Top Control Bar -->
-    <div
-      class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3"
-    >
-      <!-- Template Switcher & Quick Meta Edit -->
-      <div class="flex flex-wrap items-center gap-2.5">
-        <FileCode2 size={18} class="text-indigo-400 shrink-0" />
+    <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 space-y-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="text-xs text-slate-400" for="template-switcher">切换模板</label>
         <select
+          id="template-switcher"
           bind:value={store.selectedTemplateId}
-          class="bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-cyan-500 font-medium"
+          class="field px-2.5 py-1 text-sm font-medium"
         >
           {#each templateChoices as tpl}
             <option value={tpl.id}>{tpl.label}</option>
           {/each}
         </select>
-
-        <div class="h-4 w-px bg-slate-800 hidden sm:block"></div>
-
-        <!-- Editable Template Name -->
-        <input
-          type="text"
-          bind:value={store.selectedTemplate.name}
-          oninput={triggerUpdate}
-          title="点击直接修改模板名称"
-          placeholder="模板名称"
-          class="bg-slate-950/80 border border-slate-700/60 rounded px-2.5 py-1 text-xs text-slate-100 font-semibold focus:border-cyan-500 focus:outline-none max-w-[200px]"
-        />
-
-        <!-- Editable Template Description -->
-        <input
-          type="text"
-          bind:value={store.selectedTemplate.description}
-          oninput={triggerUpdate}
-          title="修改用途描述"
-          placeholder="用途描述..."
-          class="bg-slate-950/80 border border-slate-700/60 rounded px-2.5 py-1 text-xs text-slate-300 focus:border-cyan-500 focus:outline-none hidden lg:block max-w-[300px]"
-        />
-
         <button
+          type="button"
           onclick={handleCreateTemplate}
           disabled={creating}
-          title="基于当前模板新建克隆"
-          class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700 disabled:opacity-50"
+          class="btn btn-secondary"
         >
           <Plus size={13} />
           <span>克隆新建</span>
         </button>
-
         <button
+          type="button"
           onclick={() => handleDeleteTemplate(store.selectedTemplateId)}
-          title="删除当前模板"
-          class="p-1 rounded bg-slate-800/80 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700/80 hover:border-rose-800 text-xs"
+          class="btn btn-ghost btn-icon btn-danger"
+          aria-label="删除当前模板"
         >
-          <Trash2 size={13} />
+          <Trash2 size={14} />
         </button>
       </div>
 
-      {#if store.isAuthenticated}
-        <div class="flex flex-wrap items-center gap-2">
-          {#if currentDraft.dirty}
-            <span class="text-xs text-amber-300 font-mono">未保存</span>
-          {/if}
-          {#if currentDraft.stale}
-            <span class="text-xs text-amber-200">服务器上的模板已更新</span>
-          {/if}
-          {#if currentDraft.missing}
-            <span class="text-xs text-rose-300">模板已不在服务器上</span>
-          {/if}
-          <button
-            type="button"
-            onclick={handleSaveTemplate}
-            disabled={!currentDraft.dirty || currentDraft.stale || saving || discarding}
-            class="px-2.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium disabled:opacity-40 disabled:hover:bg-cyan-600"
-          >
-            {saving ? '保存中' : '保存'}
-          </button>
-          <button
-            type="button"
-            onclick={handleDiscardTemplate}
-            disabled={!currentDraft.dirty || saving || discarding}
-            class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 disabled:opacity-40"
-          >
-            放弃
-          </button>
-          {#if currentDraft.dirty && currentDraft.stale && !currentDraft.missing}
+      <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div class="min-w-0 flex-1 space-y-2">
+          <h1>
+            <input
+              type="text"
+              bind:value={store.selectedTemplate.name}
+              oninput={triggerUpdate}
+              aria-label="模板名称"
+              placeholder="模板名称"
+              class="field w-full px-2 py-1 text-base font-semibold"
+            />
+          </h1>
+          <input
+            type="text"
+            bind:value={store.selectedTemplate.description}
+            oninput={triggerUpdate}
+            aria-label="用途描述"
+            placeholder="用途描述"
+            class="field w-full px-2.5 py-1 text-xs text-slate-300"
+          />
+        </div>
+
+        {#if store.isAuthenticated}
+          <div class="flex flex-wrap items-center gap-2 md:justify-end">
+            {#if currentDraft.dirty}
+              <span class="text-xs text-amber-300">未保存</span>
+            {/if}
+            {#if currentDraft.stale}
+              <span class="text-xs text-amber-200">服务器上的模板已更新</span>
+            {/if}
+            {#if currentDraft.missing}
+              <span class="text-xs text-rose-300">模板已不在服务器上</span>
+            {/if}
             <button
               type="button"
-              onclick={handleForceSave}
-              disabled={saving || discarding}
-              class="px-2.5 py-1 rounded bg-amber-700 hover:bg-amber-600 text-white text-xs font-medium disabled:opacity-40"
+              onclick={handleSaveTemplate}
+              disabled={!currentDraft.dirty || currentDraft.stale || saving || discarding}
+              class="btn {currentDraft.dirty && !currentDraft.stale ? 'btn-primary' : 'btn-ghost'}"
             >
-              强制保存
+              {saving ? '保存中' : '保存'}
             </button>
-          {/if}
-        </div>
-      {:else if savedNotice}
-        <span class="text-xs text-emerald-400 flex items-center gap-1 font-mono">
-          <Check size={13} /> 已同步更新
-        </span>
-      {/if}
+            {#if currentDraft.dirty}
+              <button
+                type="button"
+                onclick={handleDiscardTemplate}
+                disabled={saving || discarding}
+                class="btn btn-secondary"
+              >
+                放弃
+              </button>
+            {/if}
+            {#if currentDraft.dirty && currentDraft.stale && !currentDraft.missing}
+              <button
+                type="button"
+                onclick={handleForceSave}
+                disabled={saving || discarding}
+                class="btn btn-warning"
+              >
+                强制保存
+              </button>
+            {/if}
+          </div>
+        {:else if savedNotice}
+          <span class="text-xs text-emerald-400 flex items-center gap-1">
+            <Check size={13} /> 已同步更新
+          </span>
+        {/if}
+      </div>
     </div>
 
     <!-- Modular Visual Editor Mode -->
     <div class="space-y-3">
-      <!-- Sub-module Navigation -->
       <div
         class="flex flex-wrap items-center gap-1.5 bg-slate-900/60 p-1 rounded-lg border border-slate-800 text-xs"
+        role="tablist"
+        aria-label="模板分区"
       >
         <button
+          type="button"
+          role="tab"
+          aria-selected={currentSubTab === 'node_groups'}
+          aria-label="节点分组，{store.selectedTemplate.content?.node_groups?.length || 0} 项"
           onclick={() => switchSubTab('node_groups')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap transition-all {currentSubTab ===
           'node_groups'
-            ? 'bg-slate-800 text-amber-300 shadow-sm border border-slate-700/60'
+            ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
             : 'text-slate-400 hover:text-slate-200'}"
         >
-          <Layers size={13} class="text-amber-400" />
+          <Layers size={13} />
           <span>节点分组</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded" aria-hidden="true"
             >{store.selectedTemplate.content?.node_groups?.length || 0}</span
           >
         </button>
 
         <button
+          type="button"
+          role="tab"
+          aria-selected={currentSubTab === 'policy_groups'}
+          aria-label="出站策略组，{userPolicyGroups.length} 项"
           onclick={() => switchSubTab('policy_groups')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap transition-all {currentSubTab ===
           'policy_groups'
             ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
             : 'text-slate-400 hover:text-slate-200'}"
         >
-          <Sparkles size={13} class="text-cyan-400" />
+          <Sparkles size={13} />
           <span>出站策略组</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded" aria-hidden="true"
             >{userPolicyGroups.length}</span
           >
         </button>
 
         <button
+          type="button"
+          role="tab"
+          aria-selected={currentSubTab === 'rule_sets'}
+          aria-label="规则集，{allDefinedRuleTags.length} 项"
           onclick={() => switchSubTab('rule_sets')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap transition-all {currentSubTab ===
           'rule_sets'
-            ? 'bg-slate-800 text-emerald-300 shadow-sm border border-slate-700/60'
+            ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
             : 'text-slate-400 hover:text-slate-200'}"
         >
-          <Bookmark size={13} class="text-emerald-400" />
+          <Bookmark size={13} />
           <span>规则集</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded" aria-hidden="true"
             >{allDefinedRuleTags.length}</span
           >
         </button>
 
         <button
+          type="button"
+          role="tab"
+          aria-selected={currentSubTab === 'dns'}
+          aria-label="DNS 服务器与分流，{store.selectedTemplate.content?.dns?.servers?.length ||
+            0} 项"
           onclick={() => switchSubTab('dns')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap transition-all {currentSubTab ===
           'dns'
             ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
             : 'text-slate-400 hover:text-slate-200'}"
         >
           <Radio size={13} />
           <span>DNS 服务器与分流</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded" aria-hidden="true"
             >{store.selectedTemplate.content?.dns?.servers?.length || 0}</span
           >
         </button>
 
         <button
+          type="button"
+          role="tab"
+          aria-selected={currentSubTab === 'route'}
+          aria-label="路由分流规则，{store.selectedTemplate.content?.route?.rules?.length || 0} 项"
           onclick={() => switchSubTab('route')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap transition-all {currentSubTab ===
           'route'
             ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
             : 'text-slate-400 hover:text-slate-200'}"
         >
           <Layers size={13} />
           <span>路由分流规则</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded" aria-hidden="true"
             >{store.selectedTemplate.content?.route?.rules?.length || 0}</span
           >
         </button>
 
         <button
+          type="button"
+          role="tab"
+          aria-selected={currentSubTab === 'inbounds'}
+          aria-label="入站与端点，{(store.selectedTemplate.content?.inbounds?.length || 0) +
+            (store.selectedTemplate.content?.endpoints?.length || 0)} 项"
           onclick={() => switchSubTab('inbounds')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap transition-all {currentSubTab ===
           'inbounds'
             ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
             : 'text-slate-400 hover:text-slate-200'}"
         >
           <Cable size={13} />
           <span>入站与端点</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">
+          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded" aria-hidden="true">
             {(store.selectedTemplate.content?.inbounds?.length || 0) +
               (store.selectedTemplate.content?.endpoints?.length || 0)}
           </span>
         </button>
 
         <button
+          type="button"
+          role="tab"
+          aria-selected={currentSubTab === 'experimental'}
+          aria-label="其他"
           onclick={() => switchSubTab('experimental')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap transition-all {currentSubTab ===
           'experimental'
             ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
             : 'text-slate-400 hover:text-slate-200'}"
@@ -900,10 +931,7 @@
             <div class="text-xs text-slate-400">
               节点分组用于从节点源中通过正则表达式（默认忽略大小写）筛选并聚合代理节点，支持自动测速优选。
             </div>
-            <button
-              onclick={addNodeGroup}
-              class="px-2.5 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium flex items-center gap-1 shadow-sm"
-            >
+            <button type="button" onclick={addNodeGroup} class="btn btn-secondary shrink-0">
               <Plus size={13} />
               <span>添加节点分组</span>
             </button>
@@ -915,105 +943,90 @@
               {@const matched = matchNodeTags(currentPattern, allAvailableTags)}
               {@const matchedNodes = matched.tags}
               {@const isValidRegex = matched.ok}
-              <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-3.5 space-y-3">
-                <!-- Group Header: Type + Tag + Delete -->
+              <div
+                class="flex h-full flex-col bg-slate-900/80 border border-slate-800 rounded-lg p-3.5"
+              >
                 <div class="flex items-center justify-between gap-2">
-                  <div class="flex items-center gap-2 flex-1">
+                  <div class="flex min-w-0 flex-1 items-center gap-2">
                     <select
                       bind:value={ng.type}
                       onchange={triggerUpdate}
-                      class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold {ng.type ===
-                      'urltest'
-                        ? 'text-amber-300'
-                        : 'text-cyan-300'}"
+                      aria-label="节点分组类型"
+                      class="field px-2 py-1 text-xs font-mono font-semibold text-slate-200"
                     >
                       <option value="urltest">URLTest</option>
                       <option value="selector">Selector</option>
                     </select>
-
                     <input
                       type="text"
                       bind:value={ng.tag}
                       oninput={triggerUpdate}
+                      aria-label="节点分组名称"
                       placeholder="分组标签，如：香港节点"
-                      class="bg-slate-950 text-slate-100 text-sm font-semibold px-2 py-0.5 rounded border border-slate-800 focus:border-amber-500 focus:outline-none flex-1 font-mono"
+                      class="field min-w-0 flex-1 px-2 py-1 text-sm font-semibold font-mono"
                     />
                   </div>
-
                   <button
+                    type="button"
                     onclick={() => removeNodeGroup(ngIdx)}
-                    title="删除此节点分组"
-                    class="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800"
+                    class="btn btn-ghost btn-icon btn-danger"
+                    aria-label="删除此节点分组"
                   >
                     <Trash2 size={14} />
                   </button>
                 </div>
 
-                <!-- Urltest specific options -->
-                {#if ng.type === 'urltest'}
-                  <div
-                    class="grid grid-cols-2 gap-2 bg-slate-950/60 p-2 rounded border border-slate-800/80 text-xs"
-                  >
-                    <div>
-                      <span class="text-slate-400 text-[11px] block">容差</span>
-                      <input
-                        type="number"
-                        bind:value={ng.tolerance}
-                        oninput={triggerUpdate}
-                        placeholder="50 (ms)"
-                        class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-slate-200 font-mono"
-                      />
-                    </div>
-                    <div>
-                      <span class="text-slate-400 text-[11px] block">测速间隔</span>
-                      <input
-                        type="text"
-                        bind:value={ng.interval}
-                        oninput={triggerUpdate}
-                        placeholder="3m"
-                        class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-slate-200 font-mono"
-                      />
-                    </div>
-                  </div>
-                {/if}
-
-                <!-- Single Regex Pattern Section -->
-                <div class="space-y-1.5 pt-1">
-                  <div class="flex items-center justify-between text-xs text-slate-400">
-                    <span class="font-medium">节点筛选正则:</span>
-                    {#if !isValidRegex}
-                      <span class="text-rose-400 font-medium">正则格式错误</span>
-                    {:else}
-                      <span
-                        class="text-[11px] {matchedNodes.length > 0
-                          ? 'text-amber-400 font-medium'
-                          : 'text-slate-500'}"
-                        title={matchedNodes.join(', ')}
-                      >
-                        命中 {matchedNodes.length} 个节点
-                      </span>
-                    {/if}
-                  </div>
-
-                  <div class="relative flex items-center">
+                <div
+                  class="mt-3 grid grid-cols-2 gap-2 rounded border border-slate-800/80 bg-slate-950/60 p-2 text-xs"
+                >
+                  <label class="block">
+                    <span class="mb-1 block text-slate-400">容差</span>
+                    <input
+                      type="number"
+                      bind:value={ng.tolerance}
+                      oninput={triggerUpdate}
+                      disabled={ng.type !== 'urltest'}
+                      placeholder="50"
+                      class="field w-full px-2 py-1 font-mono disabled:opacity-50"
+                    />
+                  </label>
+                  <label class="block">
+                    <span class="mb-1 block text-slate-400">测速间隔</span>
                     <input
                       type="text"
-                      value={currentPattern}
-                      oninput={(e) => updateNodeGroupPattern(ngIdx, e.currentTarget.value)}
-                      placeholder="例如：港|hk 或 .*"
-                      class="w-full bg-slate-950 text-xs px-3 py-2 rounded border {isValidRegex
-                        ? 'border-slate-800 focus:border-amber-500/80'
-                        : 'border-rose-800 text-rose-200'} text-slate-200 focus:outline-none font-mono"
+                      bind:value={ng.interval}
+                      oninput={triggerUpdate}
+                      disabled={ng.type !== 'urltest'}
+                      placeholder="3m"
+                      class="field w-full px-2 py-1 font-mono disabled:opacity-50"
                     />
-                    {#if isValidRegex && matchedNodes.length > 0}
-                      <span
-                        class="absolute right-2.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60 font-mono pointer-events-none"
-                      >
-                        {matchedNodes.length} 节点
-                      </span>
-                    {/if}
-                  </div>
+                  </label>
+                  <p class="col-span-2 text-slate-400">
+                    {ng.type === 'urltest' ? '按间隔自动测速' : '仅 URLTest 使用'}
+                  </p>
                 </div>
+
+                <div class="mt-3 space-y-1.5">
+                  <label
+                    class="block text-xs font-medium text-slate-400"
+                    for="node-pattern-{ngIdx}"
+                  >
+                    节点筛选正则
+                  </label>
+                  <input
+                    id="node-pattern-{ngIdx}"
+                    type="text"
+                    value={currentPattern}
+                    oninput={(e) => updateNodeGroupPattern(ngIdx, e.currentTarget.value)}
+                    placeholder="例如：港|hk 或 .*"
+                    class="field w-full px-3 py-2 text-xs font-mono {isValidRegex
+                      ? ''
+                      : 'border-rose-800 text-rose-200'}"
+                  />
+                </div>
+                <p class="mt-auto pt-3 text-xs {isValidRegex ? 'text-slate-400' : 'text-rose-300'}">
+                  {isValidRegex ? `命中 ${matchedNodes.length} 个节点` : '正则格式错误'}
+                </p>
               </div>
             {/each}
           </div>
@@ -1033,7 +1046,7 @@
             <button
               type="button"
               onclick={addPolicyGroup}
-              class="px-2.5 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium flex items-center gap-1 shadow-sm shrink-0 self-start sm:self-auto cursor-pointer"
+              class="btn btn-secondary shrink-0 self-start sm:self-auto"
             >
               <Plus size={13} />
               <span>添加出站策略组</span>
@@ -1044,7 +1057,7 @@
           <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-3.5 space-y-2.5">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-1.5 text-xs text-slate-200 font-semibold">
-                <Shield size={14} class="text-emerald-400" />
+                <Shield size={14} class="text-slate-400" />
                 <span>系统内置基础出站 (Base Outbounds)</span>
               </div>
               <span class="text-[11px] text-slate-500"
@@ -1071,7 +1084,7 @@
                       oninput={triggerUpdate}
                       placeholder="直连"
                       title="编辑直连出站标签"
-                      class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-100 font-mono font-medium focus:border-cyan-500 focus:outline-none flex-1 text-xs"
+                      class="field flex-1 px-2 py-1 text-xs font-mono font-medium"
                     />
                   </div>
                   <div
@@ -1102,7 +1115,7 @@
                       oninput={triggerUpdate}
                       placeholder="block"
                       title="编辑阻断出站标签"
-                      class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-100 font-mono font-medium focus:border-cyan-500 focus:outline-none flex-1 text-xs"
+                      class="field flex-1 px-2 py-1 text-xs font-mono font-medium"
                     />
                   </div>
                   <div
@@ -1122,7 +1135,7 @@
             <div class="overflow-x-auto md:overflow-visible">
               <table class="w-full text-xs text-left text-slate-300">
                 <thead
-                  class="bg-slate-950/90 text-slate-400 uppercase font-mono border-b border-slate-800 text-[11px]"
+                  class="bg-slate-950/90 text-slate-400 font-mono border-b border-slate-800 text-[11px]"
                 >
                   <tr>
                     <th class="py-2.5 px-3.5 w-[200px]">策略组标签 (Tag)</th>
@@ -1141,7 +1154,7 @@
                           bind:value={pg.tag}
                           oninput={triggerUpdate}
                           placeholder="策略组标签"
-                          class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-100 font-semibold focus:border-cyan-500 focus:outline-none font-mono"
+                          class="field w-full px-2.5 py-1 text-xs font-semibold font-mono"
                         />
                       </td>
 
@@ -1160,7 +1173,7 @@
                         <select
                           bind:value={pg.default}
                           onchange={triggerUpdate}
-                          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-cyan-200 font-mono focus:border-cyan-500 focus:outline-none"
+                          class="field w-full px-2 py-1 text-xs font-mono"
                         >
                           <option value="">(首项: {pg.outbounds?.[0] || '空'})</option>
                           {#each pg.outbounds || [] as cand}
@@ -1174,8 +1187,8 @@
                         <button
                           type="button"
                           onclick={() => removePolicyGroup(pg)}
-                          title="删除此策略组"
-                          class="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                          class="btn btn-ghost btn-icon btn-danger"
+                          aria-label="删除此策略组"
                         >
                           <Trash2 size={13} />
                         </button>
@@ -1204,20 +1217,13 @@
             class="flex items-center justify-between bg-slate-900/80 border border-slate-800 rounded-lg p-3.5"
           >
             <div>
-              <h3 class="text-sm font-semibold text-slate-100 flex items-center gap-1.5">
-                <Bookmark size={16} class="text-emerald-400" />
-                <span>外部规则源管理 (Rule Set Providers)</span>
-              </h3>
+              <h3 class="text-sm font-semibold text-slate-100">规则源</h3>
               <p class="text-xs text-slate-400 mt-0.5">
                 支持同时引入多个规则源（如同时引入 SagerNet GeoSite 与 MetaCubeX GeoIP），通过独立
                 Tag 前缀（如 geosite- / geoip-）彻底隔离同名冲突。
               </p>
             </div>
-            <button
-              type="button"
-              onclick={addProvider}
-              class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
-            >
+            <button type="button" onclick={addProvider} class="btn btn-secondary shrink-0">
               <Plus size={13} />
               <span>添加规则源</span>
             </button>
@@ -1251,8 +1257,8 @@
                     <button
                       type="button"
                       onclick={() => toggleProviderExpanded(pIdx)}
-                      class="p-1 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-                      title={isExpanded ? '折叠此源' : '展开此源'}
+                      class="btn btn-ghost btn-icon"
+                      aria-label={isExpanded ? '折叠此源' : '展开此源'}
                     >
                       {#if isExpanded}
                         <ChevronDown size={15} />
@@ -1267,7 +1273,7 @@
                       bind:value={p.name}
                       oninput={triggerUpdate}
                       placeholder="规则源名称 (如 SagerNet GeoSite)"
-                      class="bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-100 font-bold focus:border-emerald-500 focus:outline-none w-48 sm:w-56"
+                      class="field w-48 px-2.5 py-1 text-xs font-semibold sm:w-56"
                     />
 
                     <!-- Quick Preset Switcher -->
@@ -1306,8 +1312,8 @@
                     <button
                       type="button"
                       onclick={() => removeProvider(pIdx)}
-                      class="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-900 transition-colors"
-                      title="删除此规则源"
+                      class="btn btn-ghost btn-icon btn-danger"
+                      aria-label="删除此规则源"
                     >
                       <Trash2 size={13} />
                     </button>
@@ -1323,7 +1329,7 @@
                     >
                       <div class="md:col-span-5 space-y-1">
                         <span class="text-[11px] text-slate-400 flex items-center gap-1 font-sans">
-                          <Globe size={11} class="text-indigo-400" />
+                          <Globe size={11} class="text-slate-400" />
                           <span>仓库地址 / 分支 / 目录 (owner/repo#branch/path)</span>
                         </span>
                         <input
@@ -1331,7 +1337,7 @@
                           bind:value={p.source_url}
                           oninput={triggerUpdate}
                           placeholder="例如: SagerNet/sing-geosite#rule-set 或 MetaCubeX/meta-rules-dat#sing/geo/geosite"
-                          class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 font-mono focus:border-emerald-500 focus:outline-none"
+                          class="field w-full px-2.5 py-1 text-xs font-mono"
                         />
                       </div>
 
@@ -1347,7 +1353,7 @@
                           bind:value={p.tag_prefix}
                           oninput={triggerUpdate}
                           placeholder="例如: geosite- 或 geoip-"
-                          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-amber-300 font-mono focus:border-amber-500 focus:outline-none"
+                          class="field w-full px-2 py-1 text-xs font-mono text-amber-200"
                         />
                       </div>
 
@@ -1356,7 +1362,7 @@
                         <select
                           bind:value={p.format}
                           onchange={triggerUpdate}
-                          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 font-mono"
+                          class="field w-full px-2 py-1 text-xs text-slate-200 font-mono"
                         >
                           <option value="binary">.srs (二进制, 推荐)</option>
                           <option value="source">.json (源码格式)</option>
@@ -1368,7 +1374,7 @@
                         <select
                           bind:value={p.download_detour}
                           onchange={triggerUpdate}
-                          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 font-mono"
+                          class="field w-full px-2 py-1 text-xs text-slate-200 font-mono"
                         >
                           <option value="ALL">ALL (默认)</option>
                           <option value="直连">直连</option>
@@ -1385,7 +1391,7 @@
                           type="button"
                           onclick={() => inspectProvider(pIdx)}
                           disabled={inspectState.inspecting}
-                          class="w-full py-1 px-2.5 rounded bg-emerald-700/40 hover:bg-emerald-600/60 border border-emerald-500/50 text-emerald-100 text-xs font-medium flex items-center justify-center gap-1 shadow-sm disabled:opacity-50 transition-colors cursor-pointer"
+                          class="btn btn-secondary w-full"
                         >
                           <RefreshCw
                             size={12}
@@ -1459,7 +1465,7 @@
                             }
                           }}
                           placeholder="智能搜索并快速添加规则 (如 bilibili, openai, steam, apple)... 回车添加"
-                          class="w-full bg-slate-950 border border-slate-800 rounded pl-8 pr-3 py-1.5 text-xs text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
+                          class="field w-full rounded py-1.5 pl-8 pr-3 text-xs font-mono"
                         />
 
                         <!-- Live Suggestion Dropdown -->
@@ -1507,7 +1513,7 @@
                           onclick={() => openBrowseModal(pIdx)}
                           class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium flex items-center justify-center gap-1.5 shrink-0 transition-colors cursor-pointer"
                         >
-                          <Bookmark size={13} class="text-cyan-400" />
+                          <Bookmark size={13} class="text-slate-400" />
                           <span>浏览全库 (共 {inspectState.rules.length} 条)</span>
                         </button>
                       {/if}
@@ -1541,7 +1547,7 @@
                             <span class="font-bold text-emerald-400">{t}</span>
                             {#if isRef}
                               <span
-                                class="text-[9px] text-cyan-400 font-sans"
+                                class="text-[9px] text-slate-400 font-sans"
                                 title="已在路由或 DNS 分流规则中被引用">(已引用)</span
                               >
                             {/if}
@@ -1573,11 +1579,7 @@
               >
                 <Bookmark size={24} class="mx-auto text-slate-600" />
                 <p class="text-xs text-slate-400">尚未添加任何规则源</p>
-                <button
-                  type="button"
-                  onclick={addProvider}
-                  class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium inline-flex items-center gap-1 shadow-sm"
-                >
+                <button type="button" onclick={addProvider} class="btn btn-secondary">
                   <Plus size={13} />
                   <span>添加第一个规则源</span>
                 </button>
@@ -1614,7 +1616,7 @@
               class="p-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2"
             >
               <div class="flex items-center gap-2">
-                <Bookmark size={16} class="text-emerald-400" />
+                <Bookmark size={16} class="text-slate-400" />
                 <div>
                   <h4 class="text-sm font-bold text-slate-100 font-sans">
                     规则全库 — {p?.name || '规则源'} (共 {allRules.length} 条)
@@ -1649,7 +1651,7 @@
                       modalDisplayLimit = 240;
                     }}
                     placeholder="按规则名模糊检索..."
-                    class="w-full bg-slate-900 border border-slate-800 rounded pl-8 pr-3 py-1.5 text-xs text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
+                    class="field w-full rounded py-1.5 pl-8 pr-3 text-xs font-mono"
                   />
                 </div>
                 <div class="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
@@ -1662,14 +1664,14 @@
                         }
                       }
                     }}
-                    class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-sans text-xs"
+                    class="btn btn-secondary"
                   >
                     全选当前过滤 ({modalFilteredRules.length})
                   </button>
                   <button
                     type="button"
                     onclick={() => clearProviderTags(pIdx)}
-                    class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-sans text-xs"
+                    class="btn btn-secondary"
                   >
                     清空本源已选
                   </button>
@@ -1687,7 +1689,7 @@
                     }}
                     class="px-1.5 py-0.5 rounded transition-colors {browseModal.letterFilter ===
                     letter
-                      ? 'bg-cyan-600 text-white font-bold'
+                      ? 'bg-cyan-300 text-slate-950 font-semibold'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}"
                   >
                     {letter}
@@ -1775,11 +1777,7 @@
                   >{Array.isArray(p?.tag) ? p.tag.length : 0}</span
                 > 条规则
               </span>
-              <button
-                type="button"
-                onclick={closeBrowseModal}
-                class="px-4 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs shadow-sm transition-colors cursor-pointer"
-              >
+              <button type="button" onclick={closeBrowseModal} class="btn btn-primary">
                 完成
               </button>
             </div>

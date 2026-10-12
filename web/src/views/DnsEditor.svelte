@@ -319,16 +319,12 @@
     <div class="flex items-center justify-between border-b border-slate-800 pb-3 gap-3">
       <div>
         <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
-          <Radio size={15} class="text-indigo-400" />
+          <Radio size={15} class="text-slate-400" />
           <span>上游 DNS 服务器</span>
         </h3>
         <span class="text-xs text-slate-400">配置协议、上游地址、出站 detour 和域名解析</span>
       </div>
-      <button
-        type="button"
-        onclick={openServerCreate}
-        class="px-3 py-1.5 rounded-md bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 text-xs font-medium flex items-center gap-1.5 cursor-pointer"
-      >
+      <button type="button" onclick={openServerCreate} class="btn btn-secondary shrink-0">
         <Plus size={13} />
         <span>添加 DNS 服务器</span>
       </button>
@@ -366,7 +362,7 @@
                   <span class="text-[10px] text-amber-300">标签重复</span>
                 {/if}
               </span>
-              <span class="font-mono text-[11px] text-indigo-300 md:w-28 md:shrink-0"
+              <span class="font-mono text-[11px] text-slate-300 md:w-28 md:shrink-0"
                 >{server?.type || 'https'}</span
               >
               <span
@@ -397,7 +393,7 @@
               title="删除此 DNS 服务器"
               aria-label="删除此 DNS 服务器"
               onclick={() => removeServer(index)}
-              class="w-10 shrink-0 p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 cursor-pointer"
+              class="btn btn-ghost btn-icon btn-danger w-10 shrink-0"
             >
               <Trash2 size={13} />
             </button>
@@ -415,11 +411,7 @@
           >从上到下逐条评估 DNS 查询，首条匹配即使用对应解析结果</span
         >
       </div>
-      <button
-        type="button"
-        onclick={openRuleCreate}
-        class="px-3 py-1.5 rounded-md bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-200 border border-cyan-500/40 text-xs font-medium flex items-center gap-1.5 cursor-pointer"
-      >
+      <button type="button" onclick={openRuleCreate} class="btn btn-secondary shrink-0">
         <Plus size={13} />
         <span>添加 DNS 规则</span>
       </button>
@@ -560,7 +552,7 @@
                 aria-label="上移"
                 disabled={rIdx === 0}
                 onclick={() => move(rIdx, -1)}
-                class="p-1 rounded text-slate-500 hover:text-cyan-300 hover:bg-slate-800 disabled:opacity-20 cursor-pointer"
+                class="btn btn-ghost btn-icon"
               >
                 <ArrowUp size={13} />
               </button>
@@ -570,7 +562,7 @@
                 aria-label="下移"
                 disabled={rIdx === rules.length - 1}
                 onclick={() => move(rIdx, 1)}
-                class="p-1 rounded text-slate-500 hover:text-cyan-300 hover:bg-slate-800 disabled:opacity-20 cursor-pointer"
+                class="btn btn-ghost btn-icon"
               >
                 <ArrowDown size={13} />
               </button>
@@ -579,7 +571,7 @@
                 title="删除此规则"
                 aria-label="删除此规则"
                 onclick={() => removeAt(rIdx)}
-                class="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 cursor-pointer"
+                class="btn btn-ghost btn-icon btn-danger"
               >
                 <Trash2 size={13} />
               </button>
@@ -645,7 +637,7 @@
           title="取消"
           aria-label="取消"
           onclick={cancelDrawer}
-          class="p-1 text-slate-500 hover:text-slate-200 cursor-pointer"
+          class="btn btn-ghost btn-icon"
         >
           <X size={16} />
         </button>
@@ -658,14 +650,14 @@
             <input
               type="text"
               bind:value={drawer.draft.tag}
-              class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-100"
+              class="field w-full px-2 py-1.5 text-xs font-mono text-slate-100"
             />
           </label>
           <label class="block space-y-1">
             <span class="text-xs text-slate-300">协议</span>
             <select
               bind:value={drawer.draft.type}
-              class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+              class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
             >
               {#each serverTypeOptions(drawer.draft.type) as option}
                 <option value={option.value}
@@ -679,14 +671,14 @@
             <input
               type="text"
               bind:value={drawer.draft.server}
-              class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+              class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
             />
           </label>
           <label class="block space-y-1">
             <span class="text-xs text-slate-300">Detour</span>
             <select
               bind:value={drawer.draft.detour}
-              class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+              class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
             >
               <option value="">(无)</option>
               {#each tagOptions(outboundTags, drawer.draft.detour) as option}
@@ -700,7 +692,7 @@
             <span class="text-xs text-slate-300">域名解析</span>
             <select
               bind:value={drawer.draft.domainResolver}
-              class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200"
+              class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
             >
               <option value="">(无)</option>
               {#each resolverOptions(namedServerTags, drawer.draft.tag, drawer.draft.domainResolver) as option}
@@ -838,7 +830,7 @@
             </div>
             {#if drawer.draft.resultMode === 'server'}
               <select
-                class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-cyan-300"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-cyan-300"
                 value={drawer.draft.server}
                 onchange={(event) => {
                   drawer.draft.server = event.target.value;
@@ -853,7 +845,7 @@
               </select>
             {:else if drawer.draft.resultMode === 'predefined'}
               <select
-                class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-amber-200"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-amber-200"
                 value={drawer.draft.rcode}
                 onchange={(event) => {
                   drawer.draft.rcode = event.target.value;
@@ -885,7 +877,7 @@
               <textarea
                 bind:value={drawer.draft.otherText}
                 spellcheck="false"
-                class="w-full h-36 bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200"
+                class="field w-full h-36 px-3 py-2 text-xs font-mono"
               ></textarea>
             {/if}
           </section>
@@ -901,18 +893,12 @@
           {/if}
         </div>
         <div class="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onclick={cancelDrawer}
-            class="px-3 py-1.5 rounded border border-slate-700 text-xs text-slate-300 hover:bg-slate-800 cursor-pointer"
-          >
-            取消
-          </button>
+          <button type="button" onclick={cancelDrawer} class="btn btn-secondary"> 取消 </button>
           <button
             type="button"
             disabled={!!drawerProblem}
             onclick={finishDrawer}
-            class="px-3 py-1.5 rounded bg-cyan-600 text-xs text-white disabled:opacity-40 cursor-pointer"
+            class="btn {drawerProblem ? 'btn-ghost' : 'btn-primary'}"
           >
             完成
           </button>

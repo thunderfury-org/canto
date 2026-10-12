@@ -251,18 +251,14 @@
   <div class="flex items-center justify-between border-b border-slate-800 pb-3 gap-3">
     <div>
       <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
-        <Layers size={15} class="text-cyan-400" />
+        <Layers size={15} class="text-slate-400" />
         <span>分流路由规则 (Route Rules)</span>
       </h3>
       <span class="text-xs text-slate-400"
         >从上到下逐条评估流量条件，首条匹配即按对应出站动作流转</span
       >
     </div>
-    <button
-      type="button"
-      onclick={openCreate}
-      class="px-3 py-1.5 rounded-md bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-200 border border-cyan-500/40 text-xs font-medium flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
-    >
+    <button type="button" onclick={openCreate} class="btn btn-secondary shrink-0">
       <Plus size={13} />
       <span>添加分流规则</span>
     </button>
@@ -274,13 +270,13 @@
   >
     <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-slate-400">
       <span class="text-slate-400 font-medium flex items-center gap-1.5 text-xs">
-        <Globe size={13} class="text-indigo-400" />
+        <Globe size={13} class="text-slate-400" />
         <span>全局解析环境:</span>
       </span>
       <label class="flex items-center gap-2">
         <span class="text-slate-500">解析服务器</span>
         <select
-          class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded px-2 py-0.5 text-xs font-mono text-cyan-300 focus:outline-none focus:border-cyan-500 cursor-pointer"
+          class="field px-2 py-0.5 text-xs font-mono"
           value={resolver.server || ''}
           onchange={(event) =>
             onCommit(withDomainResolver(baseRoute(), { server: event.target.value }))}
@@ -299,7 +295,7 @@
         <input
           type="text"
           placeholder="如 114.114.114.114"
-          class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded px-2 py-0.5 text-xs font-mono text-slate-200 w-36 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
+          class="field w-36 px-2 py-0.5 text-xs font-mono"
           value={resolver.client_subnet || ''}
           onchange={(event) =>
             onCommit(withDomainResolver(baseRoute(), { clientSubnet: event.target.value.trim() }))}
@@ -380,7 +376,7 @@
           <!-- Col 2: Match Conditions (Clickable) -->
           <button
             type="button"
-            class="flex-1 min-w-0 py-0.5 text-left cursor-pointer focus:outline-none bg-transparent border-0"
+            class="flex-1 min-w-0 cursor-pointer border-0 bg-transparent py-0.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
             onclick={() => openEdit(rIdx)}
           >
             <div
@@ -416,7 +412,7 @@
           <!-- Col 3: Egress Target / Action (Clickable) -->
           <button
             type="button"
-            class="w-52 shrink-0 flex items-center gap-2 font-mono text-xs text-left cursor-pointer focus:outline-none bg-transparent border-0"
+            class="flex w-52 shrink-0 cursor-pointer items-center gap-2 border-0 bg-transparent text-left font-mono text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
             onclick={() => openEdit(rIdx)}
           >
             <span class="text-slate-600 shrink-0 select-none">→</span>
@@ -434,16 +430,14 @@
           </button>
 
           <!-- Col 4: Action Buttons -->
-          <div
-            class="w-24 shrink-0 flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity"
-          >
+          <div class="flex w-24 shrink-0 items-center justify-end gap-1">
             <button
               type="button"
               title="上移"
               aria-label="上移"
               disabled={rIdx === 0}
               onclick={() => move(rIdx, -1)}
-              class="p-1 rounded text-slate-500 hover:text-cyan-300 hover:bg-slate-800 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-slate-500 transition-colors cursor-pointer"
+              class="btn btn-ghost btn-icon"
             >
               <ArrowUp size={13} />
             </button>
@@ -453,7 +447,7 @@
               aria-label="下移"
               disabled={rIdx === rules.length - 1}
               onclick={() => move(rIdx, 1)}
-              class="p-1 rounded text-slate-500 hover:text-cyan-300 hover:bg-slate-800 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-slate-500 transition-colors cursor-pointer"
+              class="btn btn-ghost btn-icon"
             >
               <ArrowDown size={13} />
             </button>
@@ -462,7 +456,7 @@
               title="删除此规则"
               aria-label="删除此规则"
               onclick={() => removeAt(rIdx)}
-              class="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
+              class="btn btn-ghost btn-icon btn-danger"
             >
               <Trash2 size={13} />
             </button>
@@ -487,7 +481,7 @@
       <div class="w-52 shrink-0 flex items-center gap-2">
         <span class="text-slate-600 shrink-0 select-none">→</span>
         <select
-          class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded px-2.5 py-1 text-xs font-mono font-medium focus:outline-none focus:border-cyan-500 cursor-pointer {route?.final ===
+          class="field cursor-pointer px-2.5 py-1 text-xs font-mono font-medium {route?.final ===
             '直连' || route?.final === 'direct'
             ? 'text-slate-400'
             : 'text-cyan-300'}"
@@ -526,7 +520,7 @@
           title="取消"
           aria-label="取消"
           onclick={cancelDrawer}
-          class="p-1 text-slate-500 hover:text-slate-200 cursor-pointer"
+          class="btn btn-ghost btn-icon"
         >
           <X size={16} />
         </button>
@@ -659,7 +653,7 @@
             </div>
             {#if drawer.draft.resultMode === 'outbound'}
               <select
-                class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-cyan-300"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-cyan-300"
                 value={drawer.draft.outbound}
                 onchange={(event) => {
                   drawer.draft.outbound = event.target.value;
@@ -689,7 +683,7 @@
               <textarea
                 bind:value={drawer.draft.otherText}
                 spellcheck="false"
-                class="w-full h-36 bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200"
+                class="field w-full h-36 px-3 py-2 text-xs font-mono"
               ></textarea>
             {/if}
           </section>
@@ -705,18 +699,12 @@
           {/if}
         </div>
         <div class="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onclick={cancelDrawer}
-            class="px-3 py-1.5 rounded border border-slate-700 text-xs text-slate-300 hover:bg-slate-800 cursor-pointer"
-          >
-            取消
-          </button>
+          <button type="button" onclick={cancelDrawer} class="btn btn-secondary"> 取消 </button>
           <button
             type="button"
             disabled={!!drawerProblem}
             onclick={finishDrawer}
-            class="px-3 py-1.5 rounded bg-cyan-600 text-xs text-white disabled:opacity-40 cursor-pointer"
+            class="btn {drawerProblem ? 'btn-ghost' : 'btn-primary'}"
           >
             完成
           </button>
