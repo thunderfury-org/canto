@@ -35,6 +35,39 @@ export function displayPattern(outbounds) {
   return canonicalPattern(first);
 }
 
+export const NODE_GROUP_REGEX_PRESETS = [
+  { label: '全部节点', pattern: '.*', desc: '匹配所有节点' },
+  { label: '香港', pattern: '港|香港|hk|hongkong|hong kong', desc: '匹配香港节点' },
+  { label: '台湾', pattern: '台|台湾|tw|taiwan', desc: '匹配台湾节点' },
+  { label: '日本', pattern: '日本|jp|japan', desc: '匹配日本节点' },
+  { label: '新加坡', pattern: '新加坡|新|sg|singapore', desc: '匹配新加坡节点' },
+  { label: '美国', pattern: '美国|美|\\bus\\b|unitedstates|united states', desc: '匹配美国节点' },
+  {
+    label: '排除杂项',
+    pattern: '^(?!.*(官网|到期|剩余|套餐|群|traffic|expire)).*',
+    desc: '过滤非代理节点',
+  },
+];
+
+export function moveNodeGroup(content, fromIndex, toIndex) {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return content;
+  const next = cloneJson(content);
+  const groups = next.node_groups;
+  if (!Array.isArray(groups)) return next;
+  if (
+    fromIndex < 0 ||
+    fromIndex >= groups.length ||
+    toIndex < 0 ||
+    toIndex >= groups.length ||
+    fromIndex === toIndex
+  ) {
+    return next;
+  }
+  const [moved] = groups.splice(fromIndex, 1);
+  groups.splice(toIndex, 0, moved);
+  return next;
+}
+
 export function writeNodeGroupPattern(content, index, rawInput) {
   if (!content || typeof content !== 'object' || Array.isArray(content)) return content;
   const next = cloneJson(content);

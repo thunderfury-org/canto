@@ -13,6 +13,8 @@ import {
   removeRuleSourceTag,
   toggleRuleSourceTag,
   writeNodeGroupPattern,
+  moveNodeGroup,
+  NODE_GROUP_REGEX_PRESETS,
 } from '../src/data/templateDocument.js';
 
 test('normalize adds direct and block, drops root outbounds, and is idempotent', () => {
@@ -147,4 +149,38 @@ test('legacy route rule_set folds into one DustinWin source and stays idempotent
   assert.equal(JSON.stringify(twice), JSON.stringify(once));
   assert.deepEqual(migrateLegacyRuleSets({ dns: {} }), { dns: {} });
   assert.deepEqual(definedRuleTags(input), ['cn', 'ai']);
+});
+
+test('moveNodeGroup reorders node groups immutably and handles out of bounds', () => {
+  const input = {
+    node_groups: [{ tag: 'group-1' }, { tag: 'group-2' }, { tag: 'group-3' }],
+  };
+
+  const movedDown = moveNodeGroup(input, 0, 1);
+  assert.deepEqual(
+    movedDown.node_groups.map((g) => g.tag),
+    ['group-2', 'group-1', 'group-3'],
+  );
+  // verify immutability
+  assert.equal(input.node_groups[0].tag, 'group-1');
+
+  const movedUp = moveNodeGroup(movedDown, 2, 0);
+  assert.deepEqual(
+    movedUp.node_groups.map((g) => g.tag),
+    ['group-3', 'group-2', 'group-1'],
+  );
+
+  // out of bounds or same index
+  assert.deepEqual(moveNodeGroup(input, 0, 0), input);
+  assert.deepEqual(moveNodeGroup(input, -1, 1), input);
+  assert.deepEqual(moveNodeGroup(input, 0, 5), input);
+  assert.deepEqual(moveNodeGroup({}, 0, 1), {});
+});
+
+test('NODE_GROUP_REGEX_PRESETS contains valid regex patterns', () => {
+  assert.ok(NODE_GROUP_REGEX_PRESETS.length >= 6);
+  for (const preset of NODE_GROUP_REGEX_PRESETS) {
+    const res = matchNodeTags(preset.pattern, ['HK-01', 'JP-01', 'SG-01', 'US-01']);
+    assert.equal(res.ok, true);
+  }
 });
