@@ -15,9 +15,11 @@
     removeRuleSourceTag,
     toggleRuleSourceTag,
     writeNodeGroupPattern,
+    moveNodeGroup,
   } from '../data/templateDocument.js';
   import MultiSelect from '../components/MultiSelect.svelte';
   import TemplateCardGrid from '../components/TemplateCardGrid.svelte';
+  import NodeGroupCard from '../components/NodeGroupCard.svelte';
   import ArrowLeft from 'lucide-svelte/icons/arrow-left';
   import RouteRules from './RouteRules.svelte';
   import DnsEditor from './DnsEditor.svelte';
@@ -602,6 +604,76 @@
     triggerUpdate();
   }
 
+  let nodeGroupSearch = $state('');
+  let mobileExpandedMap = $state({});
+  let allMobileExpanded = $state(false);
+
+  function toggleAllMobileExpand() {
+    allMobileExpanded = !allMobileExpanded;
+    const groups = store.selectedTemplate?.content?.node_groups || [];
+    const nextMap = {};
+    groups.forEach((_, i) => {
+      nextMap[i] = allMobileExpanded;
+    });
+    mobileExpandedMap = nextMap;
+  }
+
+  function toggleSingleMobileExpand(idx) {
+    mobileExpandedMap = {
+      ...mobileExpandedMap,
+      [idx]: !mobileExpandedMap[idx],
+    };
+  }
+
+  function moveNodeGroupItem(fromIdx, toIdx) {
+    const tpl = store.selectedTemplate;
+    if (!tpl?.content) return;
+    tpl.content = moveNodeGroup(tpl.content, fromIdx, toIdx);
+    triggerUpdate();
+  }
+
+  let nodeGroupStats = $derived.by(() => {
+    const groups = store.selectedTemplate?.content?.node_groups || [];
+    let urltestCount = 0;
+    let selectorCount = 0;
+    let zeroMatchCount = 0;
+    const matchedTagSet = new Set();
+
+    for (const g of groups) {
+      if (g.type === 'urltest') urltestCount++;
+      else if (g.type === 'selector') selectorCount++;
+
+      const pattern = displayPattern(g.outbounds);
+      const matched = matchNodeTags(pattern, allAvailableTags);
+      if (matched.ok) {
+        if (matched.tags.length === 0) zeroMatchCount++;
+        matched.tags.forEach((t) => matchedTagSet.add(t));
+      }
+    }
+
+    return {
+      total: groups.length,
+      urltestCount,
+      selectorCount,
+      zeroMatchCount,
+      uniqueMatchedCount: matchedTagSet.size,
+      totalAvailableCount: allAvailableTags.length,
+    };
+  });
+
+  let filteredNodeGroupsWithIndex = $derived.by(() => {
+    const groups = store.selectedTemplate?.content?.node_groups || [];
+    return groups
+      .map((group, originalIndex) => ({ group, originalIndex }))
+      .filter(({ group }) => {
+        if (!nodeGroupSearch.trim()) return true;
+        const q = nodeGroupSearch.trim().toLowerCase();
+        const tag = (group.tag || '').toLowerCase();
+        const pattern = displayPattern(group.outbounds).toLowerCase();
+        return tag.includes(q) || pattern.includes(q);
+      });
+  });
+
   // --- Node Groups operations ---
   function addNodeGroup() {
     const tpl = store.selectedTemplate;
@@ -943,112 +1015,116 @@
 
         <!-- 1. Node Groups View -->
         {#if currentSubTab === 'node_groups'}
-          <div class="space-y-3">
-            <div class="flex items-center justify-between px-1">
+          <div class="space-y-3.5">
+            <!-- Header bar with description & Add button -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
               <div class="text-xs text-slate-400">
-                节点分组用于从节点源中通过正则表达式（默认忽略大小写）筛选并聚合代理节点，支持自动测速优选。
+                节点分组用于从节点源中通过正则表达式筛选并聚合代理节点，支持自动测速优选与手动选择。
               </div>
-              <button type="button" onclick={addNodeGroup} class="btn btn-secondary shrink-0">
+              <button
+                type="button"
+                onclick={addNodeGroup}
+                class="btn btn-secondary shrink-0 self-start sm:self-auto"
+              >
                 <Plus size={13} />
                 <span>添加节点分组</span>
               </button>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {#each store.selectedTemplate.content?.node_groups || [] as ng, ngIdx}
-                {@const currentPattern = displayPattern(ng.outbounds)}
-                {@const matched = matchNodeTags(currentPattern, allAvailableTags)}
-                {@const matchedNodes = matched.tags}
-                {@const isValidRegex = matched.ok}
-                <div
-                  class="flex h-full flex-col bg-slate-900/80 border border-slate-800 rounded-lg p-3.5"
+            <!-- Stats & Search Toolbar -->
+            <div
+              class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 rounded-lg border border-slate-800/80 bg-slate-900/60 p-2.5 text-xs"
+            >
+              <!-- Metrics Badges -->
+              <div class="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
+                <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">
+                  全部 {nodeGroupStats.total}
+                </span>
+                <span
+                  class="px-2 py-0.5 rounded bg-cyan-950/60 text-cyan-300 border border-cyan-800/40"
                 >
-                  <div class="flex items-center justify-between gap-2">
-                    <div class="flex min-w-0 flex-1 items-center gap-2">
-                      <select
-                        bind:value={ng.type}
-                        onchange={triggerUpdate}
-                        aria-label="节点分组类型"
-                        class="field px-2 py-1 text-xs font-mono font-semibold text-slate-200"
-                      >
-                        <option value="urltest">URLTest</option>
-                        <option value="selector">Selector</option>
-                      </select>
-                      <input
-                        type="text"
-                        bind:value={ng.tag}
-                        oninput={triggerUpdate}
-                        aria-label="节点分组名称"
-                        placeholder="分组标签，如：香港节点"
-                        class="field min-w-0 flex-1 px-2 py-1 text-sm font-semibold font-mono"
-                      />
-                    </div>
+                  ⚡ 测速 {nodeGroupStats.urltestCount}
+                </span>
+                <span
+                  class="px-2 py-0.5 rounded bg-indigo-950/60 text-indigo-300 border border-indigo-800/40"
+                >
+                  👆 手动 {nodeGroupStats.selectorCount}
+                </span>
+                <span
+                  class="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300"
+                >
+                  覆盖 {nodeGroupStats.uniqueMatchedCount} / {nodeGroupStats.totalAvailableCount} 节点
+                </span>
+                {#if nodeGroupStats.zeroMatchCount > 0}
+                  <span
+                    class="px-2 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/40"
+                  >
+                    ⚠️ {nodeGroupStats.zeroMatchCount} 个空命中
+                  </span>
+                {/if}
+              </div>
+
+              <!-- Filter Search & Mobile Accordion Toggle -->
+              <div class="flex items-center gap-2">
+                <div class="relative flex-1 sm:w-48">
+                  <Search
+                    size={12}
+                    class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"
+                  />
+                  <input
+                    type="text"
+                    bind:value={nodeGroupSearch}
+                    placeholder="搜索分组或正则..."
+                    class="field w-full pl-7 pr-6 py-1 text-xs"
+                  />
+                  {#if nodeGroupSearch}
                     <button
                       type="button"
-                      onclick={() => removeNodeGroup(ngIdx)}
-                      class="btn btn-ghost btn-icon btn-danger"
-                      aria-label="删除此节点分组"
+                      onclick={() => (nodeGroupSearch = '')}
+                      class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                      aria-label="清空搜索"
                     >
-                      <Trash2 size={14} />
+                      <X size={11} />
                     </button>
-                  </div>
-
-                  <div
-                    class="mt-3 grid grid-cols-2 gap-2 rounded border border-slate-800/80 bg-slate-950/60 p-2 text-xs"
-                  >
-                    <label class="block">
-                      <span class="mb-1 block text-slate-400">容差</span>
-                      <input
-                        type="number"
-                        bind:value={ng.tolerance}
-                        oninput={triggerUpdate}
-                        disabled={ng.type !== 'urltest'}
-                        placeholder="50"
-                        class="field w-full px-2 py-1 font-mono disabled:opacity-50"
-                      />
-                    </label>
-                    <label class="block">
-                      <span class="mb-1 block text-slate-400">测速间隔</span>
-                      <input
-                        type="text"
-                        bind:value={ng.interval}
-                        oninput={triggerUpdate}
-                        disabled={ng.type !== 'urltest'}
-                        placeholder="3m"
-                        class="field w-full px-2 py-1 font-mono disabled:opacity-50"
-                      />
-                    </label>
-                    <p class="col-span-2 text-slate-400">
-                      {ng.type === 'urltest' ? '按间隔自动测速' : '仅 URLTest 使用'}
-                    </p>
-                  </div>
-
-                  <div class="mt-3 space-y-1.5">
-                    <label
-                      class="block text-xs font-medium text-slate-400"
-                      for="node-pattern-{ngIdx}"
-                    >
-                      节点筛选正则
-                    </label>
-                    <input
-                      id="node-pattern-{ngIdx}"
-                      type="text"
-                      value={currentPattern}
-                      oninput={(e) => updateNodeGroupPattern(ngIdx, e.currentTarget.value)}
-                      placeholder="例如：港|hk 或 .*"
-                      class="field w-full px-3 py-2 text-xs font-mono {isValidRegex
-                        ? ''
-                        : 'border-rose-800 text-rose-200'}"
-                    />
-                  </div>
-                  <p
-                    class="mt-auto pt-3 text-xs {isValidRegex ? 'text-slate-400' : 'text-rose-300'}"
-                  >
-                    {isValidRegex ? `命中 ${matchedNodes.length} 个节点` : '正则格式错误'}
-                  </p>
+                  {/if}
                 </div>
-              {/each}
+
+                <button
+                  type="button"
+                  onclick={toggleAllMobileExpand}
+                  class="md:hidden btn btn-ghost text-xs px-2 py-1 shrink-0"
+                >
+                  {allMobileExpanded ? '折叠全部' : '展开全部'}
+                </button>
+              </div>
             </div>
+
+            <!-- Cards Grid -->
+            {#if filteredNodeGroupsWithIndex.length === 0}
+              <div
+                class="rounded-xl border border-dashed border-slate-800 p-8 text-center text-xs text-slate-500"
+              >
+                {nodeGroupSearch ? '未找到符合条件的分组' : '暂无节点分组，点击上方按钮添加'}
+              </div>
+            {:else}
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {#each filteredNodeGroupsWithIndex as { group, originalIndex } (originalIndex)}
+                  <NodeGroupCard
+                    {group}
+                    index={originalIndex}
+                    total={store.selectedTemplate.content?.node_groups?.length || 0}
+                    {allAvailableTags}
+                    isMobileExpanded={mobileExpandedMap[originalIndex] ?? allMobileExpanded}
+                    onToggleMobileExpand={() => toggleSingleMobileExpand(originalIndex)}
+                    onUpdate={triggerUpdate}
+                    onRemove={() => removeNodeGroup(originalIndex)}
+                    onMoveUp={() => moveNodeGroupItem(originalIndex, originalIndex - 1)}
+                    onMoveDown={() => moveNodeGroupItem(originalIndex, originalIndex + 1)}
+                    onUpdatePattern={(pattern) => updateNodeGroupPattern(originalIndex, pattern)}
+                  />
+                {/each}
+              </div>
+            {/if}
           </div>
         {/if}
 
