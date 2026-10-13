@@ -30,7 +30,11 @@
     const profId = store.selectedProfileId;
 
     if (tab === 'templates') {
-      syncHash({ tab, id: tplId, subtab: subTab });
+      if (tplId) {
+        syncHash({ tab, id: tplId, subtab: subTab });
+      } else {
+        syncHash({ tab });
+      }
     } else if (tab === 'profiles') {
       syncHash({ tab, id: profId });
     } else {

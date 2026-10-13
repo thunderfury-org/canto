@@ -66,40 +66,68 @@
 </script>
 
 <header
-  class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-30 px-4 py-2.5"
+  class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-30 px-3 md:px-4 py-2 md:py-2.5"
 >
-  <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
-    <!-- Brand -->
-    <div class="flex items-center gap-3">
-      <div
-        class="w-8 h-8 rounded bg-cyan-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-mono font-bold text-base"
-      >
-        C
-      </div>
-      <div class="flex items-baseline gap-2">
-        <span class="font-semibold text-slate-100 tracking-tight text-base">canto studio</span>
-        <span
-          class="text-xs px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-700 font-mono whitespace-nowrap"
+  <div
+    class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4"
+  >
+    <!-- Brand & Mobile Auth Row -->
+    <div class="flex items-center justify-between w-full md:w-auto gap-3">
+      <div class="flex items-center gap-2.5">
+        <div
+          class="w-7 h-7 md:w-8 md:h-8 rounded bg-cyan-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-mono font-bold text-sm md:text-base"
         >
-          Web Studio
-        </span>
+          C
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span class="font-semibold text-slate-100 tracking-tight text-sm md:text-base"
+            >canto studio</span
+          >
+          <span
+            class="text-[11px] px-1.5 py-0.2 rounded bg-slate-900 text-slate-400 border border-slate-700 font-mono whitespace-nowrap"
+          >
+            Web Studio
+          </span>
+        </div>
       </div>
+
+      <!-- Admin Auth Trigger Button (Mobile) -->
+      <button
+        onclick={() => {
+          tokenInput = store.adminToken;
+          showAuthModal = true;
+        }}
+        title="管理认证与 Token 设置"
+        class="flex md:hidden items-center gap-1 text-xs px-2 py-1 rounded transition-all border cursor-pointer {store.isAuthenticated
+          ? 'text-emerald-400 bg-emerald-950/40 border-emerald-800/40 hover:bg-emerald-900/50'
+          : 'text-amber-400 bg-amber-950/40 border-amber-800/40 hover:bg-amber-900/50'}"
+      >
+        {#if store.isAuthenticated}
+          <ShieldCheck size={13} />
+          <span class="font-mono text-[11px]">admin-auth</span>
+        {:else}
+          <ShieldAlert size={13} />
+          <span class="font-mono text-[11px]">需认证</span>
+        {/if}
+      </button>
     </div>
 
     <!-- Navigation Tabs -->
-    <nav class="flex items-center bg-slate-950/70 p-1 rounded-lg border border-slate-800 text-sm">
+    <nav
+      class="flex items-center bg-slate-950/70 p-1 rounded-lg border border-slate-800 text-xs sm:text-sm overflow-x-auto no-scrollbar w-full md:w-auto justify-between sm:justify-start gap-1"
+    >
       <a
         href="#/dashboard"
         onclick={(e) => {
           e.preventDefault();
           store.navigate('dashboard');
         }}
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab ===
+        class="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md transition-all font-medium whitespace-nowrap shrink-0 flex-1 sm:flex-initial {store.currentTab ===
         'dashboard'
           ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60'
           : 'text-slate-400 hover:text-slate-200'}"
       >
-        <LayoutDashboard size={15} />
+        <LayoutDashboard size={14} class="shrink-0" />
         <span>仪表盘</span>
       </a>
 
@@ -109,15 +137,15 @@
           e.preventDefault();
           store.navigate('sources');
         }}
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab ===
+        class="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md transition-all font-medium whitespace-nowrap shrink-0 flex-1 sm:flex-initial {store.currentTab ===
         'sources'
           ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60'
           : 'text-slate-400 hover:text-slate-200'}"
       >
-        <Network size={15} />
+        <Network size={14} class="shrink-0" />
         <span>节点源</span>
         <span
-          class="text-xs bg-slate-900 text-slate-400 px-1.5 rounded-full border border-slate-800 font-mono whitespace-nowrap"
+          class="text-[10px] sm:text-xs bg-slate-900 text-slate-400 px-1.5 rounded-full border border-slate-800 font-mono whitespace-nowrap"
         >
           {store.sources.length}
         </span>
@@ -127,20 +155,17 @@
         href="#/templates"
         onclick={(e) => {
           e.preventDefault();
-          store.navigate('templates', {
-            id: store.selectedTemplateId,
-            subtab: store.templateSubTab,
-          });
+          store.navigate('templates', {});
         }}
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab ===
+        class="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md transition-all font-medium whitespace-nowrap shrink-0 flex-1 sm:flex-initial {store.currentTab ===
         'templates'
           ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60'
           : 'text-slate-400 hover:text-slate-200'}"
       >
-        <FileCode2 size={15} />
+        <FileCode2 size={14} class="shrink-0" />
         <span>配置模板</span>
         <span
-          class="text-xs bg-slate-900 text-slate-400 px-1.5 rounded-full border border-slate-800 font-mono whitespace-nowrap"
+          class="text-[10px] sm:text-xs bg-slate-900 text-slate-400 px-1.5 rounded-full border border-slate-800 font-mono whitespace-nowrap"
         >
           {store.templates.length}
         </span>
@@ -152,24 +177,23 @@
           e.preventDefault();
           store.navigate('profiles', { id: store.selectedProfileId });
         }}
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all font-medium {store.currentTab ===
+        class="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md transition-all font-medium whitespace-nowrap shrink-0 flex-1 sm:flex-initial {store.currentTab ===
         'profiles'
           ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60'
           : 'text-slate-400 hover:text-slate-200'}"
       >
-        <Boxes size={15} />
+        <Boxes size={14} class="shrink-0" />
         <span>分发配置</span>
         <span
-          class="text-xs bg-slate-900 text-slate-400 px-1.5 rounded-full border border-slate-800 font-mono whitespace-nowrap"
+          class="text-[10px] sm:text-xs bg-slate-900 text-slate-400 px-1.5 rounded-full border border-slate-800 font-mono whitespace-nowrap"
         >
           {store.profiles.length}
         </span>
       </a>
     </nav>
 
-    <!-- Top Right Status & Utilities -->
-    <div class="flex items-center gap-2.5">
-      <!-- Admin Auth Trigger Button -->
+    <!-- Top Right Status & Utilities (Desktop) -->
+    <div class="hidden md:flex items-center gap-2.5">
       <button
         onclick={() => {
           tokenInput = store.adminToken;

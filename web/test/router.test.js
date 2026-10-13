@@ -15,6 +15,13 @@ test('parseRoute handles standard tabs', () => {
   assert.equal(parseRoute('#/profiles').tab, 'profiles');
 });
 
+test('parseRoute handles templates index without id', () => {
+  const res = parseRoute('#/templates');
+  assert.equal(res.tab, 'templates');
+  assert.equal(res.id, null);
+  assert.equal(res.subtab, null);
+});
+
 test('parseRoute extracts id and subtab for templates', () => {
   const res = parseRoute('#/templates?id=tpl_custom&subtab=dns');
   assert.equal(res.tab, 'templates');
@@ -38,11 +45,15 @@ test('parseRoute extracts profile id', () => {
 test('parseRoute supports pathname fallback when hash is empty', () => {
   const res = parseRoute('', '/templates');
   assert.equal(res.tab, 'templates');
+  assert.equal(res.id, null);
+  assert.equal(res.subtab, null);
 });
 
 test('buildHash formats hash strings accurately', () => {
   assert.equal(buildHash({ tab: 'dashboard' }), '#/dashboard');
   assert.equal(buildHash({ tab: 'sources' }), '#/sources');
+  assert.equal(buildHash({ tab: 'templates' }), '#/templates');
+  assert.equal(buildHash({ tab: 'templates', id: null, subtab: 'route' }), '#/templates');
   assert.equal(
     buildHash({ tab: 'templates', id: 'tpl_1', subtab: 'route' }),
     '#/templates?id=tpl_1&subtab=route',

@@ -27,7 +27,7 @@ class StudioStore {
   sources = $state(JSON.parse(JSON.stringify(initialSources)));
   profiles = $state(JSON.parse(JSON.stringify(initialProfiles)));
   selectedTemplateId = $state(
-    initialRoute.tab === 'templates' && initialRoute.id ? initialRoute.id : 'tpl_tailscale_gateway',
+    initialRoute.tab === 'templates' && initialRoute.id ? initialRoute.id : null,
   );
   selectedProfileId = $state(
     initialRoute.tab === 'profiles' && initialRoute.id ? initialRoute.id : 'prof_home_router',
@@ -56,7 +56,9 @@ class StudioStore {
 
   // Computed
   selectedTemplate = $derived(
-    this.templates.find((t) => t.id === this.selectedTemplateId) || this.templates[0],
+    this.selectedTemplateId
+      ? this.templates.find((t) => t.id === this.selectedTemplateId) || null
+      : null,
   );
 
   selectedProfile = $derived(
@@ -80,12 +82,15 @@ class StudioStore {
   navigate(tab, params = {}, options = {}) {
     navigate(tab, params, options);
     this.currentTab = tab;
-    if (params.id) {
-      if (tab === 'templates') this.selectedTemplateId = params.id;
-      if (tab === 'profiles') this.selectedProfileId = params.id;
-    }
-    if (params.subtab && tab === 'templates') {
-      this.templateSubTab = params.subtab;
+    if (tab === 'templates') {
+      this.selectedTemplateId = params.id || null;
+      if (params.subtab) {
+        this.templateSubTab = params.subtab;
+      } else if (!params.id) {
+        this.templateSubTab = 'node_groups';
+      }
+    } else if (tab === 'profiles' && params.id) {
+      this.selectedProfileId = params.id;
     }
   }
 
@@ -151,7 +156,7 @@ class StudioStore {
     }
     this.templates = JSON.parse(JSON.stringify(initialTemplates));
     this.sources = JSON.parse(JSON.stringify(initialSources));
-    this.selectedTemplateId = 'tpl_tailscale_gateway';
+    this.selectedTemplateId = null;
   }
 
   touchTemplate(tplId) {
@@ -296,8 +301,8 @@ class StudioStore {
     }
     this.templateSession = applied.session;
     this.templates = applied.templates;
-    if (!this.templates.some((t) => t.id === this.selectedTemplateId)) {
-      this.selectedTemplateId = this.templates[0]?.id || '';
+    if (this.selectedTemplateId && !this.templates.some((t) => t.id === this.selectedTemplateId)) {
+      this.selectedTemplateId = null;
     }
     this.templateSaveError = '';
     this.draftEpoch += 1;
@@ -314,8 +319,8 @@ class StudioStore {
     }
     this.templateSession = session;
     this.templates = templates;
-    if (!this.templates.some((t) => t.id === this.selectedTemplateId)) {
-      this.selectedTemplateId = this.templates[0]?.id || '';
+    if (this.selectedTemplateId && !this.templates.some((t) => t.id === this.selectedTemplateId)) {
+      this.selectedTemplateId = null;
     }
     this.templateSaveError = '';
     this.draftEpoch += 1;
@@ -332,8 +337,11 @@ class StudioStore {
       const merged = mergeTemplateList(this.templateSession, this.templates, serverTemplates);
       this.templateSession = merged.session;
       this.templates = merged.templates;
-      if (!this.templates.some((t) => t.id === this.selectedTemplateId)) {
-        this.selectedTemplateId = this.templates[0]?.id || '';
+      if (
+        this.selectedTemplateId &&
+        !this.templates.some((t) => t.id === this.selectedTemplateId)
+      ) {
+        this.selectedTemplateId = null;
       }
       this.templatesLoaded = true;
       this.draftEpoch += 1;
@@ -356,7 +364,9 @@ class StudioStore {
         ...body,
       };
       this.templates = [...this.templates, local];
-      this.selectedTemplateId = local.id;
+      if (payload.select !== false) {
+        this.selectedTemplateId = local.id;
+      }
       return local;
     }
     const result = await createTemplateRequest({
@@ -370,7 +380,9 @@ class StudioStore {
     }
     this.templateSession = result.session;
     this.templates = result.templates;
-    this.selectedTemplateId = result.created.id;
+    if (payload.select !== false) {
+      this.selectedTemplateId = result.created.id;
+    }
     this.draftEpoch += 1;
     return result.created;
   }
@@ -389,7 +401,7 @@ class StudioStore {
     this.templates = this.templates.filter((t) => t.id !== id);
     this.draftEpoch += 1;
     if (this.selectedTemplateId === id) {
-      this.selectedTemplateId = this.templates[0]?.id || '';
+      this.selectedTemplateId = null;
     }
   }
 
