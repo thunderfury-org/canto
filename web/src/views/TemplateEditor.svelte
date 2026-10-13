@@ -605,23 +605,24 @@
   }
 
   let nodeGroupSearch = $state('');
-  let mobileExpandedMap = $state({});
-  let allMobileExpanded = $state(false);
+  let expandedMap = $state({});
+  let allExpanded = $state(false);
 
-  function toggleAllMobileExpand() {
-    allMobileExpanded = !allMobileExpanded;
+  function toggleAllExpand() {
+    allExpanded = !allExpanded;
     const groups = store.selectedTemplate?.content?.node_groups || [];
     const nextMap = {};
     groups.forEach((_, i) => {
-      nextMap[i] = allMobileExpanded;
+      nextMap[i] = allExpanded;
     });
-    mobileExpandedMap = nextMap;
+    expandedMap = nextMap;
   }
 
-  function toggleSingleMobileExpand(idx) {
-    mobileExpandedMap = {
-      ...mobileExpandedMap,
-      [idx]: !mobileExpandedMap[idx],
+  function toggleSingleExpand(idx) {
+    const current = expandedMap[idx] ?? allExpanded;
+    expandedMap = {
+      ...expandedMap,
+      [idx]: !current,
     };
   }
 
@@ -629,6 +630,13 @@
     const tpl = store.selectedTemplate;
     if (!tpl?.content) return;
     tpl.content = moveNodeGroup(tpl.content, fromIdx, toIdx);
+    const fromState = expandedMap[fromIdx] ?? allExpanded;
+    const toState = expandedMap[toIdx] ?? allExpanded;
+    expandedMap = {
+      ...expandedMap,
+      [fromIdx]: toState,
+      [toIdx]: fromState,
+    };
     triggerUpdate();
   }
 
@@ -678,11 +686,16 @@
   function addNodeGroup() {
     const tpl = store.selectedTemplate;
     if (!tpl.content.node_groups) tpl.content.node_groups = [];
+    const newIdx = tpl.content.node_groups.length;
     tpl.content.node_groups.push({
-      tag: '新节点分组 ' + (tpl.content.node_groups.length + 1),
+      tag: '新节点分组 ' + (newIdx + 1),
       type: 'urltest',
       outbounds: ['{.*}'],
     });
+    expandedMap = {
+      ...expandedMap,
+      [newIdx]: true,
+    };
     triggerUpdate();
   }
 
@@ -1091,10 +1104,10 @@
 
                 <button
                   type="button"
-                  onclick={toggleAllMobileExpand}
-                  class="md:hidden btn btn-ghost text-xs px-2 py-1 shrink-0"
+                  onclick={toggleAllExpand}
+                  class="btn btn-secondary text-xs px-2.5 py-1 shrink-0 flex items-center gap-1"
                 >
-                  {allMobileExpanded ? '折叠全部' : '展开全部'}
+                  <span>{allExpanded ? '全部折叠' : '全部展开'}</span>
                 </button>
               </div>
             </div>
@@ -1107,15 +1120,15 @@
                 {nodeGroupSearch ? '未找到符合条件的分组' : '暂无节点分组，点击上方按钮添加'}
               </div>
             {:else}
-              <div class="space-y-3">
+              <div class="space-y-2">
                 {#each filteredNodeGroupsWithIndex as { group, originalIndex } (originalIndex)}
                   <NodeGroupCard
                     {group}
                     index={originalIndex}
                     total={store.selectedTemplate.content?.node_groups?.length || 0}
                     {allAvailableTags}
-                    isMobileExpanded={mobileExpandedMap[originalIndex] ?? allMobileExpanded}
-                    onToggleMobileExpand={() => toggleSingleMobileExpand(originalIndex)}
+                    isExpanded={expandedMap[originalIndex] ?? allExpanded}
+                    onToggleExpand={() => toggleSingleExpand(originalIndex)}
                     onUpdate={triggerUpdate}
                     onRemove={() => removeNodeGroup(originalIndex)}
                     onMoveUp={() => moveNodeGroupItem(originalIndex, originalIndex - 1)}
