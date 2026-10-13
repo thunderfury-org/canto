@@ -89,6 +89,7 @@
 </script>
 
 <div class="space-y-6">
+  <h1 class="text-base font-semibold text-slate-100">仪表盘</h1>
   {#if !store.isAuthenticated}
     <div
       class="bg-slate-900/80 border border-amber-800/50 rounded-lg p-6 flex flex-col md:flex-row md:items-center justify-between gap-4"
@@ -136,7 +137,7 @@
           </div>
         </div>
         <div
-          class="w-10 h-10 rounded-md bg-sky-950/60 border border-sky-800/40 flex items-center justify-center text-sky-400"
+          class="w-10 h-10 rounded-md bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400"
         >
           <Clock size={20} />
         </div>
@@ -150,13 +151,10 @@
           <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">
             {store.profiles.length}
           </div>
-          <div class="text-xs text-cyan-400/80 mt-1 flex items-center gap-1">
-            <Radio size={11} class="animate-pulse text-emerald-400" />
-            <span>HTTP 订阅端点</span>
-          </div>
+          <div class="text-xs text-slate-400 mt-1">HTTP 订阅端点</div>
         </div>
         <div
-          class="w-10 h-10 rounded-md bg-cyan-950/60 border border-cyan-800/40 flex items-center justify-center text-cyan-400"
+          class="w-10 h-10 rounded-md bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400"
         >
           <Boxes size={20} />
         </div>
@@ -173,7 +171,7 @@
           <div class="text-xs text-slate-400 mt-1">DNS / 策略组 / 路由</div>
         </div>
         <div
-          class="w-10 h-10 rounded-md bg-indigo-950/60 border border-indigo-800/40 flex items-center justify-center text-indigo-400"
+          class="w-10 h-10 rounded-md bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400"
         >
           <FileCode2 size={20} />
         </div>
@@ -188,7 +186,7 @@
           <div class="text-xs text-slate-400 mt-1">{formatFreshness(latestSourceRefresh)}</div>
         </div>
         <div
-          class="w-10 h-10 rounded-md bg-emerald-950/60 border border-emerald-800/40 flex items-center justify-center text-emerald-400"
+          class="w-10 h-10 rounded-md bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400"
         >
           <Network size={20} />
         </div>
@@ -205,7 +203,7 @@
           <div class="text-xs text-slate-400 mt-1">正则动态分流展开</div>
         </div>
         <div
-          class="w-10 h-10 rounded-md bg-amber-950/60 border border-amber-800/40 flex items-center justify-center text-amber-400"
+          class="w-10 h-10 rounded-md bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400"
         >
           <Server size={20} />
         </div>
@@ -218,7 +216,7 @@
     >
       <div class="flex items-center gap-3">
         <div
-          class="w-8 h-8 rounded bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0"
+          class="w-8 h-8 rounded bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400 shrink-0"
         >
           <Sparkles size={16} />
         </div>
@@ -232,17 +230,11 @@
       </div>
 
       <div class="flex items-center gap-2 shrink-0">
-        <button
-          onclick={() => store.navigate('templates')}
-          class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 transition-colors flex items-center gap-1 text-xs"
-        >
+        <button type="button" onclick={() => store.navigate('templates')} class="btn btn-secondary">
           <span>编辑模板</span>
           <ArrowRight size={12} />
         </button>
-        <button
-          onclick={() => store.navigate('profiles')}
-          class="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors flex items-center gap-1 text-xs"
-        >
+        <button type="button" onclick={() => store.navigate('profiles')} class="btn btn-primary">
           <span>组装配置</span>
           <ArrowRight size={12} />
         </button>
@@ -253,7 +245,7 @@
     <div class="bg-slate-900/80 border border-slate-800 rounded-lg overflow-hidden">
       <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <RefreshCw size={16} class="text-emerald-400" />
+          <RefreshCw size={16} class="text-slate-400" />
           <h2 class="text-sm font-semibold text-slate-200">节点源最近刷新</h2>
         </div>
         <button
@@ -271,8 +263,9 @@
             添加外部节点源或手动录入节点后，才能组装给网关用的 Profile。
           </p>
           <button
+            type="button"
             onclick={() => store.navigate('sources')}
-            class="mt-1 inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+            class="btn btn-secondary mt-1"
           >
             <Plus size={12} />
             <span>添加节点源</span>
@@ -309,7 +302,7 @@
     <div class="bg-slate-900/80 border border-slate-800 rounded-lg overflow-hidden">
       <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <Boxes size={16} class="text-cyan-400" />
+          <Boxes size={16} class="text-slate-400" />
           <h2 class="text-sm font-semibold text-slate-200">当前活跃分发配置</h2>
         </div>
         <button
@@ -329,8 +322,9 @@
             <span class="font-mono text-slate-400">[singbox].source</span> 拉取。
           </p>
           <button
+            type="button"
             onclick={() => store.navigate('profiles')}
-            class="mt-2 inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white"
+            class="btn btn-primary mt-2"
           >
             <Plus size={12} />
             <span>组装配置</span>
@@ -359,14 +353,14 @@
                 <div class="flex flex-wrap items-center gap-2 pt-1 text-xs">
                   <span class="text-slate-400">模板:</span>
                   <span
-                    class="px-2 py-0.5 rounded bg-indigo-950/60 text-indigo-300 border border-indigo-800/40 font-medium"
+                    class="px-2 py-0.5 rounded bg-slate-950 text-slate-200 border border-slate-800 font-medium"
                   >
                     {getTemplateName(prof.templateId)}
                   </span>
                   <span class="text-slate-400 ml-1">节点源:</span>
                   {#each getSourceNames(prof.sourceIds) as sName}
                     <span
-                      class="px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/40"
+                      class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800"
                     >
                       {sName}
                     </span>
@@ -376,8 +370,9 @@
 
               <div class="flex items-center gap-2 shrink-0">
                 <button
+                  type="button"
                   onclick={() => copyText(prof.publicUrl, prof.id)}
-                  class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-slate-950 hover:bg-slate-800 text-slate-200 border border-slate-800 hover:border-slate-700 transition-colors"
+                  class="btn btn-secondary"
                 >
                   {#if copiedToken === prof.id}
                     <Check size={13} class="text-emerald-400" />
@@ -389,8 +384,9 @@
                 </button>
 
                 <button
+                  type="button"
                   onclick={() => store.navigate('profiles', { id: prof.id })}
-                  class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-800/50 transition-colors"
+                  class="btn btn-ghost"
                 >
                   <Eye size={13} />
                   <span>实时编译预览</span>

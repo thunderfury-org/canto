@@ -17,6 +17,8 @@
     writeNodeGroupPattern,
   } from '../data/templateDocument.js';
   import MultiSelect from '../components/MultiSelect.svelte';
+  import TemplateCardGrid from '../components/TemplateCardGrid.svelte';
+  import ArrowLeft from 'lucide-svelte/icons/arrow-left';
   import RouteRules from './RouteRules.svelte';
   import DnsEditor from './DnsEditor.svelte';
   import InboundEditor from './InboundEditor.svelte';
@@ -51,13 +53,14 @@
   let discarding = $state(false);
   let savedNotice = $state(false);
 
-  let templateChoices = $derived.by(() => {
-    const epoch = store.draftEpoch;
-    return store.templates.map((tpl) => ({
-      id: tpl.id,
-      label: epoch >= 0 && store.isTemplateDirty(tpl.id) ? `${tpl.name} · 未保存` : tpl.name,
-    }));
-  });
+  function selectTemplate(id) {
+    if (id === store.selectedTemplateId) return;
+    if (!id) {
+      store.navigate('templates', {});
+      return;
+    }
+    store.navigate('templates', { id, subtab: store.templateSubTab || 'node_groups' });
+  }
 
   let currentDraft = $derived.by(() => {
     const id = store.selectedTemplateId;
@@ -79,11 +82,10 @@
     const loaded = store.templatesLoaded;
     if (!tpl || !tpl.content) return;
     const normalized = normalizeTemplateContent(tpl.content);
-    if (JSON.stringify(normalized) !== JSON.stringify(tpl.content)) {
-      tpl.content = normalized;
-    }
+    const changed = JSON.stringify(normalized) !== JSON.stringify(tpl.content);
+    if (changed) tpl.content = normalized;
     if (store.templateSubTab === 'rule_sets') applyLegacyRuleSetMigration();
-    if (store.isAuthenticated && loaded) store.noteProgrammaticRewrite(tpl.id);
+    if (changed && store.isAuthenticated && loaded) store.noteProgrammaticRewrite(tpl.id);
   });
 
   onMount(() => {
@@ -206,11 +208,32 @@
     creating = true;
     saveError = '';
     try {
-      const source = store.selectedTemplate?.content;
+      const created = await store.createTemplate({
+        name: `新配置模板 ${store.templates.length + 1}`,
+        description: '新建的自定义配置模板',
+        select: true,
+      });
+      lastSyncedTplId = null;
+      if (created?.id) {
+        selectTemplate(created.id);
+      }
+    } catch (err) {
+      saveError = err.message || String(err);
+    } finally {
+      creating = false;
+    }
+  }
+
+  async function handleCloneTemplate(tpl) {
+    if (!tpl) return;
+    creating = true;
+    saveError = '';
+    try {
       await store.createTemplate({
-        name: source ? `自定义模板 ${store.templates.length + 1}` : '新配置模板',
-        description: source ? '基于当前模板克隆' : '新建的自定义配置模板',
-        content: source,
+        name: `${tpl.name || '配置模板'} (副本)`,
+        description: tpl.description || '基于现有模板克隆',
+        content: tpl.content ? JSON.parse(JSON.stringify(tpl.content)) : undefined,
+        select: false,
       });
       lastSyncedTplId = null;
     } catch (err) {
@@ -220,8 +243,8 @@
     }
   }
 
-  async function handleDeleteTemplate(id) {
-    if (!confirm('删除这份配置模板？此操作不可撤销。')) {
+  async function handleDeleteTemplate(id, name) {
+    if (!confirm(`确定删除配置模板「${name || '此模板'}」吗？此操作不可撤销。`)) {
       return;
     }
     saveError = '';
@@ -672,1160 +695,1160 @@
   {/if}
 
   {#if !store.selectedTemplate}
-    <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-8 text-center space-y-3">
-      <FileCode2 size={28} class="mx-auto text-indigo-400" />
-      <h2 class="text-sm font-semibold text-slate-100">还没有配置模板</h2>
-      <p class="text-xs text-slate-400">
-        创建一份配置模板后，即可分模块编辑 DNS、入站、策略组和路由规则。
-      </p>
-      <button
-        onclick={handleCreateTemplate}
-        disabled={creating}
-        class="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium inline-flex items-center gap-1.5"
-      >
-        <Plus size={13} />
-        <span>{creating ? '创建中...' : '新建配置模板'}</span>
-      </button>
-    </div>
+    {#if store.selectedTemplateId}
+      <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-8 text-center space-y-3">
+        <FileCode2 size={28} class="mx-auto text-slate-400" />
+        <h2 class="text-sm font-semibold text-slate-100">未找到对应的配置模板</h2>
+        <p class="text-xs text-slate-400">该模板可能已被删除或链接无效。</p>
+        <button
+          type="button"
+          onclick={() => selectTemplate(null)}
+          class="btn btn-secondary inline-flex items-center gap-1.5"
+        >
+          <ArrowLeft size={13} />
+          <span>返回模板列表</span>
+        </button>
+      </div>
+    {:else}
+      <TemplateCardGrid
+        templates={store.templates}
+        profiles={store.profiles}
+        {creating}
+        isDirty={(id) => store.isTemplateDirty(id)}
+        isStale={(id) => store.isTemplateStale(id)}
+        isMissing={(id) => store.isTemplateMissing(id)}
+        onCreateTemplate={handleCreateTemplate}
+        onSelectTemplate={selectTemplate}
+        onCloneTemplate={handleCloneTemplate}
+        onDeleteTemplate={handleDeleteTemplate}
+      />
+    {/if}
   {:else}
-    <!-- Top Control Bar -->
-    <div
-      class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3"
-    >
-      <!-- Template Switcher & Quick Meta Edit -->
-      <div class="flex flex-wrap items-center gap-2.5">
-        <FileCode2 size={18} class="text-indigo-400 shrink-0" />
-        <select
-          bind:value={store.selectedTemplateId}
-          class="bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-cyan-500 font-medium"
-        >
-          {#each templateChoices as tpl}
-            <option value={tpl.id}>{tpl.label}</option>
-          {/each}
-        </select>
-
-        <div class="h-4 w-px bg-slate-800 hidden sm:block"></div>
-
-        <!-- Editable Template Name -->
-        <input
-          type="text"
-          bind:value={store.selectedTemplate.name}
-          oninput={triggerUpdate}
-          title="点击直接修改模板名称"
-          placeholder="模板名称"
-          class="bg-slate-950/80 border border-slate-700/60 rounded px-2.5 py-1 text-xs text-slate-100 font-semibold focus:border-cyan-500 focus:outline-none max-w-[200px]"
-        />
-
-        <!-- Editable Template Description -->
-        <input
-          type="text"
-          bind:value={store.selectedTemplate.description}
-          oninput={triggerUpdate}
-          title="修改用途描述"
-          placeholder="用途描述..."
-          class="bg-slate-950/80 border border-slate-700/60 rounded px-2.5 py-1 text-xs text-slate-300 focus:border-cyan-500 focus:outline-none hidden lg:block max-w-[300px]"
-        />
-
+    <div class="space-y-4">
+      <div class="flex items-center justify-between gap-3">
         <button
-          onclick={handleCreateTemplate}
-          disabled={creating}
-          title="基于当前模板新建克隆"
-          class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700 disabled:opacity-50"
+          type="button"
+          onclick={() => selectTemplate(null)}
+          class="text-xs text-slate-400 hover:text-cyan-300 transition-colors flex items-center gap-1.5 py-1 px-2 rounded hover:bg-slate-800/60 -ml-2 cursor-pointer"
         >
-          <Plus size={13} />
-          <span>克隆新建</span>
-        </button>
-
-        <button
-          onclick={() => handleDeleteTemplate(store.selectedTemplateId)}
-          title="删除当前模板"
-          class="p-1 rounded bg-slate-800/80 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700/80 hover:border-rose-800 text-xs"
-        >
-          <Trash2 size={13} />
+          <ArrowLeft size={14} />
+          <span>返回模板列表</span>
         </button>
       </div>
 
-      {#if store.isAuthenticated}
-        <div class="flex flex-wrap items-center gap-2">
-          {#if currentDraft.dirty}
-            <span class="text-xs text-amber-300 font-mono">未保存</span>
-          {/if}
-          {#if currentDraft.stale}
-            <span class="text-xs text-amber-200">服务器上的模板已更新</span>
-          {/if}
-          {#if currentDraft.missing}
-            <span class="text-xs text-rose-300">模板已不在服务器上</span>
-          {/if}
-          <button
-            type="button"
-            onclick={handleSaveTemplate}
-            disabled={!currentDraft.dirty || currentDraft.stale || saving || discarding}
-            class="px-2.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium disabled:opacity-40 disabled:hover:bg-cyan-600"
-          >
-            {saving ? '保存中' : '保存'}
-          </button>
-          <button
-            type="button"
-            onclick={handleDiscardTemplate}
-            disabled={!currentDraft.dirty || saving || discarding}
-            class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 disabled:opacity-40"
-          >
-            放弃
-          </button>
-          {#if currentDraft.dirty && currentDraft.stale && !currentDraft.missing}
-            <button
-              type="button"
-              onclick={handleForceSave}
-              disabled={saving || discarding}
-              class="px-2.5 py-1 rounded bg-amber-700 hover:bg-amber-600 text-white text-xs font-medium disabled:opacity-40"
-            >
-              强制保存
-            </button>
-          {/if}
-        </div>
-      {:else if savedNotice}
-        <span class="text-xs text-emerald-400 flex items-center gap-1 font-mono">
-          <Check size={13} /> 已同步更新
-        </span>
-      {/if}
-    </div>
-
-    <!-- Modular Visual Editor Mode -->
-    <div class="space-y-3">
-      <!-- Sub-module Navigation -->
-      <div
-        class="flex flex-wrap items-center gap-1.5 bg-slate-900/60 p-1 rounded-lg border border-slate-800 text-xs"
-      >
-        <button
-          onclick={() => switchSubTab('node_groups')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
-          'node_groups'
-            ? 'bg-slate-800 text-amber-300 shadow-sm border border-slate-700/60'
-            : 'text-slate-400 hover:text-slate-200'}"
-        >
-          <Layers size={13} class="text-amber-400" />
-          <span>节点分组</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
-            >{store.selectedTemplate.content?.node_groups?.length || 0}</span
-          >
-        </button>
-
-        <button
-          onclick={() => switchSubTab('policy_groups')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
-          'policy_groups'
-            ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
-            : 'text-slate-400 hover:text-slate-200'}"
-        >
-          <Sparkles size={13} class="text-cyan-400" />
-          <span>出站策略组</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
-            >{userPolicyGroups.length}</span
-          >
-        </button>
-
-        <button
-          onclick={() => switchSubTab('rule_sets')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
-          'rule_sets'
-            ? 'bg-slate-800 text-emerald-300 shadow-sm border border-slate-700/60'
-            : 'text-slate-400 hover:text-slate-200'}"
-        >
-          <Bookmark size={13} class="text-emerald-400" />
-          <span>规则集</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
-            >{allDefinedRuleTags.length}</span
-          >
-        </button>
-
-        <button
-          onclick={() => switchSubTab('dns')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
-          'dns'
-            ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
-            : 'text-slate-400 hover:text-slate-200'}"
-        >
-          <Radio size={13} />
-          <span>DNS 服务器与分流</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
-            >{store.selectedTemplate.content?.dns?.servers?.length || 0}</span
-          >
-        </button>
-
-        <button
-          onclick={() => switchSubTab('route')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
-          'route'
-            ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
-            : 'text-slate-400 hover:text-slate-200'}"
-        >
-          <Layers size={13} />
-          <span>路由分流规则</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded"
-            >{store.selectedTemplate.content?.route?.rules?.length || 0}</span
-          >
-        </button>
-
-        <button
-          onclick={() => switchSubTab('inbounds')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
-          'inbounds'
-            ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
-            : 'text-slate-400 hover:text-slate-200'}"
-        >
-          <Cable size={13} />
-          <span>入站与端点</span>
-          <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded">
-            {(store.selectedTemplate.content?.inbounds?.length || 0) +
-              (store.selectedTemplate.content?.endpoints?.length || 0)}
-          </span>
-        </button>
-
-        <button
-          onclick={() => switchSubTab('experimental')}
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-all {currentSubTab ===
-          'experimental'
-            ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
-            : 'text-slate-400 hover:text-slate-200'}"
-        >
-          <SlidersHorizontal size={13} />
-          <span>其他</span>
-        </button>
-      </div>
-
-      <!-- 1. Node Groups View -->
-      {#if currentSubTab === 'node_groups'}
-        <div class="space-y-3">
-          <div class="flex items-center justify-between px-1">
-            <div class="text-xs text-slate-400">
-              节点分组用于从节点源中通过正则表达式（默认忽略大小写）筛选并聚合代理节点，支持自动测速优选。
-            </div>
-            <button
-              onclick={addNodeGroup}
-              class="px-2.5 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium flex items-center gap-1 shadow-sm"
-            >
-              <Plus size={13} />
-              <span>添加节点分组</span>
-            </button>
+      <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 space-y-3">
+        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+          <div class="min-w-0 flex-1 space-y-1.5">
+            <input
+              type="text"
+              bind:value={store.selectedTemplate.name}
+              oninput={triggerUpdate}
+              aria-label="模板名称"
+              placeholder="模板名称"
+              class="field w-full px-2.5 py-1 text-base font-semibold"
+            />
+            <input
+              type="text"
+              bind:value={store.selectedTemplate.description}
+              oninput={triggerUpdate}
+              aria-label="用途说明"
+              placeholder="用途说明"
+              class="field w-full px-2.5 py-1 text-xs text-slate-300"
+            />
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {#each store.selectedTemplate.content?.node_groups || [] as ng, ngIdx}
-              {@const currentPattern = displayPattern(ng.outbounds)}
-              {@const matched = matchNodeTags(currentPattern, allAvailableTags)}
-              {@const matchedNodes = matched.tags}
-              {@const isValidRegex = matched.ok}
-              <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-3.5 space-y-3">
-                <!-- Group Header: Type + Tag + Delete -->
-                <div class="flex items-center justify-between gap-2">
-                  <div class="flex items-center gap-2 flex-1">
-                    <select
-                      bind:value={ng.type}
-                      onchange={triggerUpdate}
-                      class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono font-bold {ng.type ===
-                      'urltest'
-                        ? 'text-amber-300'
-                        : 'text-cyan-300'}"
-                    >
-                      <option value="urltest">URLTest</option>
-                      <option value="selector">Selector</option>
-                    </select>
+          <div class="flex flex-wrap items-center gap-2 shrink-0 md:self-center">
+            {#if currentDraft.dirty}
+              <span class="text-xs text-amber-300 font-mono">● 未保存</span>
+            {/if}
+            {#if currentDraft.stale}
+              <span class="text-xs text-amber-200">服务器上的模板已更新</span>
+            {/if}
+            {#if currentDraft.missing}
+              <span class="text-xs text-rose-300">模板已不在服务器上</span>
+            {/if}
+            {#if store.isAuthenticated}
+              <button
+                type="button"
+                onclick={handleSaveTemplate}
+                disabled={!currentDraft.dirty || currentDraft.stale || saving || discarding}
+                class="btn {currentDraft.dirty && !currentDraft.stale
+                  ? 'btn-primary'
+                  : 'btn-ghost'}"
+              >
+                {saving ? '保存中' : '保存'}
+              </button>
+              {#if currentDraft.dirty}
+                <button
+                  type="button"
+                  onclick={handleDiscardTemplate}
+                  disabled={saving || discarding}
+                  class="btn btn-secondary"
+                >
+                  放弃
+                </button>
+              {/if}
+              {#if currentDraft.dirty && currentDraft.stale && !currentDraft.missing}
+                <button
+                  type="button"
+                  onclick={handleForceSave}
+                  disabled={saving || discarding}
+                  class="btn btn-warning"
+                >
+                  强制保存
+                </button>
+              {/if}
+            {:else if savedNotice}
+              <span class="text-xs text-emerald-400 flex items-center gap-1 font-mono">
+                <Check size={13} /> 已同步更新
+              </span>
+            {/if}
+          </div>
+        </div>
+      </div>
 
-                    <input
-                      type="text"
-                      bind:value={ng.tag}
-                      oninput={triggerUpdate}
-                      placeholder="分组标签，如：香港节点"
-                      class="bg-slate-950 text-slate-100 text-sm font-semibold px-2 py-0.5 rounded border border-slate-800 focus:border-amber-500 focus:outline-none flex-1 font-mono"
-                    />
+      <div class="space-y-3">
+        <div
+          class="flex items-center gap-1.5 bg-slate-900/60 p-1 rounded-lg border border-slate-800 text-xs overflow-x-auto no-scrollbar"
+          role="tablist"
+          aria-label="模板分区"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={currentSubTab === 'node_groups'}
+            aria-label="节点分组，{store.selectedTemplate.content?.node_groups?.length || 0} 项"
+            onclick={() => switchSubTab('node_groups')}
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap shrink-0 transition-all {currentSubTab ===
+            'node_groups'
+              ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+              : 'text-slate-400 hover:text-slate-200'}"
+          >
+            <Layers size={13} />
+            <span>节点分组</span>
+            <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded" aria-hidden="true"
+              >{store.selectedTemplate.content?.node_groups?.length || 0}</span
+            >
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={currentSubTab === 'policy_groups'}
+            aria-label="出站策略组，{userPolicyGroups.length} 项"
+            onclick={() => switchSubTab('policy_groups')}
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap shrink-0 transition-all {currentSubTab ===
+            'policy_groups'
+              ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+              : 'text-slate-400 hover:text-slate-200'}"
+          >
+            <Sparkles size={13} />
+            <span>出站策略组</span>
+            <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded" aria-hidden="true"
+              >{userPolicyGroups.length}</span
+            >
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={currentSubTab === 'rule_sets'}
+            aria-label="规则集，{allDefinedRuleTags.length} 项"
+            onclick={() => switchSubTab('rule_sets')}
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap shrink-0 transition-all {currentSubTab ===
+            'rule_sets'
+              ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+              : 'text-slate-400 hover:text-slate-200'}"
+          >
+            <Bookmark size={13} />
+            <span>规则集</span>
+            <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded" aria-hidden="true"
+              >{allDefinedRuleTags.length}</span
+            >
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={currentSubTab === 'dns'}
+            aria-label="DNS 服务器与分流，{store.selectedTemplate.content?.dns?.servers?.length ||
+              0} 项"
+            onclick={() => switchSubTab('dns')}
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap shrink-0 transition-all {currentSubTab ===
+            'dns'
+              ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+              : 'text-slate-400 hover:text-slate-200'}"
+          >
+            <Radio size={13} />
+            <span>DNS 服务器与分流</span>
+            <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded" aria-hidden="true"
+              >{store.selectedTemplate.content?.dns?.servers?.length || 0}</span
+            >
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={currentSubTab === 'route'}
+            aria-label="路由分流规则，{store.selectedTemplate.content?.route?.rules?.length ||
+              0} 项"
+            onclick={() => switchSubTab('route')}
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap shrink-0 transition-all {currentSubTab ===
+            'route'
+              ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+              : 'text-slate-400 hover:text-slate-200'}"
+          >
+            <Layers size={13} />
+            <span>路由分流规则</span>
+            <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded" aria-hidden="true"
+              >{store.selectedTemplate.content?.route?.rules?.length || 0}</span
+            >
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={currentSubTab === 'inbounds'}
+            aria-label="入站与端点，{(store.selectedTemplate.content?.inbounds?.length || 0) +
+              (store.selectedTemplate.content?.endpoints?.length || 0)} 项"
+            onclick={() => switchSubTab('inbounds')}
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap shrink-0 transition-all {currentSubTab ===
+            'inbounds'
+              ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+              : 'text-slate-400 hover:text-slate-200'}"
+          >
+            <Cable size={13} />
+            <span>入站与端点</span>
+            <span class="font-mono text-slate-500 bg-slate-950 px-1 rounded" aria-hidden="true">
+              {(store.selectedTemplate.content?.inbounds?.length || 0) +
+                (store.selectedTemplate.content?.endpoints?.length || 0)}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={currentSubTab === 'experimental'}
+            aria-label="其他"
+            onclick={() => switchSubTab('experimental')}
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap shrink-0 transition-all {currentSubTab ===
+            'experimental'
+              ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+              : 'text-slate-400 hover:text-slate-200'}"
+          >
+            <SlidersHorizontal size={13} />
+            <span>其他</span>
+          </button>
+        </div>
+
+        <!-- 1. Node Groups View -->
+        {#if currentSubTab === 'node_groups'}
+          <div class="space-y-3">
+            <div class="flex items-center justify-between px-1">
+              <div class="text-xs text-slate-400">
+                节点分组用于从节点源中通过正则表达式（默认忽略大小写）筛选并聚合代理节点，支持自动测速优选。
+              </div>
+              <button type="button" onclick={addNodeGroup} class="btn btn-secondary shrink-0">
+                <Plus size={13} />
+                <span>添加节点分组</span>
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {#each store.selectedTemplate.content?.node_groups || [] as ng, ngIdx}
+                {@const currentPattern = displayPattern(ng.outbounds)}
+                {@const matched = matchNodeTags(currentPattern, allAvailableTags)}
+                {@const matchedNodes = matched.tags}
+                {@const isValidRegex = matched.ok}
+                <div
+                  class="flex h-full flex-col bg-slate-900/80 border border-slate-800 rounded-lg p-3.5"
+                >
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="flex min-w-0 flex-1 items-center gap-2">
+                      <select
+                        bind:value={ng.type}
+                        onchange={triggerUpdate}
+                        aria-label="节点分组类型"
+                        class="field px-2 py-1 text-xs font-mono font-semibold text-slate-200"
+                      >
+                        <option value="urltest">URLTest</option>
+                        <option value="selector">Selector</option>
+                      </select>
+                      <input
+                        type="text"
+                        bind:value={ng.tag}
+                        oninput={triggerUpdate}
+                        aria-label="节点分组名称"
+                        placeholder="分组标签，如：香港节点"
+                        class="field min-w-0 flex-1 px-2 py-1 text-sm font-semibold font-mono"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onclick={() => removeNodeGroup(ngIdx)}
+                      class="btn btn-ghost btn-icon btn-danger"
+                      aria-label="删除此节点分组"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
 
-                  <button
-                    onclick={() => removeNodeGroup(ngIdx)}
-                    title="删除此节点分组"
-                    class="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-
-                <!-- Urltest specific options -->
-                {#if ng.type === 'urltest'}
                   <div
-                    class="grid grid-cols-2 gap-2 bg-slate-950/60 p-2 rounded border border-slate-800/80 text-xs"
+                    class="mt-3 grid grid-cols-2 gap-2 rounded border border-slate-800/80 bg-slate-950/60 p-2 text-xs"
                   >
-                    <div>
-                      <span class="text-slate-400 text-[11px] block">容差</span>
+                    <label class="block">
+                      <span class="mb-1 block text-slate-400">容差</span>
                       <input
                         type="number"
                         bind:value={ng.tolerance}
                         oninput={triggerUpdate}
-                        placeholder="50 (ms)"
-                        class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-slate-200 font-mono"
+                        disabled={ng.type !== 'urltest'}
+                        placeholder="50"
+                        class="field w-full px-2 py-1 font-mono disabled:opacity-50"
                       />
-                    </div>
-                    <div>
-                      <span class="text-slate-400 text-[11px] block">测速间隔</span>
+                    </label>
+                    <label class="block">
+                      <span class="mb-1 block text-slate-400">测速间隔</span>
                       <input
                         type="text"
                         bind:value={ng.interval}
                         oninput={triggerUpdate}
+                        disabled={ng.type !== 'urltest'}
                         placeholder="3m"
-                        class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-slate-200 font-mono"
+                        class="field w-full px-2 py-1 font-mono disabled:opacity-50"
                       />
-                    </div>
-                  </div>
-                {/if}
-
-                <!-- Single Regex Pattern Section -->
-                <div class="space-y-1.5 pt-1">
-                  <div class="flex items-center justify-between text-xs text-slate-400">
-                    <span class="font-medium">节点筛选正则:</span>
-                    {#if !isValidRegex}
-                      <span class="text-rose-400 font-medium">正则格式错误</span>
-                    {:else}
-                      <span
-                        class="text-[11px] {matchedNodes.length > 0
-                          ? 'text-amber-400 font-medium'
-                          : 'text-slate-500'}"
-                        title={matchedNodes.join(', ')}
-                      >
-                        命中 {matchedNodes.length} 个节点
-                      </span>
-                    {/if}
+                    </label>
+                    <p class="col-span-2 text-slate-400">
+                      {ng.type === 'urltest' ? '按间隔自动测速' : '仅 URLTest 使用'}
+                    </p>
                   </div>
 
-                  <div class="relative flex items-center">
+                  <div class="mt-3 space-y-1.5">
+                    <label
+                      class="block text-xs font-medium text-slate-400"
+                      for="node-pattern-{ngIdx}"
+                    >
+                      节点筛选正则
+                    </label>
                     <input
+                      id="node-pattern-{ngIdx}"
                       type="text"
                       value={currentPattern}
                       oninput={(e) => updateNodeGroupPattern(ngIdx, e.currentTarget.value)}
                       placeholder="例如：港|hk 或 .*"
-                      class="w-full bg-slate-950 text-xs px-3 py-2 rounded border {isValidRegex
-                        ? 'border-slate-800 focus:border-amber-500/80'
-                        : 'border-rose-800 text-rose-200'} text-slate-200 focus:outline-none font-mono"
+                      class="field w-full px-3 py-2 text-xs font-mono {isValidRegex
+                        ? ''
+                        : 'border-rose-800 text-rose-200'}"
                     />
-                    {#if isValidRegex && matchedNodes.length > 0}
-                      <span
-                        class="absolute right-2.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60 font-mono pointer-events-none"
-                      >
-                        {matchedNodes.length} 节点
-                      </span>
-                    {/if}
                   </div>
+                  <p
+                    class="mt-auto pt-3 text-xs {isValidRegex ? 'text-slate-400' : 'text-rose-300'}"
+                  >
+                    {isValidRegex ? `命中 ${matchedNodes.length} 个节点` : '正则格式错误'}
+                  </p>
                 </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        <!-- 2. Policy Groups View -->
+        {#if currentSubTab === 'policy_groups'}
+          <div class="space-y-4">
+            <!-- Subtab Header & Action -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+              <div class="text-xs text-slate-400">
+                管理业务分流策略组与系统基础出站。策略组均为 <strong class="text-cyan-300 font-mono"
+                  >Selector</strong
+                > 类型，候选目标由节点分组及内置直连/阻断组成。
               </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
-
-      <!-- 2. Policy Groups View -->
-      {#if currentSubTab === 'policy_groups'}
-        <div class="space-y-4">
-          <!-- Subtab Header & Action -->
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
-            <div class="text-xs text-slate-400">
-              管理业务分流策略组与系统基础出站。策略组均为 <strong class="text-cyan-300 font-mono"
-                >Selector</strong
-              > 类型，候选目标由节点分组及内置直连/阻断组成。
+              <button
+                type="button"
+                onclick={addPolicyGroup}
+                class="btn btn-secondary shrink-0 self-start sm:self-auto"
+              >
+                <Plus size={13} />
+                <span>添加出站策略组</span>
+              </button>
             </div>
-            <button
-              type="button"
-              onclick={addPolicyGroup}
-              class="px-2.5 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium flex items-center gap-1 shadow-sm shrink-0 self-start sm:self-auto cursor-pointer"
-            >
-              <Plus size={13} />
-              <span>添加出站策略组</span>
-            </button>
-          </div>
 
-          <!-- Section 1: System Built-in Base Outbounds -->
-          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-3.5 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-1.5 text-xs text-slate-200 font-semibold">
-                <Shield size={14} class="text-emerald-400" />
-                <span>系统内置基础出站 (Base Outbounds)</span>
+            <!-- Section 1: System Built-in Base Outbounds -->
+            <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-3.5 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1.5 text-xs text-slate-200 font-semibold">
+                  <Shield size={14} class="text-slate-400" />
+                  <span>系统内置基础出站 (Base Outbounds)</span>
+                </div>
+                <span class="text-[11px] text-slate-500"
+                  >内置出站不可删除；支持编辑标签名称以对接路由规则</span
+                >
               </div>
-              <span class="text-[11px] text-slate-500"
-                >内置出站不可删除；支持编辑标签名称以对接路由规则</span
-              >
-            </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-              <!-- Direct outbound -->
-              {#if directOutbound}
-                <div
-                  class="flex items-center gap-2.5 bg-slate-950/70 border border-slate-800/90 rounded-lg p-2.5"
-                >
-                  <span
-                    class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-950/80 border border-emerald-800/60 text-emerald-400 shrink-0"
-                  >
-                    direct
-                  </span>
-                  <div class="flex items-center gap-1.5 flex-1 min-w-0">
-                    <span class="text-slate-400 text-xs shrink-0">标签:</span>
-                    <input
-                      type="text"
-                      bind:value={directOutbound.tag}
-                      oninput={triggerUpdate}
-                      placeholder="直连"
-                      title="编辑直连出站标签"
-                      class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-100 font-mono font-medium focus:border-cyan-500 focus:outline-none flex-1 text-xs"
-                    />
-                  </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <!-- Direct outbound -->
+                {#if directOutbound}
                   <div
-                    class="flex items-center gap-1 text-[11px] text-slate-500 shrink-0 font-mono"
-                    title="系统核心直连出站，不可删除"
+                    class="flex items-center gap-2.5 bg-slate-950/70 border border-slate-800/90 rounded-lg p-2.5"
                   >
-                    <Lock size={12} class="text-slate-500" />
-                    <span>内置不可删</span>
-                  </div>
-                </div>
-              {/if}
-
-              <!-- Block outbound -->
-              {#if blockOutbound}
-                <div
-                  class="flex items-center gap-2.5 bg-slate-950/70 border border-slate-800/90 rounded-lg p-2.5"
-                >
-                  <span
-                    class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-rose-950/80 border border-rose-800/60 text-rose-400 shrink-0"
-                  >
-                    block
-                  </span>
-                  <div class="flex items-center gap-1.5 flex-1 min-w-0">
-                    <span class="text-slate-400 text-xs shrink-0">标签:</span>
-                    <input
-                      type="text"
-                      bind:value={blockOutbound.tag}
-                      oninput={triggerUpdate}
-                      placeholder="block"
-                      title="编辑阻断出站标签"
-                      class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-100 font-mono font-medium focus:border-cyan-500 focus:outline-none flex-1 text-xs"
-                    />
-                  </div>
-                  <div
-                    class="flex items-center gap-1 text-[11px] text-slate-500 shrink-0 font-mono"
-                    title="系统核心阻断出站，不可删除"
-                  >
-                    <Lock size={12} class="text-slate-500" />
-                    <span>内置不可删</span>
-                  </div>
-                </div>
-              {/if}
-            </div>
-          </div>
-
-          <!-- Section 2: Policy Groups List (Table) -->
-          <div class="bg-slate-900/80 border border-slate-800 rounded-lg overflow-visible">
-            <div class="overflow-x-auto md:overflow-visible">
-              <table class="w-full text-xs text-left text-slate-300">
-                <thead
-                  class="bg-slate-950/90 text-slate-400 uppercase font-mono border-b border-slate-800 text-[11px]"
-                >
-                  <tr>
-                    <th class="py-2.5 px-3.5 w-[200px]">策略组标签 (Tag)</th>
-                    <th class="py-2.5 px-3 min-w-[340px]">包含节点分组 (多选下拉)</th>
-                    <th class="py-2.5 px-3 w-[180px]">默认选中 (Default)</th>
-                    <th class="py-2.5 px-3 w-[60px] text-center">操作</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-800/60 font-mono">
-                  {#each userPolicyGroups as pg}
-                    <tr class="hover:bg-slate-950/30 transition-colors align-middle">
-                      <!-- Tag Name -->
-                      <td class="py-2.5 px-3.5">
-                        <input
-                          type="text"
-                          bind:value={pg.tag}
-                          oninput={triggerUpdate}
-                          placeholder="策略组标签"
-                          class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-100 font-semibold focus:border-cyan-500 focus:outline-none font-mono"
-                        />
-                      </td>
-
-                      <!-- MultiSelect Node Groups -->
-                      <td class="py-2.5 px-3">
-                        <MultiSelect
-                          options={policyCandidateOptions}
-                          bind:selected={pg.outbounds}
-                          placeholder="选择包含的节点分组..."
-                          onChange={() => handlePolicyGroupOutboundsChange(pg)}
-                        />
-                      </td>
-
-                      <!-- Default selection (Under/Next to node groups) -->
-                      <td class="py-2.5 px-3">
-                        <select
-                          bind:value={pg.default}
-                          onchange={triggerUpdate}
-                          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-cyan-200 font-mono focus:border-cyan-500 focus:outline-none"
-                        >
-                          <option value="">(首项: {pg.outbounds?.[0] || '空'})</option>
-                          {#each pg.outbounds || [] as cand}
-                            <option value={cand}>{cand}</option>
-                          {/each}
-                        </select>
-                      </td>
-
-                      <!-- Delete Action -->
-                      <td class="py-2.5 px-3 text-center">
-                        <button
-                          type="button"
-                          onclick={() => removePolicyGroup(pg)}
-                          title="删除此策略组"
-                          class="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800 transition-colors cursor-pointer"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  {/each}
-                  {#if userPolicyGroups.length === 0}
-                    <tr>
-                      <td colspan="4" class="py-8 text-center text-slate-500 text-xs font-mono">
-                        暂无出站策略组，点击右上角「添加出站策略组」进行创建
-                      </td>
-                    </tr>
-                  {/if}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      {/if}
-
-      <!-- 2.5 Rule Sets Module View -->
-      {#if currentSubTab === 'rule_sets'}
-        <div class="space-y-4">
-          <!-- Multi-Provider Header -->
-          <div
-            class="flex items-center justify-between bg-slate-900/80 border border-slate-800 rounded-lg p-3.5"
-          >
-            <div>
-              <h3 class="text-sm font-semibold text-slate-100 flex items-center gap-1.5">
-                <Bookmark size={16} class="text-emerald-400" />
-                <span>外部规则源管理 (Rule Set Providers)</span>
-              </h3>
-              <p class="text-xs text-slate-400 mt-0.5">
-                支持同时引入多个规则源（如同时引入 SagerNet GeoSite 与 MetaCubeX GeoIP），通过独立
-                Tag 前缀（如 geosite- / geoip-）彻底隔离同名冲突。
-              </p>
-            </div>
-            <button
-              type="button"
-              onclick={addProvider}
-              class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
-            >
-              <Plus size={13} />
-              <span>添加规则源</span>
-            </button>
-          </div>
-
-          <!-- Provider Cards List -->
-          <div class="space-y-3.5">
-            {#each store.selectedTemplate.content?.rule_sets || [] as p, pIdx}
-              {@const isExpanded = expandedProviderIndices.has(pIdx)}
-              {@const inspectState = providerInspectStates[pIdx] || {
-                rules: [],
-                inspecting: false,
-                error: '',
-                searchQuery: '',
-                searchDropdownOpen: false,
-              }}
-              {@const providerCollisions = (
-                Array.isArray(p.tag) ? p.tag : p.tag ? [p.tag] : []
-              ).filter((t) => collidingRuleTagSet.has(String(t).trim()))}
-
-              <div
-                class="bg-slate-900/90 border {providerCollisions.length > 0
-                  ? 'border-amber-600/70'
-                  : 'border-slate-800'} rounded-lg overflow-hidden transition-all shadow-sm"
-              >
-                <!-- Card Header -->
-                <div
-                  class="bg-slate-950/70 p-3 flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-800/80"
-                >
-                  <div class="flex items-center gap-2 flex-1 min-w-[280px]">
-                    <button
-                      type="button"
-                      onclick={() => toggleProviderExpanded(pIdx)}
-                      class="p-1 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-                      title={isExpanded ? '折叠此源' : '展开此源'}
-                    >
-                      {#if isExpanded}
-                        <ChevronDown size={15} />
-                      {:else}
-                        <ChevronRight size={15} />
-                      {/if}
-                    </button>
-
-                    <!-- Provider Name -->
-                    <input
-                      type="text"
-                      bind:value={p.name}
-                      oninput={triggerUpdate}
-                      placeholder="规则源名称 (如 SagerNet GeoSite)"
-                      class="bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-100 font-bold focus:border-emerald-500 focus:outline-none w-48 sm:w-56"
-                    />
-
-                    <!-- Quick Preset Switcher -->
-                    <select
-                      value={p.preset_id || ''}
-                      onchange={(e) => handleProviderPresetChange(pIdx, e.target.value)}
-                      class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-emerald-300 font-mono"
-                    >
-                      <option value="">(选择或套用预设...)</option>
-                      {#each presets as pr}
-                        <option value={pr.id}>{pr.name}</option>
-                      {/each}
-                    </select>
-
-                    <!-- Enabled Rules Count Badge -->
                     <span
-                      class="px-2 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-800 font-mono text-[11px]"
+                      class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-950/80 border border-emerald-800/60 text-emerald-400 shrink-0"
                     >
-                      已选 <span class="text-emerald-400 font-bold"
-                        >{Array.isArray(p.tag) ? p.tag.length : p.tag ? 1 : 0}</span
-                      > 条
+                      direct
                     </span>
-
-                    <!-- Collision Warning Badge -->
-                    {#if providerCollisions.length > 0}
-                      <span
-                        class="px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800 font-mono text-[11px] flex items-center gap-1"
-                      >
-                        <AlertCircle size={11} class="text-amber-400" />
-                        <span>{providerCollisions.length} 个 Tag 重名冲突</span>
-                      </span>
-                    {/if}
-                  </div>
-
-                  <div class="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onclick={() => removeProvider(pIdx)}
-                      class="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-900 transition-colors"
-                      title="删除此规则源"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Card Body -->
-                {#if isExpanded}
-                  <div class="p-4 space-y-3.5">
-                    <!-- Source Configuration Bar -->
+                    <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                      <span class="text-slate-400 text-xs shrink-0">标签:</span>
+                      <input
+                        type="text"
+                        bind:value={directOutbound.tag}
+                        oninput={triggerUpdate}
+                        placeholder="直连"
+                        title="编辑直连出站标签"
+                        class="field flex-1 px-2 py-1 text-xs font-mono font-medium"
+                      />
+                    </div>
                     <div
-                      class="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/60"
+                      class="flex items-center gap-1 text-[11px] text-slate-500 shrink-0 font-mono"
+                      title="系统核心直连出站，不可删除"
                     >
-                      <div class="md:col-span-5 space-y-1">
-                        <span class="text-[11px] text-slate-400 flex items-center gap-1 font-sans">
-                          <Globe size={11} class="text-indigo-400" />
-                          <span>仓库地址 / 分支 / 目录 (owner/repo#branch/path)</span>
-                        </span>
-                        <input
-                          type="text"
-                          bind:value={p.source_url}
-                          oninput={triggerUpdate}
-                          placeholder="例如: SagerNet/sing-geosite#rule-set 或 MetaCubeX/meta-rules-dat#sing/geo/geosite"
-                          class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 font-mono focus:border-emerald-500 focus:outline-none"
-                        />
-                      </div>
+                      <Lock size={12} class="text-slate-500" />
+                      <span>内置不可删</span>
+                    </div>
+                  </div>
+                {/if}
 
-                      <div class="md:col-span-2 space-y-1">
-                        <span
-                          class="text-[11px] text-slate-400 font-sans block"
-                          title="为本源所有规则 Tag 添加前缀，避免与其它规则源（如 IP 源与域名源）发生同名冲突"
-                        >
-                          Tag 前缀 (命名空间)
-                        </span>
-                        <input
-                          type="text"
-                          bind:value={p.tag_prefix}
-                          oninput={triggerUpdate}
-                          placeholder="例如: geosite- 或 geoip-"
-                          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-amber-300 font-mono focus:border-amber-500 focus:outline-none"
-                        />
-                      </div>
+                <!-- Block outbound -->
+                {#if blockOutbound}
+                  <div
+                    class="flex items-center gap-2.5 bg-slate-950/70 border border-slate-800/90 rounded-lg p-2.5"
+                  >
+                    <span
+                      class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-rose-950/80 border border-rose-800/60 text-rose-400 shrink-0"
+                    >
+                      block
+                    </span>
+                    <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                      <span class="text-slate-400 text-xs shrink-0">标签:</span>
+                      <input
+                        type="text"
+                        bind:value={blockOutbound.tag}
+                        oninput={triggerUpdate}
+                        placeholder="block"
+                        title="编辑阻断出站标签"
+                        class="field flex-1 px-2 py-1 text-xs font-mono font-medium"
+                      />
+                    </div>
+                    <div
+                      class="flex items-center gap-1 text-[11px] text-slate-500 shrink-0 font-mono"
+                      title="系统核心阻断出站，不可删除"
+                    >
+                      <Lock size={12} class="text-slate-500" />
+                      <span>内置不可删</span>
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            </div>
 
-                      <div class="md:col-span-2 space-y-1">
-                        <span class="text-[11px] text-slate-400 font-sans block">资产格式</span>
-                        <select
-                          bind:value={p.format}
-                          onchange={triggerUpdate}
-                          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 font-mono"
-                        >
-                          <option value="binary">.srs (二进制, 推荐)</option>
-                          <option value="source">.json (源码格式)</option>
-                        </select>
-                      </div>
-
-                      <div class="md:col-span-1 space-y-1">
-                        <span class="text-[11px] text-slate-400 font-sans block">下载 Detour</span>
-                        <select
-                          bind:value={p.download_detour}
-                          onchange={triggerUpdate}
-                          class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 font-mono"
-                        >
-                          <option value="ALL">ALL (默认)</option>
-                          <option value="直连">直连</option>
-                          {#each allOutboundTags as oTag}
-                            {#if oTag !== 'ALL' && oTag !== '直连'}
-                              <option value={oTag}>{oTag}</option>
-                            {/if}
-                          {/each}
-                        </select>
-                      </div>
-
-                      <div class="md:col-span-2">
-                        <button
-                          type="button"
-                          onclick={() => inspectProvider(pIdx)}
-                          disabled={inspectState.inspecting}
-                          class="w-full py-1 px-2.5 rounded bg-emerald-700/40 hover:bg-emerald-600/60 border border-emerald-500/50 text-emerald-100 text-xs font-medium flex items-center justify-center gap-1 shadow-sm disabled:opacity-50 transition-colors cursor-pointer"
-                        >
-                          <RefreshCw
-                            size={12}
-                            class={inspectState.inspecting ? 'animate-spin' : ''}
+            <!-- Section 2: Policy Groups List (Table) -->
+            <div class="bg-slate-900/80 border border-slate-800 rounded-lg overflow-visible">
+              <div class="overflow-x-auto md:overflow-visible">
+                <table class="w-full text-xs text-left text-slate-300">
+                  <thead
+                    class="bg-slate-950/90 text-slate-400 font-mono border-b border-slate-800 text-[11px]"
+                  >
+                    <tr>
+                      <th class="py-2.5 px-3.5 w-[200px]">策略组标签 (Tag)</th>
+                      <th class="py-2.5 px-3 min-w-[340px]">包含节点分组 (多选下拉)</th>
+                      <th class="py-2.5 px-3 w-[180px]">默认选中 (Default)</th>
+                      <th class="py-2.5 px-3 w-[60px] text-center">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800/60 font-mono">
+                    {#each userPolicyGroups as pg}
+                      <tr class="hover:bg-slate-950/30 transition-colors align-middle">
+                        <!-- Tag Name -->
+                        <td class="py-2.5 px-3.5">
+                          <input
+                            type="text"
+                            bind:value={pg.tag}
+                            oninput={triggerUpdate}
+                            placeholder="策略组标签"
+                            class="field w-full px-2.5 py-1 text-xs font-semibold font-mono"
                           />
-                          <span>{inspectState.inspecting ? '探测中...' : '同步规则清单'}</span>
-                        </button>
-                      </div>
-                    </div>
+                        </td>
 
-                    <!-- Collision Warning Banner -->
-                    {#if providerCollisions.length > 0}
-                      <div
-                        class="p-2.5 bg-amber-950/60 border border-amber-800/80 rounded-lg text-xs text-amber-200 flex items-start gap-2 font-mono"
-                      >
-                        <AlertCircle size={14} class="text-amber-400 shrink-0 mt-0.5" />
-                        <div>
-                          <span class="font-bold">⚠️ 检测到重名冲突：</span>
-                          <span
-                            >当前源以下 Tag 与其它规则源冲突：[{providerCollisions.join(
-                              ', ',
-                            )}]。建议在上方为本源配置独立的 Tag 前缀（如 geosite- 或
-                            geoip-）进行隔离！</span
+                        <!-- MultiSelect Node Groups -->
+                        <td class="py-2.5 px-3">
+                          <MultiSelect
+                            options={policyCandidateOptions}
+                            bind:selected={pg.outbounds}
+                            placeholder="选择包含的节点分组..."
+                            onChange={() => handlePolicyGroupOutboundsChange(pg)}
+                          />
+                        </td>
+
+                        <!-- Default selection (Under/Next to node groups) -->
+                        <td class="py-2.5 px-3">
+                          <select
+                            bind:value={pg.default}
+                            onchange={triggerUpdate}
+                            class="field w-full px-2 py-1 text-xs font-mono"
                           >
-                        </div>
-                      </div>
-                    {/if}
+                            <option value="">(首项: {pg.outbounds?.[0] || '空'})</option>
+                            {#each pg.outbounds || [] as cand}
+                              <option value={cand}>{cand}</option>
+                            {/each}
+                          </select>
+                        </td>
 
-                    {#if inspectState.error}
-                      <div
-                        class="p-2.5 bg-rose-950/60 border border-rose-800/60 rounded text-xs text-rose-300 flex items-center gap-2"
-                      >
-                        <AlertCircle size={14} class="shrink-0" />
-                        <span>{inspectState.error}</span>
-                      </div>
-                    {/if}
-
-                    <!-- Row 3: Instant Search & Add + Browse All Modal Trigger -->
-                    <div
-                      class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5"
-                    >
-                      <!-- Search & Add Input with instant autocomplete -->
-                      <div class="relative flex-1">
-                        <Search size={13} class="absolute left-2.5 top-2.5 text-slate-500" />
-                        <input
-                          type="text"
-                          bind:value={inspectState.searchQuery}
-                          onfocus={() => {
-                            inspectState.searchDropdownOpen = true;
-                            providerInspectStates = { ...providerInspectStates };
-                          }}
-                          onblur={() => {
-                            setTimeout(() => {
-                              inspectState.searchDropdownOpen = false;
-                              providerInspectStates = { ...providerInspectStates };
-                            }, 200);
-                          }}
-                          onkeydown={(e) => {
-                            if (e.key === 'Enter' && inspectState.searchQuery.trim()) {
-                              const q = inspectState.searchQuery.trim().toLowerCase();
-                              const matched = (inspectState.rules || []).find((r) =>
-                                r.tag.toLowerCase().includes(q),
-                              );
-                              if (matched) {
-                                toggleProviderTag(pIdx, matched.tag);
-                                inspectState.searchQuery = '';
-                              } else {
-                                toggleProviderTag(pIdx, inspectState.searchQuery.trim());
-                                inspectState.searchQuery = '';
-                              }
-                            }
-                          }}
-                          placeholder="智能搜索并快速添加规则 (如 bilibili, openai, steam, apple)... 回车添加"
-                          class="w-full bg-slate-950 border border-slate-800 rounded pl-8 pr-3 py-1.5 text-xs text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
-                        />
-
-                        <!-- Live Suggestion Dropdown -->
-                        {#if inspectState.searchDropdownOpen && inspectState.searchQuery.trim() && (inspectState.rules || []).length > 0}
-                          {@const searchMatches = (inspectState.rules || [])
-                            .filter((r) =>
-                              r.tag
-                                .toLowerCase()
-                                .includes(inspectState.searchQuery.trim().toLowerCase()),
-                            )
-                            .slice(0, 8)}
-                          {#if searchMatches.length > 0}
-                            <div
-                              class="absolute left-0 right-0 top-full mt-1 bg-slate-950 border border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto divide-y divide-slate-800/60 font-mono text-xs"
-                            >
-                              {#each searchMatches as m}
-                                {@const isChecked = isTagSelected(p, m.tag)}
-                                {@const displayTag = finalRuleTag(p.tag_prefix, m.tag)}
-                                <button
-                                  type="button"
-                                  onmousedown={() => {
-                                    toggleProviderTag(pIdx, m.tag);
-                                  }}
-                                  class="w-full text-left px-3 py-1.5 flex items-center justify-between hover:bg-slate-800 transition-colors cursor-pointer"
-                                >
-                                  <span
-                                    class="font-bold {isChecked
-                                      ? 'text-emerald-300'
-                                      : 'text-slate-200'}">{displayTag}</span
-                                  >
-                                  <span class="text-[10px] text-slate-500"
-                                    >{isChecked ? '✓ 已添加 (点击移除)' : '+ 点击添加'}</span
-                                  >
-                                </button>
-                              {/each}
-                            </div>
-                          {/if}
-                        {/if}
-                      </div>
-
-                      <!-- Browse All Button -->
-                      {#if (inspectState.rules || []).length > 0}
-                        <button
-                          type="button"
-                          onclick={() => openBrowseModal(pIdx)}
-                          class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium flex items-center justify-center gap-1.5 shrink-0 transition-colors cursor-pointer"
-                        >
-                          <Bookmark size={13} class="text-cyan-400" />
-                          <span>浏览全库 (共 {inspectState.rules.length} 条)</span>
-                        </button>
-                      {/if}
-                    </div>
-
-                    <!-- Row 4: Currently Selected Rules Pool (已选规则池) -->
-                    <div
-                      class="bg-slate-950/70 border border-slate-800/80 rounded-lg p-3 space-y-2 text-xs"
-                    >
-                      <div class="flex items-center justify-between">
-                        <span class="text-slate-300 font-medium font-sans">
-                          本源已启用规则池 ({Array.isArray(p.tag) ? p.tag.length : p.tag ? 1 : 0} 个规则):
-                        </span>
-                        {#if (Array.isArray(p.tag) ? p.tag.length : 0) > 0}
+                        <!-- Delete Action -->
+                        <td class="py-2.5 px-3 text-center">
                           <button
                             type="button"
-                            onclick={() => clearProviderTags(pIdx)}
-                            class="text-slate-500 hover:text-rose-400 font-mono text-[11px]"
+                            onclick={() => removePolicyGroup(pg)}
+                            class="btn btn-ghost btn-icon btn-danger"
+                            aria-label="删除此策略组"
                           >
-                            清空已选
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    {/each}
+                    {#if userPolicyGroups.length === 0}
+                      <tr>
+                        <td colspan="4" class="py-8 text-center text-slate-500 text-xs font-mono">
+                          暂无出站策略组，点击右上角「添加出站策略组」进行创建
+                        </td>
+                      </tr>
+                    {/if}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        {/if}
+
+        <!-- 2.5 Rule Sets Module View -->
+        {#if currentSubTab === 'rule_sets'}
+          <div class="space-y-4">
+            <!-- Multi-Provider Header -->
+            <div
+              class="flex items-center justify-between bg-slate-900/80 border border-slate-800 rounded-lg p-3.5"
+            >
+              <div>
+                <h3 class="text-sm font-semibold text-slate-100">规则源</h3>
+                <p class="text-xs text-slate-400 mt-0.5">
+                  支持同时引入多个规则源（如同时引入 SagerNet GeoSite 与 MetaCubeX GeoIP），通过独立
+                  Tag 前缀（如 geosite- / geoip-）彻底隔离同名冲突。
+                </p>
+              </div>
+              <button type="button" onclick={addProvider} class="btn btn-secondary shrink-0">
+                <Plus size={13} />
+                <span>添加规则源</span>
+              </button>
+            </div>
+
+            <!-- Provider Cards List -->
+            <div class="space-y-3.5">
+              {#each store.selectedTemplate.content?.rule_sets || [] as p, pIdx}
+                {@const isExpanded = expandedProviderIndices.has(pIdx)}
+                {@const inspectState = providerInspectStates[pIdx] || {
+                  rules: [],
+                  inspecting: false,
+                  error: '',
+                  searchQuery: '',
+                  searchDropdownOpen: false,
+                }}
+                {@const providerCollisions = (
+                  Array.isArray(p.tag) ? p.tag : p.tag ? [p.tag] : []
+                ).filter((t) => collidingRuleTagSet.has(String(t).trim()))}
+
+                <div
+                  class="bg-slate-900/90 border {providerCollisions.length > 0
+                    ? 'border-amber-600/70'
+                    : 'border-slate-800'} rounded-lg overflow-hidden transition-all shadow-sm"
+                >
+                  <!-- Card Header -->
+                  <div
+                    class="bg-slate-950/70 p-3 flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-800/80"
+                  >
+                    <div class="flex items-center gap-2 flex-1 min-w-[280px]">
+                      <button
+                        type="button"
+                        onclick={() => toggleProviderExpanded(pIdx)}
+                        class="btn btn-ghost btn-icon"
+                        aria-label={isExpanded ? '折叠此源' : '展开此源'}
+                      >
+                        {#if isExpanded}
+                          <ChevronDown size={15} />
+                        {:else}
+                          <ChevronRight size={15} />
+                        {/if}
+                      </button>
+
+                      <!-- Provider Name -->
+                      <input
+                        type="text"
+                        bind:value={p.name}
+                        oninput={triggerUpdate}
+                        placeholder="规则源名称 (如 SagerNet GeoSite)"
+                        class="field w-48 px-2.5 py-1 text-xs font-semibold sm:w-56"
+                      />
+
+                      <!-- Quick Preset Switcher -->
+                      <select
+                        value={p.preset_id || ''}
+                        onchange={(e) => handleProviderPresetChange(pIdx, e.target.value)}
+                        class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-emerald-300 font-mono"
+                      >
+                        <option value="">(选择或套用预设...)</option>
+                        {#each presets as pr}
+                          <option value={pr.id}>{pr.name}</option>
+                        {/each}
+                      </select>
+
+                      <!-- Enabled Rules Count Badge -->
+                      <span
+                        class="px-2 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-800 font-mono text-[11px]"
+                      >
+                        已选 <span class="text-emerald-400 font-bold"
+                          >{Array.isArray(p.tag) ? p.tag.length : p.tag ? 1 : 0}</span
+                        > 条
+                      </span>
+
+                      <!-- Collision Warning Badge -->
+                      {#if providerCollisions.length > 0}
+                        <span
+                          class="px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800 font-mono text-[11px] flex items-center gap-1"
+                        >
+                          <AlertCircle size={11} class="text-amber-400" />
+                          <span>{providerCollisions.length} 个 Tag 重名冲突</span>
+                        </span>
+                      {/if}
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onclick={() => removeProvider(pIdx)}
+                        class="btn btn-ghost btn-icon btn-danger"
+                        aria-label="删除此规则源"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Card Body -->
+                  {#if isExpanded}
+                    <div class="p-4 space-y-3.5">
+                      <!-- Source Configuration Bar -->
+                      <div
+                        class="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/60"
+                      >
+                        <div class="md:col-span-5 space-y-1">
+                          <span
+                            class="text-[11px] text-slate-400 flex items-center gap-1 font-sans"
+                          >
+                            <Globe size={11} class="text-slate-400" />
+                            <span>仓库地址 / 分支 / 目录 (owner/repo#branch/path)</span>
+                          </span>
+                          <input
+                            type="text"
+                            bind:value={p.source_url}
+                            oninput={triggerUpdate}
+                            placeholder="例如: SagerNet/sing-geosite#rule-set 或 MetaCubeX/meta-rules-dat#sing/geo/geosite"
+                            class="field w-full px-2.5 py-1 text-xs font-mono"
+                          />
+                        </div>
+
+                        <div class="md:col-span-2 space-y-1">
+                          <span
+                            class="text-[11px] text-slate-400 font-sans block"
+                            title="为本源所有规则 Tag 添加前缀，避免与其它规则源（如 IP 源与域名源）发生同名冲突"
+                          >
+                            Tag 前缀 (命名空间)
+                          </span>
+                          <input
+                            type="text"
+                            bind:value={p.tag_prefix}
+                            oninput={triggerUpdate}
+                            placeholder="例如: geosite- 或 geoip-"
+                            class="field w-full px-2 py-1 text-xs font-mono text-amber-200"
+                          />
+                        </div>
+
+                        <div class="md:col-span-2 space-y-1">
+                          <span class="text-[11px] text-slate-400 font-sans block">资产格式</span>
+                          <select
+                            bind:value={p.format}
+                            onchange={triggerUpdate}
+                            class="field w-full px-2 py-1 text-xs text-slate-200 font-mono"
+                          >
+                            <option value="binary">.srs (二进制, 推荐)</option>
+                            <option value="source">.json (源码格式)</option>
+                          </select>
+                        </div>
+
+                        <div class="md:col-span-1 space-y-1">
+                          <span class="text-[11px] text-slate-400 font-sans block">下载 Detour</span
+                          >
+                          <select
+                            bind:value={p.download_detour}
+                            onchange={triggerUpdate}
+                            class="field w-full px-2 py-1 text-xs text-slate-200 font-mono"
+                          >
+                            <option value="ALL">ALL (默认)</option>
+                            <option value="直连">直连</option>
+                            {#each allOutboundTags as oTag}
+                              {#if oTag !== 'ALL' && oTag !== '直连'}
+                                <option value={oTag}>{oTag}</option>
+                              {/if}
+                            {/each}
+                          </select>
+                        </div>
+
+                        <div class="md:col-span-2">
+                          <button
+                            type="button"
+                            onclick={() => inspectProvider(pIdx)}
+                            disabled={inspectState.inspecting}
+                            class="btn btn-secondary w-full"
+                          >
+                            <RefreshCw
+                              size={12}
+                              class={inspectState.inspecting ? 'animate-spin' : ''}
+                            />
+                            <span>{inspectState.inspecting ? '探测中...' : '同步规则清单'}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <!-- Collision Warning Banner -->
+                      {#if providerCollisions.length > 0}
+                        <div
+                          class="p-2.5 bg-amber-950/60 border border-amber-800/80 rounded-lg text-xs text-amber-200 flex items-start gap-2 font-mono"
+                        >
+                          <AlertCircle size={14} class="text-amber-400 shrink-0 mt-0.5" />
+                          <div>
+                            <span class="font-bold">⚠️ 检测到重名冲突：</span>
+                            <span
+                              >当前源以下 Tag 与其它规则源冲突：[{providerCollisions.join(
+                                ', ',
+                              )}]。建议在上方为本源配置独立的 Tag 前缀（如 geosite- 或
+                              geoip-）进行隔离！</span
+                            >
+                          </div>
+                        </div>
+                      {/if}
+
+                      {#if inspectState.error}
+                        <div
+                          class="p-2.5 bg-rose-950/60 border border-rose-800/60 rounded text-xs text-rose-300 flex items-center gap-2"
+                        >
+                          <AlertCircle size={14} class="shrink-0" />
+                          <span>{inspectState.error}</span>
+                        </div>
+                      {/if}
+
+                      <!-- Row 3: Instant Search & Add + Browse All Modal Trigger -->
+                      <div
+                        class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5"
+                      >
+                        <!-- Search & Add Input with instant autocomplete -->
+                        <div class="relative flex-1">
+                          <Search size={13} class="absolute left-2.5 top-2.5 text-slate-500" />
+                          <input
+                            type="text"
+                            bind:value={inspectState.searchQuery}
+                            onfocus={() => {
+                              inspectState.searchDropdownOpen = true;
+                              providerInspectStates = { ...providerInspectStates };
+                            }}
+                            onblur={() => {
+                              setTimeout(() => {
+                                inspectState.searchDropdownOpen = false;
+                                providerInspectStates = { ...providerInspectStates };
+                              }, 200);
+                            }}
+                            onkeydown={(e) => {
+                              if (e.key === 'Enter' && inspectState.searchQuery.trim()) {
+                                const q = inspectState.searchQuery.trim().toLowerCase();
+                                const matched = (inspectState.rules || []).find((r) =>
+                                  r.tag.toLowerCase().includes(q),
+                                );
+                                if (matched) {
+                                  toggleProviderTag(pIdx, matched.tag);
+                                  inspectState.searchQuery = '';
+                                } else {
+                                  toggleProviderTag(pIdx, inspectState.searchQuery.trim());
+                                  inspectState.searchQuery = '';
+                                }
+                              }
+                            }}
+                            placeholder="智能搜索并快速添加规则 (如 bilibili, openai, steam, apple)... 回车添加"
+                            class="field w-full rounded py-1.5 pl-8 pr-3 text-xs font-mono"
+                          />
+
+                          <!-- Live Suggestion Dropdown -->
+                          {#if inspectState.searchDropdownOpen && inspectState.searchQuery.trim() && (inspectState.rules || []).length > 0}
+                            {@const searchMatches = (inspectState.rules || [])
+                              .filter((r) =>
+                                r.tag
+                                  .toLowerCase()
+                                  .includes(inspectState.searchQuery.trim().toLowerCase()),
+                              )
+                              .slice(0, 8)}
+                            {#if searchMatches.length > 0}
+                              <div
+                                class="absolute left-0 right-0 top-full mt-1 bg-slate-950 border border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto divide-y divide-slate-800/60 font-mono text-xs"
+                              >
+                                {#each searchMatches as m}
+                                  {@const isChecked = isTagSelected(p, m.tag)}
+                                  {@const displayTag = finalRuleTag(p.tag_prefix, m.tag)}
+                                  <button
+                                    type="button"
+                                    onmousedown={() => {
+                                      toggleProviderTag(pIdx, m.tag);
+                                    }}
+                                    class="w-full text-left px-3 py-1.5 flex items-center justify-between hover:bg-slate-800 transition-colors cursor-pointer"
+                                  >
+                                    <span
+                                      class="font-bold {isChecked
+                                        ? 'text-emerald-300'
+                                        : 'text-slate-200'}">{displayTag}</span
+                                    >
+                                    <span class="text-[10px] text-slate-500"
+                                      >{isChecked ? '✓ 已添加 (点击移除)' : '+ 点击添加'}</span
+                                    >
+                                  </button>
+                                {/each}
+                              </div>
+                            {/if}
+                          {/if}
+                        </div>
+
+                        <!-- Browse All Button -->
+                        {#if (inspectState.rules || []).length > 0}
+                          <button
+                            type="button"
+                            onclick={() => openBrowseModal(pIdx)}
+                            class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium flex items-center justify-center gap-1.5 shrink-0 transition-colors cursor-pointer"
+                          >
+                            <Bookmark size={13} class="text-slate-400" />
+                            <span>浏览全库 (共 {inspectState.rules.length} 条)</span>
                           </button>
                         {/if}
                       </div>
 
-                      <div class="flex flex-wrap gap-1.5">
-                        {#each Array.isArray(p.tag) ? p.tag : p.tag ? [p.tag] : [] as t}
-                          {@const isRef = referencedRuleTagSet.has(t)}
-                          <span
-                            class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-200 font-mono text-[11px]"
-                          >
-                            <span class="font-bold text-emerald-400">{t}</span>
-                            {#if isRef}
-                              <span
-                                class="text-[9px] text-cyan-400 font-sans"
-                                title="已在路由或 DNS 分流规则中被引用">(已引用)</span
-                              >
-                            {/if}
+                      <!-- Row 4: Currently Selected Rules Pool (已选规则池) -->
+                      <div
+                        class="bg-slate-950/70 border border-slate-800/80 rounded-lg p-3 space-y-2 text-xs"
+                      >
+                        <div class="flex items-center justify-between">
+                          <span class="text-slate-300 font-medium font-sans">
+                            本源已启用规则池 ({Array.isArray(p.tag) ? p.tag.length : p.tag ? 1 : 0} 个规则):
+                          </span>
+                          {#if (Array.isArray(p.tag) ? p.tag.length : 0) > 0}
                             <button
                               type="button"
-                              onclick={() => removeProviderTag(pIdx, t)}
-                              class="text-slate-500 hover:text-rose-400 ml-0.5 cursor-pointer"
-                              title="移除此规则"
+                              onclick={() => clearProviderTags(pIdx)}
+                              class="text-slate-500 hover:text-rose-400 font-mono text-[11px]"
                             >
-                              ×
+                              清空已选
                             </button>
-                          </span>
-                        {/each}
-                        {#if (Array.isArray(p.tag) ? p.tag.length : 0) === 0}
-                          <span class="text-slate-500 text-xs font-mono py-1">
-                            尚未启用任何规则，可点击上方推荐规则点亮或在搜索框中快速添加。
-                          </span>
-                        {/if}
+                          {/if}
+                        </div>
+
+                        <div class="flex flex-wrap gap-1.5">
+                          {#each Array.isArray(p.tag) ? p.tag : p.tag ? [p.tag] : [] as t}
+                            {@const isRef = referencedRuleTagSet.has(t)}
+                            <span
+                              class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-200 font-mono text-[11px]"
+                            >
+                              <span class="font-bold text-emerald-400">{t}</span>
+                              {#if isRef}
+                                <span
+                                  class="text-[9px] text-slate-400 font-sans"
+                                  title="已在路由或 DNS 分流规则中被引用">(已引用)</span
+                                >
+                              {/if}
+                              <button
+                                type="button"
+                                onclick={() => removeProviderTag(pIdx, t)}
+                                class="text-slate-500 hover:text-rose-400 ml-0.5 cursor-pointer"
+                                title="移除此规则"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          {/each}
+                          {#if (Array.isArray(p.tag) ? p.tag.length : 0) === 0}
+                            <span class="text-slate-500 text-xs font-mono py-1">
+                              尚未启用任何规则，可点击上方推荐规则点亮或在搜索框中快速添加。
+                            </span>
+                          {/if}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                {/if}
-              </div>
-            {/each}
+                  {/if}
+                </div>
+              {/each}
 
-            {#if !store.selectedTemplate.content?.rule_sets || store.selectedTemplate.content.rule_sets.length === 0}
+              {#if !store.selectedTemplate.content?.rule_sets || store.selectedTemplate.content.rule_sets.length === 0}
+                <div
+                  class="bg-slate-900/40 border border-slate-800 rounded-lg p-8 text-center space-y-2"
+                >
+                  <Bookmark size={24} class="mx-auto text-slate-600" />
+                  <p class="text-xs text-slate-400">尚未添加任何规则源</p>
+                  <button type="button" onclick={addProvider} class="btn btn-secondary">
+                    <Plus size={13} />
+                    <span>添加第一个规则源</span>
+                  </button>
+                </div>
+              {/if}
+            </div>
+          </div>
+        {/if}
+
+        <!-- Full Rules Modal Dialog (全库查阅与多选弹窗) -->
+        {#if browseModal.open && browseModal.providerIdx !== -1}
+          {@const pIdx = browseModal.providerIdx}
+          {@const p = store.selectedTemplate.content?.rule_sets[pIdx]}
+          {@const state = providerInspectStates[pIdx]}
+          {@const allRules = state?.rules || []}
+          {@const searchQ = browseModal.search.toLowerCase().trim()}
+          {@const filteredByLetter = allRules.filter((r) => {
+            if (browseModal.letterFilter === 'ALL') return true;
+            if (browseModal.letterFilter === '#') return !/^[A-Za-z]/.test(r.tag);
+            return r.tag.toUpperCase().startsWith(browseModal.letterFilter);
+          })}
+          {@const modalFilteredRules = filteredByLetter.filter(
+            (r) => !searchQ || r.tag.toLowerCase().includes(searchQ),
+          )}
+
+          <div
+            class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5"
+          >
+            <div
+              class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden text-xs"
+            >
+              <!-- Modal Header -->
               <div
-                class="bg-slate-900/40 border border-slate-800 rounded-lg p-8 text-center space-y-2"
+                class="p-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2"
               >
-                <Bookmark size={24} class="mx-auto text-slate-600" />
-                <p class="text-xs text-slate-400">尚未添加任何规则源</p>
+                <div class="flex items-center gap-2">
+                  <Bookmark size={16} class="text-slate-400" />
+                  <div>
+                    <h4 class="text-sm font-bold text-slate-100 font-sans">
+                      规则全库 — {p?.name || '规则源'} (共 {allRules.length} 条)
+                    </h4>
+                    <p class="text-[11px] text-slate-400 font-sans">
+                      当前源 Tag 前缀为 <span class="text-amber-300 font-mono font-bold"
+                        >"{p?.tag_prefix || '(无)'}"</span
+                      >
+                    </p>
+                  </div>
+                </div>
+
                 <button
                   type="button"
-                  onclick={addProvider}
-                  class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium inline-flex items-center gap-1 shadow-sm"
+                  onclick={closeBrowseModal}
+                  class="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                  title="关闭"
                 >
-                  <Plus size={13} />
-                  <span>添加第一个规则源</span>
+                  <X size={16} />
                 </button>
               </div>
-            {/if}
-          </div>
-        </div>
-      {/if}
 
-      <!-- Full Rules Modal Dialog (全库查阅与多选弹窗) -->
-      {#if browseModal.open && browseModal.providerIdx !== -1}
-        {@const pIdx = browseModal.providerIdx}
-        {@const p = store.selectedTemplate.content?.rule_sets[pIdx]}
-        {@const state = providerInspectStates[pIdx]}
-        {@const allRules = state?.rules || []}
-        {@const searchQ = browseModal.search.toLowerCase().trim()}
-        {@const filteredByLetter = allRules.filter((r) => {
-          if (browseModal.letterFilter === 'ALL') return true;
-          if (browseModal.letterFilter === '#') return !/^[A-Za-z]/.test(r.tag);
-          return r.tag.toUpperCase().startsWith(browseModal.letterFilter);
-        })}
-        {@const modalFilteredRules = filteredByLetter.filter(
-          (r) => !searchQ || r.tag.toLowerCase().includes(searchQ),
-        )}
-
-        <div
-          class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5"
-        >
-          <div
-            class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden text-xs"
-          >
-            <!-- Modal Header -->
-            <div
-              class="p-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2"
-            >
-              <div class="flex items-center gap-2">
-                <Bookmark size={16} class="text-emerald-400" />
-                <div>
-                  <h4 class="text-sm font-bold text-slate-100 font-sans">
-                    规则全库 — {p?.name || '规则源'} (共 {allRules.length} 条)
-                  </h4>
-                  <p class="text-[11px] text-slate-400 font-sans">
-                    当前源 Tag 前缀为 <span class="text-amber-300 font-mono font-bold"
-                      >"{p?.tag_prefix || '(无)'}"</span
-                    >
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onclick={closeBrowseModal}
-                class="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
-                title="关闭"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <!-- Filter & Search Toolbar -->
-            <div class="p-3 bg-slate-950/60 border-b border-slate-800 space-y-2">
-              <div class="flex flex-col sm:flex-row items-center gap-2">
-                <div class="relative flex-1 w-full">
-                  <Search size={13} class="absolute left-2.5 top-2.5 text-slate-500" />
-                  <input
-                    type="text"
-                    bind:value={browseModal.search}
-                    oninput={() => {
-                      modalDisplayLimit = 240;
-                    }}
-                    placeholder="按规则名模糊检索..."
-                    class="w-full bg-slate-900 border border-slate-800 rounded pl-8 pr-3 py-1.5 text-xs text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
-                  />
-                </div>
-                <div class="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
-                  <button
-                    type="button"
-                    onclick={() => {
-                      for (const r of modalFilteredRules) {
-                        if (!isTagSelected(p, r.tag)) {
-                          toggleProviderTag(pIdx, r.tag);
-                        }
-                      }
-                    }}
-                    class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-sans text-xs"
-                  >
-                    全选当前过滤 ({modalFilteredRules.length})
-                  </button>
-                  <button
-                    type="button"
-                    onclick={() => clearProviderTags(pIdx)}
-                    class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-sans text-xs"
-                  >
-                    清空本源已选
-                  </button>
-                </div>
-              </div>
-
-              <!-- A-Z Alphabet Quick Bar -->
-              <div class="flex flex-wrap items-center gap-1 text-[11px] font-mono pt-1">
-                {#each ALPHABET_LIST as letter}
-                  <button
-                    type="button"
-                    onclick={() => {
-                      browseModal.letterFilter = letter;
-                      modalDisplayLimit = 240;
-                    }}
-                    class="px-1.5 py-0.5 rounded transition-colors {browseModal.letterFilter ===
-                    letter
-                      ? 'bg-cyan-600 text-white font-bold'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}"
-                  >
-                    {letter}
-                  </button>
-                {/each}
-              </div>
-            </div>
-
-            <!-- Modal Rules Grid -->
-            <div class="flex-1 overflow-y-auto p-3.5 space-y-2">
-              {#if modalFilteredRules.length === 0}
-                <div class="py-12 text-center text-slate-500 font-mono text-xs">
-                  没有找到匹配的规则条目
-                </div>
-              {:else}
-                {@const visibleModalRules = modalFilteredRules.slice(0, modalDisplayLimit)}
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                  {#each visibleModalRules as r}
-                    {@const isChecked = isTagSelected(p, r.tag)}
-                    {@const isRef = referencedRuleTagSet.has(finalRuleTag(p?.tag_prefix, r.tag))}
+              <!-- Filter & Search Toolbar -->
+              <div class="p-3 bg-slate-950/60 border-b border-slate-800 space-y-2">
+                <div class="flex flex-col sm:flex-row items-center gap-2">
+                  <div class="relative flex-1 w-full">
+                    <Search size={13} class="absolute left-2.5 top-2.5 text-slate-500" />
+                    <input
+                      type="text"
+                      bind:value={browseModal.search}
+                      oninput={() => {
+                        modalDisplayLimit = 240;
+                      }}
+                      placeholder="按规则名模糊检索..."
+                      class="field w-full rounded py-1.5 pl-8 pr-3 text-xs font-mono"
+                    />
+                  </div>
+                  <div class="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
                     <button
                       type="button"
-                      onclick={() => toggleProviderTag(pIdx, r.tag)}
-                      class="px-2.5 py-2 rounded-lg border text-left transition-all flex items-center justify-between gap-1.5 cursor-pointer {isChecked
-                        ? 'bg-emerald-950/40 border-emerald-500/70 text-emerald-200'
-                        : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700'}"
+                      onclick={() => {
+                        for (const r of modalFilteredRules) {
+                          if (!isTagSelected(p, r.tag)) {
+                            toggleProviderTag(pIdx, r.tag);
+                          }
+                        }
+                      }}
+                      class="btn btn-secondary"
                     >
-                      <div class="truncate">
-                        <span class="font-mono font-bold">{finalRuleTag(p?.tag_prefix, r.tag)}</span
-                        >
-                        {#if r.raw_name && r.raw_name !== r.tag}
-                          <span class="text-[10px] text-slate-500 block truncate">{r.raw_name}</span
-                          >
-                        {/if}
-                      </div>
+                      全选当前过滤 ({modalFilteredRules.length})
+                    </button>
+                    <button
+                      type="button"
+                      onclick={() => clearProviderTags(pIdx)}
+                      class="btn btn-secondary"
+                    >
+                      清空本源已选
+                    </button>
+                  </div>
+                </div>
 
-                      <div class="flex items-center gap-1.5 shrink-0">
-                        {#if isRef}
-                          <span
-                            class="px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 text-[10px]"
-                            title="已在当前模板路由或 DNS 中被引用">已引用</span
-                          >
-                        {/if}
-                        {#if isChecked}
-                          <CheckSquare size={14} class="text-emerald-400" />
-                        {:else}
-                          <Square size={14} class="text-slate-600" />
-                        {/if}
-                      </div>
+                <!-- A-Z Alphabet Quick Bar -->
+                <div class="flex flex-wrap items-center gap-1 text-[11px] font-mono pt-1">
+                  {#each ALPHABET_LIST as letter}
+                    <button
+                      type="button"
+                      onclick={() => {
+                        browseModal.letterFilter = letter;
+                        modalDisplayLimit = 240;
+                      }}
+                      class="px-1.5 py-0.5 rounded transition-colors {browseModal.letterFilter ===
+                      letter
+                        ? 'bg-cyan-300 text-slate-950 font-semibold'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}"
+                    >
+                      {letter}
                     </button>
                   {/each}
                 </div>
+              </div>
 
-                {#if modalFilteredRules.length > modalDisplayLimit}
-                  <div class="pt-3 pb-1 text-center flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      onclick={() => {
-                        modalDisplayLimit += 240;
-                      }}
-                      class="px-3.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 font-mono text-xs cursor-pointer"
-                    >
-                      加载更多 (+240 条，已显示 {visibleModalRules.length} / {modalFilteredRules.length})
-                    </button>
-                    <button
-                      type="button"
-                      onclick={() => {
-                        modalDisplayLimit = modalFilteredRules.length;
-                      }}
-                      class="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs cursor-pointer"
-                    >
-                      全部显示
-                    </button>
+              <!-- Modal Rules Grid -->
+              <div class="flex-1 overflow-y-auto p-3.5 space-y-2">
+                {#if modalFilteredRules.length === 0}
+                  <div class="py-12 text-center text-slate-500 font-mono text-xs">
+                    没有找到匹配的规则条目
                   </div>
-                {/if}
-              {/if}
-            </div>
+                {:else}
+                  {@const visibleModalRules = modalFilteredRules.slice(0, modalDisplayLimit)}
+                  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {#each visibleModalRules as r}
+                      {@const isChecked = isTagSelected(p, r.tag)}
+                      {@const isRef = referencedRuleTagSet.has(finalRuleTag(p?.tag_prefix, r.tag))}
+                      <button
+                        type="button"
+                        onclick={() => toggleProviderTag(pIdx, r.tag)}
+                        class="px-2.5 py-2 rounded-lg border text-left transition-all flex items-center justify-between gap-1.5 cursor-pointer {isChecked
+                          ? 'bg-emerald-950/40 border-emerald-500/70 text-emerald-200'
+                          : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700'}"
+                      >
+                        <div class="truncate">
+                          <span class="font-mono font-bold"
+                            >{finalRuleTag(p?.tag_prefix, r.tag)}</span
+                          >
+                          {#if r.raw_name && r.raw_name !== r.tag}
+                            <span class="text-[10px] text-slate-500 block truncate"
+                              >{r.raw_name}</span
+                            >
+                          {/if}
+                        </div>
 
-            <!-- Modal Footer -->
-            <div
-              class="p-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between"
-            >
-              <span class="text-slate-300 font-mono">
-                当前规则源已启用 <span class="text-emerald-400 font-bold"
-                  >{Array.isArray(p?.tag) ? p.tag.length : 0}</span
-                > 条规则
-              </span>
-              <button
-                type="button"
-                onclick={closeBrowseModal}
-                class="px-4 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs shadow-sm transition-colors cursor-pointer"
+                        <div class="flex items-center gap-1.5 shrink-0">
+                          {#if isRef}
+                            <span
+                              class="px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 text-[10px]"
+                              title="已在当前模板路由或 DNS 中被引用">已引用</span
+                            >
+                          {/if}
+                          {#if isChecked}
+                            <CheckSquare size={14} class="text-emerald-400" />
+                          {:else}
+                            <Square size={14} class="text-slate-600" />
+                          {/if}
+                        </div>
+                      </button>
+                    {/each}
+                  </div>
+
+                  {#if modalFilteredRules.length > modalDisplayLimit}
+                    <div class="pt-3 pb-1 text-center flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onclick={() => {
+                          modalDisplayLimit += 240;
+                        }}
+                        class="px-3.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 font-mono text-xs cursor-pointer"
+                      >
+                        加载更多 (+240 条，已显示 {visibleModalRules.length} / {modalFilteredRules.length})
+                      </button>
+                      <button
+                        type="button"
+                        onclick={() => {
+                          modalDisplayLimit = modalFilteredRules.length;
+                        }}
+                        class="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs cursor-pointer"
+                      >
+                        全部显示
+                      </button>
+                    </div>
+                  {/if}
+                {/if}
+              </div>
+
+              <!-- Modal Footer -->
+              <div
+                class="p-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between"
               >
-                完成
-              </button>
+                <span class="text-slate-300 font-mono">
+                  当前规则源已启用 <span class="text-emerald-400 font-bold"
+                    >{Array.isArray(p?.tag) ? p.tag.length : 0}</span
+                  > 条规则
+                </span>
+                <button type="button" onclick={closeBrowseModal} class="btn btn-primary">
+                  完成
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      {/if}
+        {/if}
 
-      <!-- 3. Route Rules Module View -->
-      {#if currentSubTab === 'route'}
-        <RouteRules
-          route={store.selectedTemplate.content?.route}
-          policyTags={availablePolicyGroupTags}
-          nodeGroupTags={availableNodeGroupTags}
-          {endpointTags}
-          ruleTags={allDefinedRuleTags}
-          {dnsServerTags}
-          onCommit={commitRoute}
-        />
-      {/if}
+        <!-- 3. Route Rules Module View -->
+        {#if currentSubTab === 'route'}
+          <RouteRules
+            route={store.selectedTemplate.content?.route}
+            policyTags={availablePolicyGroupTags}
+            nodeGroupTags={availableNodeGroupTags}
+            {endpointTags}
+            ruleTags={allDefinedRuleTags}
+            {dnsServerTags}
+            onCommit={commitRoute}
+          />
+        {/if}
 
-      {#if currentSubTab === 'dns'}
-        <DnsEditor
-          dns={store.selectedTemplate.content?.dns}
-          outboundTags={availableRouteOutboundTags}
-          ruleTags={allDefinedRuleTags}
-          onCommit={commitDns}
-        />
-      {/if}
+        {#if currentSubTab === 'dns'}
+          <DnsEditor
+            dns={store.selectedTemplate.content?.dns}
+            outboundTags={availableRouteOutboundTags}
+            ruleTags={allDefinedRuleTags}
+            onCommit={commitDns}
+          />
+        {/if}
 
-      {#if currentSubTab === 'inbounds'}
-        <InboundEditor
-          inbounds={store.selectedTemplate.content?.inbounds}
-          endpoints={store.selectedTemplate.content?.endpoints}
-          onCommitInbounds={commitInbounds}
-          onCommitEndpoints={commitEndpoints}
-        />
-      {/if}
+        {#if currentSubTab === 'inbounds'}
+          <InboundEditor
+            inbounds={store.selectedTemplate.content?.inbounds}
+            endpoints={store.selectedTemplate.content?.endpoints}
+            onCommitInbounds={commitInbounds}
+            onCommitEndpoints={commitEndpoints}
+          />
+        {/if}
 
-      {#if currentSubTab === 'experimental'}
-        <ExperimentalEditor
-          log={store.selectedTemplate.content?.log}
-          experimental={store.selectedTemplate.content?.experimental}
-          onCommitLog={commitLog}
-          onCommitExperimental={commitExperimental}
-        />
-      {/if}
+        {#if currentSubTab === 'experimental'}
+          <ExperimentalEditor
+            log={store.selectedTemplate.content?.log}
+            experimental={store.selectedTemplate.content?.experimental}
+            onCommitLog={commitLog}
+            onCommitExperimental={commitExperimental}
+          />
+        {/if}
+      </div>
     </div>
   {/if}
 </div>

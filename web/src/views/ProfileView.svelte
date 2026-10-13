@@ -132,55 +132,52 @@
     </div>
   {:else}
     <!-- Top Profile Selector & Meta -->
-    <div
-      class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3"
-    >
-      <div class="flex items-center gap-2">
-        <Boxes size={18} class="text-cyan-400 shrink-0" />
-        <div class="flex items-center gap-2">
-          <select
-            bind:value={store.selectedProfileId}
-            class="bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-cyan-500 font-medium"
-          >
-            {#each store.profiles as p}
-              <option value={p.id}>{p.name}</option>
-            {/each}
-          </select>
-
+    <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 space-y-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="text-xs text-slate-400" for="profile-switcher">切换分发配置</label>
+        <select
+          id="profile-switcher"
+          bind:value={store.selectedProfileId}
+          class="field px-2.5 py-1 text-sm font-medium"
+        >
+          {#each store.profiles as p}
+            <option value={p.id}>{p.name}</option>
+          {/each}
+        </select>
+        <button type="button" onclick={handleCreateProfile} class="btn btn-secondary">
+          <Plus size={13} />
+          <span>新建</span>
+        </button>
+        {#if store.profiles.length > 1}
           <button
-            onclick={handleCreateProfile}
-            class="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1 border border-slate-700"
+            type="button"
+            onclick={handleDeleteProfile}
+            class="btn btn-ghost btn-icon btn-danger"
+            aria-label="删除当前分发配置"
           >
-            <Plus size={13} />
-            <span>新建 Profile</span>
+            <Trash2 size={14} />
           </button>
-
-          {#if store.profiles.length > 1}
-            <button
-              onclick={handleDeleteProfile}
-              title="删除此 Profile"
-              class="p-1.5 rounded bg-slate-800/80 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700/80 hover:border-rose-800 text-xs"
-            >
-              <Trash2 size={14} />
-            </button>
-          {/if}
-        </div>
+        {/if}
       </div>
 
-      <!-- Public Subscription Quick Action -->
       {#if activeProfile}
-        <div class="flex items-center gap-2">
-          <div
-            class="flex items-center bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs"
-          >
-            <span class="text-slate-500 mr-1.5">订阅 URL:</span>
-            <span class="font-mono text-cyan-400 truncate max-w-[280px]"
-              >{activeProfile.publicUrl}</span
-            >
+        <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div class="min-w-0 flex-1 space-y-2">
+            <h1>
+              <input
+                type="text"
+                bind:value={activeProfile.name}
+                oninput={persistActive}
+                aria-label="分发配置名称"
+                class="field w-full px-2 py-1 text-base font-semibold"
+              />
+            </h1>
+            <p class="truncate font-mono text-xs text-slate-400">{activeProfile.publicUrl}</p>
           </div>
           <button
+            type="button"
             onclick={() => copyText(activeProfile.publicUrl, 'url')}
-            class="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
+            class="btn btn-primary shrink-0"
           >
             {#if copiedUrl}
               <Check size={13} />
@@ -209,9 +206,7 @@
         <div class="lg:col-span-5 space-y-4">
           <!-- 1. Profile Details Card -->
           <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
-            <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider font-mono">
-              1. Profile 基础信息
-            </h3>
+            <h3 class="text-sm font-semibold text-slate-200">基础信息</h3>
 
             <div class="space-y-2 text-xs">
               <div>
@@ -221,7 +216,7 @@
                   type="text"
                   bind:value={activeProfile.name}
                   oninput={persistActive}
-                  class="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-cyan-500 font-medium"
+                  class="field w-full px-2.5 py-1.5 text-xs font-medium"
                 />
               </div>
               <div>
@@ -231,7 +226,7 @@
                   type="text"
                   bind:value={activeProfile.description}
                   oninput={persistActive}
-                  class="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-cyan-500"
+                  class="field w-full px-2.5 py-1.5 text-xs"
                 />
               </div>
               <div>
@@ -242,11 +237,12 @@
                     type="text"
                     value={activeProfile.token}
                     readonly
-                    class="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-cyan-400 font-mono focus:outline-none"
+                    class="field w-full px-2.5 py-1.5 font-mono text-cyan-300"
                   />
                   <button
+                    type="button"
                     onclick={handleRotateToken}
-                    class="px-2 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs shrink-0"
+                    class="btn btn-secondary shrink-0"
                   >
                     重置 Token
                   </button>
@@ -258,9 +254,7 @@
           <!-- 2. Bind Template Card -->
           <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
             <div class="flex items-center justify-between">
-              <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider font-mono">
-                2. 选定基础配置模板
-              </h3>
+              <h3 class="text-sm font-semibold text-slate-200">基础配置模板</h3>
               <button
                 onclick={() => store.navigate('templates', { id: activeProfile?.templateId })}
                 class="text-xs text-cyan-400 hover:text-cyan-300"
@@ -274,7 +268,7 @@
                 <label
                   class="flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors {activeProfile.templateId ===
                   tpl.id
-                    ? 'bg-indigo-950/40 border-indigo-700/80 text-slate-100'
+                    ? 'bg-cyan-950/40 border-cyan-700/80 text-slate-100'
                     : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-950'}"
                 >
                   <input
@@ -297,9 +291,7 @@
           <!-- 3. Bind Node Sources Card -->
           <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
             <div class="flex items-center justify-between">
-              <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider font-mono">
-                3. 绑定节点池来源
-              </h3>
+              <h3 class="text-sm font-semibold text-slate-200">节点池来源</h3>
               <button
                 onclick={() => store.navigate('sources')}
                 class="text-xs text-cyan-400 hover:text-cyan-300"
@@ -313,7 +305,7 @@
                 {@const isChecked = activeProfile.sourceIds.includes(src.id)}
                 <label
                   class="flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors {isChecked
-                    ? 'bg-emerald-950/30 border-emerald-700/60 text-slate-100'
+                    ? 'bg-cyan-950/30 border-cyan-700/60 text-slate-100'
                     : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-950'}"
                 >
                   <div class="flex items-center gap-2.5 text-xs">
@@ -332,7 +324,7 @@
                   </div>
                   <span
                     class="text-xs font-mono px-1.5 py-0.5 rounded {isChecked
-                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/50'
+                      ? 'bg-cyan-950 text-cyan-200 border border-cyan-800/50'
                       : 'bg-slate-900 text-slate-500'}"
                   >
                     {src.type}
@@ -391,8 +383,9 @@
             <!-- Actions -->
             <div class="flex items-center gap-2">
               <button
+                type="button"
                 onclick={() => copyText(JSON.stringify(compiledResult.config, null, 2), 'json')}
-                class="flex items-center gap-1 text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors border border-slate-700"
+                class="btn btn-secondary"
               >
                 {#if copiedJson}
                   <Check size={13} class="text-emerald-400" />
@@ -403,10 +396,7 @@
                 {/if}
               </button>
 
-              <button
-                onclick={downloadJson}
-                class="flex items-center gap-1 text-xs px-2.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors shadow-sm"
-              >
+              <button type="button" onclick={downloadJson} class="btn btn-secondary">
                 <Download size={13} />
                 <span>下载 config.json</span>
               </button>
@@ -463,7 +453,7 @@
                       <span
                         class="font-bold text-slate-200 text-sm font-mono flex items-center gap-1.5"
                       >
-                        <Radio size={14} class="text-cyan-400" />
+                        <Radio size={14} class="text-slate-400" />
                         <span>{groupTag}</span>
                       </span>
                       <span

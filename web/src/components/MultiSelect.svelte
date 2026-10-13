@@ -127,7 +127,7 @@
         toggleOpen(e);
       }
     }}
-    class="w-full min-h-[38px] bg-slate-950 border border-slate-800 hover:border-slate-700 rounded px-2.5 py-1.5 text-left flex items-start justify-between gap-2 focus:outline-none focus:border-cyan-500 transition-colors cursor-pointer"
+    class="field flex w-full min-h-[38px] cursor-pointer items-start justify-between gap-2 px-2.5 py-1.5 text-left transition-colors hover:border-slate-700"
   >
     <div class="flex flex-wrap items-center gap-1.5 overflow-hidden flex-1 py-0.5">
       {#if !selected || selected.length === 0}
@@ -186,7 +186,7 @@
           type="text"
           bind:value={searchTerm}
           placeholder="搜索分组或出站..."
-          class="w-full bg-slate-950 border border-slate-800 rounded pl-8 pr-2.5 py-1 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-mono"
+          class="field w-full rounded py-1 pl-8 pr-2.5 text-xs font-mono"
         />
       </div>
 
