@@ -48,7 +48,7 @@
 >
   <!-- Card Header -->
   <div class="flex items-center justify-between gap-2 p-3 sm:p-3.5 border-b border-slate-800/60">
-    <div class="flex min-w-0 flex-1 items-center gap-2">
+    <div class="flex min-w-0 flex-1 items-center gap-2.5">
       <!-- Type Badge & Select -->
       <div class="relative shrink-0">
         <select
@@ -84,7 +84,7 @@
         oninput={onUpdate}
         aria-label="节点分组名称"
         placeholder="分组名称，如：香港节点"
-        class="field min-w-0 flex-1 px-2.5 py-1 text-sm font-semibold font-mono tracking-wide"
+        class="field min-w-0 max-w-sm flex-1 px-2.5 py-1 text-sm font-semibold font-mono tracking-wide"
       />
 
       <!-- Mobile summary badge -->
@@ -145,111 +145,187 @@
   <div
     class="{isMobileExpanded ? 'block' : 'hidden'} md:block p-3.5 space-y-3 flex-1 flex flex-col"
   >
-    <!-- Speed test parameters (URLTest only) -->
     {#if group.type === 'urltest'}
-      <div
-        class="grid grid-cols-2 gap-2.5 rounded-lg border border-slate-800/80 bg-slate-950/60 p-2.5 text-xs"
-      >
-        <label class="block">
-          <span class="mb-1 block text-slate-400 font-medium">容差 (ms)</span>
+      <!-- Single row layout for URLTest on desktop: Regex (left) + Speed params (right) -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+        <!-- Regex filter input with Presets -->
+        <div class="md:col-span-7 space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label class="block text-xs font-medium text-slate-400" for="node-pattern-{index}">
+              节点筛选正则 (不区分大小写)
+            </label>
+
+            <!-- Regex presets dropdown -->
+            <div class="relative">
+              <button
+                type="button"
+                onclick={() => (isPresetOpen = !isPresetOpen)}
+                class="flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-medium px-1.5 py-0.5 rounded hover:bg-slate-800/70 transition-colors"
+              >
+                <Sparkles size={11} />
+                <span>常用预设</span>
+                <ChevronDown size={11} />
+              </button>
+
+              {#if isPresetOpen}
+                <!-- Backdrop -->
+                <button
+                  type="button"
+                  class="fixed inset-0 z-20 cursor-default bg-transparent"
+                  onclick={() => (isPresetOpen = false)}
+                  aria-label="关闭预设菜单"
+                ></button>
+
+                <!-- Dropdown Menu -->
+                <div
+                  class="absolute right-0 top-full mt-1 z-30 w-56 rounded-lg border border-slate-700/80 bg-slate-900 shadow-xl py-1 text-xs"
+                >
+                  <div
+                    class="px-2.5 py-1 text-[11px] font-semibold text-slate-400 border-b border-slate-800"
+                  >
+                    快捷填充地域与规则
+                  </div>
+                  {#each NODE_GROUP_REGEX_PRESETS as preset}
+                    <button
+                      type="button"
+                      onclick={() => applyPreset(preset.pattern)}
+                      class="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 text-slate-200 flex items-center justify-between group transition-colors"
+                    >
+                      <div>
+                        <div class="font-medium">{preset.label}</div>
+                        <div class="text-[10px] text-slate-500 font-mono truncate max-w-[170px]">
+                          {preset.pattern}
+                        </div>
+                      </div>
+                      {#if currentPattern === preset.pattern}
+                        <Check size={12} class="text-cyan-400 shrink-0" />
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          </div>
+
           <input
-            type="number"
-            bind:value={group.tolerance}
-            oninput={onUpdate}
-            placeholder="50"
-            class="field w-full px-2.5 py-1 font-mono text-xs"
-          />
-        </label>
-        <label class="block">
-          <span class="mb-1 block text-slate-400 font-medium">测速间隔</span>
-          <input
+            id="node-pattern-{index}"
             type="text"
-            bind:value={group.interval}
-            oninput={onUpdate}
-            placeholder="3m"
-            class="field w-full px-2.5 py-1 font-mono text-xs"
+            value={currentPattern}
+            oninput={(e) => onUpdatePattern(e.currentTarget.value)}
+            placeholder="例如：港|hk 或 .*"
+            class="field w-full px-3 py-1.5 text-xs font-mono {isValidRegex
+              ? 'border-slate-800 text-slate-200'
+              : 'border-rose-800 text-rose-200 bg-rose-950/20'}"
           />
-        </label>
-        <p class="col-span-2 text-[11px] text-slate-400 flex items-center gap-1">
-          <Zap size={11} class="text-cyan-400 shrink-0" />
-          <span>按指定间隔自动对命中节点测速并优选低延迟节点</span>
-        </p>
+        </div>
+
+        <!-- Speed test parameters -->
+        <div
+          class="md:col-span-5 rounded-lg border border-slate-800/80 bg-slate-950/60 p-2.5 text-xs space-y-1.5"
+        >
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block">
+              <span class="mb-1 block text-slate-400 font-medium">容差 (ms)</span>
+              <input
+                type="number"
+                bind:value={group.tolerance}
+                oninput={onUpdate}
+                placeholder="50"
+                class="field w-full px-2.5 py-1 font-mono text-xs"
+              />
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-slate-400 font-medium">测速间隔</span>
+              <input
+                type="text"
+                bind:value={group.interval}
+                oninput={onUpdate}
+                placeholder="3m"
+                class="field w-full px-2.5 py-1 font-mono text-xs"
+              />
+            </label>
+          </div>
+          <p class="text-[11px] text-slate-400 flex items-center gap-1">
+            <Zap size={11} class="text-cyan-400 shrink-0" />
+            <span>自动对命中节点测速并优选低延迟</span>
+          </p>
+        </div>
+      </div>
+    {:else}
+      <!-- Single row layout for Selector: Regex full width -->
+      <div class="space-y-1.5">
+        <div class="flex items-center justify-between">
+          <label class="block text-xs font-medium text-slate-400" for="node-pattern-{index}">
+            节点筛选正则 (不区分大小写)
+          </label>
+
+          <!-- Regex presets dropdown -->
+          <div class="relative">
+            <button
+              type="button"
+              onclick={() => (isPresetOpen = !isPresetOpen)}
+              class="flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-medium px-1.5 py-0.5 rounded hover:bg-slate-800/70 transition-colors"
+            >
+              <Sparkles size={11} />
+              <span>常用预设</span>
+              <ChevronDown size={11} />
+            </button>
+
+            {#if isPresetOpen}
+              <!-- Backdrop -->
+              <button
+                type="button"
+                class="fixed inset-0 z-20 cursor-default bg-transparent"
+                onclick={() => (isPresetOpen = false)}
+                aria-label="关闭预设菜单"
+              ></button>
+
+              <!-- Dropdown Menu -->
+              <div
+                class="absolute right-0 top-full mt-1 z-30 w-56 rounded-lg border border-slate-700/80 bg-slate-900 shadow-xl py-1 text-xs"
+              >
+                <div
+                  class="px-2.5 py-1 text-[11px] font-semibold text-slate-400 border-b border-slate-800"
+                >
+                  快捷填充地域与规则
+                </div>
+                {#each NODE_GROUP_REGEX_PRESETS as preset}
+                  <button
+                    type="button"
+                    onclick={() => applyPreset(preset.pattern)}
+                    class="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 text-slate-200 flex items-center justify-between group transition-colors"
+                  >
+                    <div>
+                      <div class="font-medium">{preset.label}</div>
+                      <div class="text-[10px] text-slate-500 font-mono truncate max-w-[170px]">
+                        {preset.pattern}
+                      </div>
+                    </div>
+                    {#if currentPattern === preset.pattern}
+                      <Check size={12} class="text-cyan-400 shrink-0" />
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        </div>
+
+        <input
+          id="node-pattern-{index}"
+          type="text"
+          value={currentPattern}
+          oninput={(e) => onUpdatePattern(e.currentTarget.value)}
+          placeholder="例如：港|hk 或 .*"
+          class="field w-full px-3 py-1.5 text-xs font-mono {isValidRegex
+            ? 'border-slate-800 text-slate-200'
+            : 'border-rose-800 text-rose-200 bg-rose-950/20'}"
+        />
       </div>
     {/if}
 
-    <!-- Regex filter input with Presets -->
-    <div class="space-y-1.5">
-      <div class="flex items-center justify-between">
-        <label class="block text-xs font-medium text-slate-400" for="node-pattern-{index}">
-          节点筛选正则 (不区分大小写)
-        </label>
-
-        <!-- Regex presets dropdown -->
-        <div class="relative">
-          <button
-            type="button"
-            onclick={() => (isPresetOpen = !isPresetOpen)}
-            class="flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-medium px-1.5 py-0.5 rounded hover:bg-slate-800/70 transition-colors"
-          >
-            <Sparkles size={11} />
-            <span>常用预设</span>
-            <ChevronDown size={11} />
-          </button>
-
-          {#if isPresetOpen}
-            <!-- Backdrop -->
-            <button
-              type="button"
-              class="fixed inset-0 z-20 cursor-default bg-transparent"
-              onclick={() => (isPresetOpen = false)}
-              aria-label="关闭预设菜单"
-            ></button>
-
-            <!-- Dropdown Menu -->
-            <div
-              class="absolute right-0 top-full mt-1 z-30 w-56 rounded-lg border border-slate-700/80 bg-slate-900 shadow-xl py-1 text-xs"
-            >
-              <div
-                class="px-2.5 py-1 text-[11px] font-semibold text-slate-400 border-b border-slate-800"
-              >
-                快捷填充地域与规则
-              </div>
-              {#each NODE_GROUP_REGEX_PRESETS as preset}
-                <button
-                  type="button"
-                  onclick={() => applyPreset(preset.pattern)}
-                  class="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 text-slate-200 flex items-center justify-between group transition-colors"
-                >
-                  <div>
-                    <div class="font-medium">{preset.label}</div>
-                    <div class="text-[10px] text-slate-500 font-mono truncate max-w-[170px]">
-                      {preset.pattern}
-                    </div>
-                  </div>
-                  {#if currentPattern === preset.pattern}
-                    <Check size={12} class="text-cyan-400 shrink-0" />
-                  {/if}
-                </button>
-              {/each}
-            </div>
-          {/if}
-        </div>
-      </div>
-
-      <input
-        id="node-pattern-{index}"
-        type="text"
-        value={currentPattern}
-        oninput={(e) => onUpdatePattern(e.currentTarget.value)}
-        placeholder="例如：港|hk 或 .*"
-        class="field w-full px-3 py-1.5 text-xs font-mono {isValidRegex
-          ? 'border-slate-800 text-slate-200'
-          : 'border-rose-800 text-rose-200 bg-rose-950/20'}"
-      />
-    </div>
-
     <!-- Live Node Match Inspector -->
-    <div class="mt-auto pt-2 space-y-2">
+    <div class="pt-1 space-y-2">
       <div class="flex items-center justify-between gap-2">
         <button
           type="button"
@@ -297,8 +373,8 @@
               暂无匹配节点。请检查节点源名称是否包含该关键字。
             </div>
           {:else}
-            <div class="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto">
-              {#each showAllNodes ? matchedNodes : matchedNodes.slice(0, 15) as nodeTag}
+            <div class="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+              {#each showAllNodes ? matchedNodes : matchedNodes.slice(0, 20) as nodeTag}
                 <span
                   class="inline-block px-2 py-0.5 rounded text-[11px] font-mono bg-slate-900 border border-slate-700/60 text-slate-300 break-all"
                 >
@@ -307,7 +383,7 @@
               {/each}
             </div>
 
-            {#if matchedNodes.length > 15}
+            {#if matchedNodes.length > 20}
               <div class="flex justify-end pt-1">
                 <button
                   type="button"

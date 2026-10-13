@@ -1107,7 +1107,7 @@
                 {nodeGroupSearch ? '未找到符合条件的分组' : '暂无节点分组，点击上方按钮添加'}
               </div>
             {:else}
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              <div class="space-y-3">
                 {#each filteredNodeGroupsWithIndex as { group, originalIndex } (originalIndex)}
                   <NodeGroupCard
                     {group}
