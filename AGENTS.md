@@ -49,13 +49,41 @@ canto 是基于 Rust (Edition 2024) 构建的 sing-box 透明代理与配置编�
 
 ## Web Studio
 
-改 `web/` 时保持 JavaScript（`.js` / `.svelte`），使用 Svelte 5 runes、Vite 和 Tailwind 4。界面由 canto 二进制嵌入。
+改 `web/` 时保持 JavaScript（`.js` / `.svelte`），使用 Svelte 5 runes、Vite 和 Tailwind 4。界面由 canto 二进制嵌入。完整交互与视觉决策见 [ADR 0016](docs/adr/0016-web-studio-ui-patterns-and-visual-hierarchy.md)。
 
-领域计算放在 `web/src/data` 的纯函数里，测试放在 `web/test/<module>.test.js`。`/api` 调用放在 `StudioStore`（`web/src/data/store.svelte.js`）。视图负责展示并调用这两处。`TemplateEditor.svelte` 里已有的 `/api/rulesets/*` 保持原位；新的接口调用写进 store。
+### 架构分层与数据边界（Pure Data Seam）
 
-前端标识符用 camelCase，组件文件用 PascalCase。JSON 字段对齐 `src/web/studio/model.rs` 的 serde camelCase。模板 `content` 保持普通 JSON。
+- **视图与领域计算解耦**：Svelte 组件仅负责 DOM 布局、交互状态与事件触发，严禁在 Svelte 组件内部编写复杂 AST/JSON 转换、默认值修补或 sing-box 规则语法拼接。
+- **纯函数沉淀**：领域计算（配置转换、数据规范化、占位符生成、校验与错误收集）统一放在 `web/src/data/*.js` 的纯函数中。
+- **测试锁定**：`web/src/data/` 的任何改动必须在 `web/test/<module>.test.js` 编写或更新对应的单元测试，确保 `npm test` 守住配置语法正确性。
+- **Store 职责收敛**：跨页面状态与 `/api` 调用统一归口 `StudioStore`（`web/src/data/store.svelte.js`）。视图负责展示并调用这两处。`TemplateEditor.svelte` 里已有的 `/api/rulesets/*` 保持原位；新的接口调用写进 store。
 
-格式以 `web/.prettierrc.json` 为准。提交前在 `web/` 执行 `npm test` 和 `npm run format:check`。
+### 交互与布局范式（Interaction & Layout Patterns）
+
+- **Master-Row + Drawer（紧凑主行 + 侧边抽屉）**：
+  - 适用于列表型配置（DNS 服务器/规则、入站/端点、路由分流规则、节点组等）。
+  - **主行（Master Row）**：单行紧凑展示，仅放置高频只读字段（标签、匹配摘要、关键徽章、状态开关及右侧操作按键），严禁在主行中展开复杂表单破坏视口节奏。
+  - **抽屉（Drawer）**：次级编辑、高级选项和原始 JSON 覆盖全部收敛至右侧抽屉（桌面端固定宽度，移动端 `< md` 自适应为 100% 全宽抽屉）。统一支持 ESC 退出与遮罩点击关闭。
+- **卡片网格与下钻导航（Card Grid & Drill-down）**：
+  - 顶层宏观实体（配置模板、分发档案等）采用卡片网格列表页（Index），展示关键指标与未保存草稿徽标；点击进入全宽独立详情编辑页（Detail），顶部附带返回链路与就地可编辑头信息。
+- **草稿编辑与显式保存（Drafting vs. Explicit Save）**：
+  - 抽屉内或表单编辑采用 Draft 本地暂存，仅在点击主保存或确认按钮时显式写回。避免无感全量自动写入导致意外覆盖或未就绪配置被持久化。
+
+### 视觉层级与操作规范（Visual Hierarchy & Tokens）
+
+- **单一实心主操作（Primary Action Hierarchy）**：
+  - 全屏视口或抽屉内仅允许一个实心主操作按钮（`btn-primary`，使用青色 `#22d3ee` 背景与 `#020617` 文字），引导核心保存行为。
+  - 次要操作（新建、克隆、展开、取消等）使用幽灵按钮（`btn-ghost` / `btn-secondary`）。
+  - 危险操作（删除）默认使用低调幽灵态，悬停/聚焦时呈柔和红（muted red）。
+- **色彩克制与强调色约束**：
+  - 青色（Cyan）严格作为操作强调与交互聚焦色，严禁作为大面积装饰背景或常规文本滥用。
+  - 状态胶囊（Badges）统一采用半透明暗色背景配语义边框与文字（直连/健康用 Emerald，阻断/拦截用 Rose，动态匹配/警告用 Amber，普通出站/节点用 Slate/Cyan）。
+
+### 编码与提交规范
+
+- 前端标识符用 camelCase，组件文件用 PascalCase。
+- JSON 字段对齐 `src/web/studio/model.rs` 的 serde camelCase。模板 `content` 保持普通 JSON。
+- 格式以 `web/.prettierrc.json` 为准。提交前在 `web/` 执行 `npm test` 和 `npm run format:check`。
 
 ## Commit & Pull Request Guidelines
 
