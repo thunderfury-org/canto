@@ -6,6 +6,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=web/package.json");
     println!("cargo:rerun-if-changed=web/vite.config.js");
+    println!("cargo:rerun-if-changed=web/dist");
 
     let dist_dir = Path::new("web/dist");
     let index_html = dist_dir.join("index.html");

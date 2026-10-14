@@ -224,7 +224,7 @@
                   <span class="text-[10px] text-amber-300">标签重复</span>
                 {/if}
               </span>
-              <span class="font-mono text-[11px] text-cyan-300 md:w-28 md:shrink-0"
+              <span class="font-mono text-[11px] text-slate-200 md:w-28 md:shrink-0"
                 >{summary.type || '未设置'}</span
               >
               <span class="col-span-2 md:flex-1 min-w-0 truncate font-mono text-xs text-slate-300"
@@ -354,7 +354,7 @@
           <label class="block space-y-1">
             <span class="text-xs text-slate-300">类型</span>
             <select
-              class="field w-full px-2 py-1.5 text-xs font-mono text-cyan-300"
+              class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
               value={drawer.draft.type}
               onchange={onInboundType}
             >
@@ -403,7 +403,7 @@
             <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
               <input
                 type="checkbox"
-                class="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                class="rounded border-slate-700 bg-slate-900 text-slate-300 focus:ring-0 focus:ring-offset-0 cursor-pointer"
                 checked={drawer.draft.autoRoute === true}
                 onchange={(event) => {
                   drawer.draft.autoRoute = event.currentTarget.checked;
@@ -415,7 +415,7 @@
             <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
               <input
                 type="checkbox"
-                class="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                class="rounded border-slate-700 bg-slate-900 text-slate-300 focus:ring-0 focus:ring-offset-0 cursor-pointer"
                 checked={drawer.draft.strictRoute === true}
                 onchange={(event) => {
                   drawer.draft.strictRoute = event.currentTarget.checked;
@@ -482,7 +482,7 @@
             <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
               <input
                 type="checkbox"
-                class="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                class="rounded border-slate-700 bg-slate-900 text-slate-300 focus:ring-0 focus:ring-offset-0 cursor-pointer"
                 checked={drawer.draft.acceptRoutes === true}
                 onchange={(event) => {
                   drawer.draft.acceptRoutes = event.currentTarget.checked;

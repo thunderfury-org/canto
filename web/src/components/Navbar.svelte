@@ -75,7 +75,7 @@
     <div class="flex items-center justify-between w-full md:w-auto gap-3">
       <div class="flex items-center gap-2.5">
         <div
-          class="w-7 h-7 md:w-8 md:h-8 rounded bg-cyan-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-mono font-bold text-sm md:text-base"
+          class="w-7 h-7 md:w-8 md:h-8 rounded bg-slate-800 border border-slate-600 flex items-center justify-center text-slate-300 font-mono font-bold text-sm md:text-base"
         >
           C
         </div>
@@ -124,7 +124,7 @@
         }}
         class="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md transition-all font-medium whitespace-nowrap shrink-0 flex-1 sm:flex-initial {store.currentTab ===
         'dashboard'
-          ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60'
+          ? 'bg-slate-800 text-slate-300 shadow-sm border border-slate-700/60'
           : 'text-slate-400 hover:text-slate-200'}"
       >
         <LayoutDashboard size={14} class="shrink-0" />
@@ -139,7 +139,7 @@
         }}
         class="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md transition-all font-medium whitespace-nowrap shrink-0 flex-1 sm:flex-initial {store.currentTab ===
         'sources'
-          ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60'
+          ? 'bg-slate-800 text-slate-300 shadow-sm border border-slate-700/60'
           : 'text-slate-400 hover:text-slate-200'}"
       >
         <Network size={14} class="shrink-0" />
@@ -159,7 +159,7 @@
         }}
         class="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md transition-all font-medium whitespace-nowrap shrink-0 flex-1 sm:flex-initial {store.currentTab ===
         'templates'
-          ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60'
+          ? 'bg-slate-800 text-slate-300 shadow-sm border border-slate-700/60'
           : 'text-slate-400 hover:text-slate-200'}"
       >
         <FileCode2 size={14} class="shrink-0" />
@@ -179,7 +179,7 @@
         }}
         class="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md transition-all font-medium whitespace-nowrap shrink-0 flex-1 sm:flex-initial {store.currentTab ===
         'profiles'
-          ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60'
+          ? 'bg-slate-800 text-slate-300 shadow-sm border border-slate-700/60'
           : 'text-slate-400 hover:text-slate-200'}"
       >
         <Boxes size={14} class="shrink-0" />

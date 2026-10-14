@@ -1,6 +1,6 @@
 # Web Studio 交互范式、视觉层级与领域数据分层
 
-规范 Web Studio 的交互布局模式（Master-Row + Drawer、卡片网格下钻）、视觉操作层级（单一 Primary 保存、青色强调色收敛）以及前端领域计算纯函数边界（The Pure Seam）。
+规范 Web Studio 的交互布局模式（Master-Row + Drawer、卡片网格下钻）、视觉操作层级（单一 Primary 保存）以及前端领域计算纯函数边界（The Pure Seam）。颜色条款由 [ADR 0017](0017-console-surface-charcoal-and-copper.md) 取代。
 
 ## 背景
 
@@ -26,10 +26,9 @@
    - 彻底杜绝输入过程中的无感全量自动写入，防止未完成的草稿或错误输入被意外持久化并分发给网关。
 
 4. **视觉层级与操作规范**：
-   - **单一实心主操作**：整个视口或抽屉内严格只保留一个实心 `btn-primary`（青色背景 `#22d3ee`，深色文字 `#020617`），明确指示最终持久化保存。
+   - **单一实心主操作**：整个视口或抽屉内严格只保留一个实心 `btn-primary`，明确指示最终持久化保存。色值见 [ADR 0017](0017-console-surface-charcoal-and-copper.md)。
    - **次级操作幽灵化**：新建、克隆、展开、排序、取消等一律使用幽灵或边框按钮（`btn-secondary` / `btn-ghost`）。
-   - **强调色限制**：青色（Cyan）严格作为操作强调与交互聚焦色，严禁作为大面积装饰背景或常规长文本颜色。
-   - **语义化状态徽章**：Tag/Badge 统一采用半透明暗色背景配语义边框与文字（直连/健康用 Emerald，阻断/拦截用 Rose，动态匹配/警告用 Amber，普通出站/节点用 Slate/Cyan）。
+   - **语义化状态徽章**：直连与健康用 Emerald，阻断与拦截用 Rose，动态匹配与警告用 Amber。类型胶囊用炭灰。
 
 5. **纯函数领域数据边界（The Pure Seam）**：
    - **Svelte 组件只做展示与事件触发**：Svelte 5 组件仅消费 Store 数据，严禁在组件内编写复杂的 JSON 校验与 sing-box 规则语法拼接。

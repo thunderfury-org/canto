@@ -52,7 +52,7 @@
   >
     <div class="min-w-0">
       <h1 class="text-base font-semibold text-slate-100 flex items-center gap-2">
-        <FileCode2 size={18} class="text-cyan-400" />
+        <FileCode2 size={18} class="text-slate-300" />
         <span>配置模板</span>
       </h1>
       <p class="text-xs text-slate-400 mt-1">
@@ -116,7 +116,7 @@
             <!-- Title & Status Pill -->
             <div class="flex items-start justify-between gap-2 w-full">
               <h2
-                class="text-sm font-semibold text-slate-100 truncate group-hover:text-cyan-300 transition-colors min-w-0 flex-1"
+                class="text-sm font-semibold text-slate-100 truncate group-hover:text-slate-100 transition-colors min-w-0 flex-1"
               >
                 {tpl.name || '未命名模板'}
               </h2>
@@ -190,7 +190,7 @@
             <div class="pt-1 text-xs w-full">
               {#if prows.length > 0}
                 <div class="text-slate-400 flex items-center gap-1.5 truncate">
-                  <Boxes size={13} class="text-cyan-400 shrink-0" />
+                  <Boxes size={13} class="text-slate-300 shrink-0" />
                   <span class="truncate">
                     用于: <span class="text-slate-300 font-medium"
                       >{prows.map((p) => p.name).join('、')}</span
@@ -234,7 +234,7 @@
             <button
               type="button"
               onclick={() => onSelectTemplate(tpl.id)}
-              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1 group-hover:bg-slate-800 group-hover:text-cyan-300 transition-colors"
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1 group-hover:bg-slate-800 group-hover:text-slate-100 transition-colors"
             >
               <span>编辑配置</span>
               <ArrowRight size={13} />

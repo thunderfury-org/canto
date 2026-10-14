@@ -44,7 +44,7 @@
 </script>
 
 <div
-  class="min-h-screen bg-[#090d16] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200"
+  class="min-h-screen bg-[#1b1d1f] text-slate-100 flex flex-col font-sans selection:bg-slate-600 selection:text-slate-100"
 >
   <Navbar />
 

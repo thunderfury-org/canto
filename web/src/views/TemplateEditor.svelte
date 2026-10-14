@@ -814,7 +814,7 @@
         <button
           type="button"
           onclick={() => selectTemplate(null)}
-          class="text-xs text-slate-400 hover:text-cyan-300 transition-colors flex items-center gap-1.5 py-1 px-2 rounded hover:bg-slate-800/60 -ml-2 cursor-pointer"
+          class="text-xs text-slate-400 hover:text-slate-100 transition-colors flex items-center gap-1.5 py-1 px-2 rounded hover:bg-slate-800/60 -ml-2 cursor-pointer"
         >
           <ArrowLeft size={14} />
           <span>返回模板列表</span>
@@ -906,7 +906,7 @@
             onclick={() => switchSubTab('node_groups')}
             class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap shrink-0 transition-all {currentSubTab ===
             'node_groups'
-              ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+              ? 'bg-slate-800 text-slate-200 shadow-sm border border-slate-700/60'
               : 'text-slate-400 hover:text-slate-200'}"
           >
             <Layers size={13} />
@@ -924,7 +924,7 @@
             onclick={() => switchSubTab('policy_groups')}
             class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap shrink-0 transition-all {currentSubTab ===
             'policy_groups'
-              ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+              ? 'bg-slate-800 text-slate-200 shadow-sm border border-slate-700/60'
               : 'text-slate-400 hover:text-slate-200'}"
           >
             <Sparkles size={13} />
@@ -942,7 +942,7 @@
             onclick={() => switchSubTab('rule_sets')}
             class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap shrink-0 transition-all {currentSubTab ===
             'rule_sets'
-              ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+              ? 'bg-slate-800 text-slate-200 shadow-sm border border-slate-700/60'
               : 'text-slate-400 hover:text-slate-200'}"
           >
             <Bookmark size={13} />
@@ -961,7 +961,7 @@
             onclick={() => switchSubTab('dns')}
             class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap shrink-0 transition-all {currentSubTab ===
             'dns'
-              ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+              ? 'bg-slate-800 text-slate-200 shadow-sm border border-slate-700/60'
               : 'text-slate-400 hover:text-slate-200'}"
           >
             <Radio size={13} />
@@ -980,7 +980,7 @@
             onclick={() => switchSubTab('route')}
             class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap shrink-0 transition-all {currentSubTab ===
             'route'
-              ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+              ? 'bg-slate-800 text-slate-200 shadow-sm border border-slate-700/60'
               : 'text-slate-400 hover:text-slate-200'}"
           >
             <Layers size={13} />
@@ -999,7 +999,7 @@
             onclick={() => switchSubTab('inbounds')}
             class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap shrink-0 transition-all {currentSubTab ===
             'inbounds'
-              ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+              ? 'bg-slate-800 text-slate-200 shadow-sm border border-slate-700/60'
               : 'text-slate-400 hover:text-slate-200'}"
           >
             <Cable size={13} />
@@ -1018,7 +1018,7 @@
             onclick={() => switchSubTab('experimental')}
             class="flex items-center gap-1.5 px-3 py-1.5 rounded font-medium whitespace-nowrap shrink-0 transition-all {currentSubTab ===
             'experimental'
-              ? 'bg-slate-800 text-cyan-300 shadow-sm border border-slate-700/60'
+              ? 'bg-slate-800 text-slate-200 shadow-sm border border-slate-700/60'
               : 'text-slate-400 hover:text-slate-200'}"
           >
             <SlidersHorizontal size={13} />
@@ -1054,12 +1054,12 @@
                   全部 {nodeGroupStats.total}
                 </span>
                 <span
-                  class="px-2 py-0.5 rounded bg-cyan-950/60 text-cyan-300 border border-cyan-800/40"
+                  class="px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-600"
                 >
                   ⚡ 测速 {nodeGroupStats.urltestCount}
                 </span>
                 <span
-                  class="px-2 py-0.5 rounded bg-indigo-950/60 text-indigo-300 border border-indigo-800/40"
+                  class="px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-600"
                 >
                   👆 手动 {nodeGroupStats.selectorCount}
                 </span>
@@ -1147,8 +1147,8 @@
             <!-- Subtab Header & Action -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
               <div class="text-xs text-slate-400">
-                管理业务分流策略组与系统基础出站。策略组均为 <strong class="text-cyan-300 font-mono"
-                  >Selector</strong
+                管理业务分流策略组与系统基础出站。策略组均为 <strong
+                  class="text-slate-200 font-mono">Selector</strong
                 > 类型，候选目标由节点分组及内置直连/阻断组成。
               </div>
               <button
@@ -1800,7 +1800,7 @@
                       }}
                       class="px-1.5 py-0.5 rounded transition-colors {browseModal.letterFilter ===
                       letter
-                        ? 'bg-cyan-300 text-slate-950 font-semibold'
+                        ? 'bg-slate-200 text-slate-950 font-semibold'
                         : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'}"
                     >
                       {letter}
@@ -1842,7 +1842,7 @@
                         <div class="flex items-center gap-1.5 shrink-0">
                           {#if isRef}
                             <span
-                              class="px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 text-[10px]"
+                              class="px-1 py-0.2 rounded bg-slate-800 text-slate-200 border border-slate-600 text-[10px]"
                               title="已在当前模板路由或 DNS 中被引用">已引用</span
                             >
                           {/if}
@@ -1863,7 +1863,7 @@
                         onclick={() => {
                           modalDisplayLimit += 240;
                         }}
-                        class="px-3.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 font-mono text-xs cursor-pointer"
+                        class="px-3.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-mono text-xs cursor-pointer"
                       >
                         加载更多 (+240 条，已显示 {visibleModalRules.length} / {modalFilteredRules.length})
                       </button>

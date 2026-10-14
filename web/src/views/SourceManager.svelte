@@ -165,7 +165,7 @@
                 onclick={() => (newType = 'subscription')}
                 class="p-2 rounded border text-center transition-colors cursor-pointer {newType ===
                 'subscription'
-                  ? 'bg-cyan-950/50 border-cyan-700 text-cyan-200 font-medium'
+                  ? 'bg-slate-800 border-slate-600 text-slate-100 font-medium'
                   : 'bg-slate-950 border-slate-800 text-slate-400'}"
               >
                 外部 HTTP(S) 订阅 URL
@@ -175,7 +175,7 @@
                 onclick={() => (newType = 'manual')}
                 class="p-2 rounded border text-center transition-colors cursor-pointer {newType ===
                 'manual'
-                  ? 'bg-cyan-950/50 border-cyan-700 text-cyan-200 font-medium'
+                  ? 'bg-slate-800 border-slate-600 text-slate-100 font-medium'
                   : 'bg-slate-950 border-slate-800 text-slate-400'}"
               >
                 自建/手动录入节点
@@ -251,7 +251,7 @@
       type="text"
       bind:value={searchKeyword}
       placeholder="搜索节点名称、地区 (如 香港、日本) 或协议类型 (如 vless, hysteria2)..."
-      class="bg-transparent text-xs text-slate-200 placeholder-slate-500 w-full focus-visible:outline-2 focus-visible:outline-cyan-300 focus-visible:outline-offset-2"
+      class="bg-transparent text-xs text-slate-200 placeholder-slate-500 w-full focus-visible:outline-2 focus-visible:outline-[#e08a2c] focus-visible:outline-offset-2"
     />
   </div>
 
@@ -283,7 +283,7 @@
               <span class="font-semibold text-slate-100 text-sm">{src.name}</span>
               <span
                 class="px-2 py-0.5 rounded text-[11px] font-mono {src.type === 'subscription'
-                  ? 'bg-cyan-950 text-cyan-300 border border-cyan-800/60'
+                  ? 'bg-slate-800 text-slate-200 border border-slate-600'
                   : 'bg-slate-900 text-slate-300 border border-slate-700'}"
               >
                 {src.type === 'subscription' ? 'HTTP 订阅源' : '自建/手动源'}
