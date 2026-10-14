@@ -28,8 +28,7 @@
 
   function userPolicyGroupsCount(tpl) {
     if (!Array.isArray(tpl?.content?.policy_groups)) return 0;
-    return tpl.content.policy_groups.filter((p) => p?.type !== 'direct' && p?.type !== 'block')
-      .length;
+    return tpl.content.policy_groups.filter((p) => p?.type !== 'direct').length;
   }
 
   function nodeGroupsCount(tpl) {

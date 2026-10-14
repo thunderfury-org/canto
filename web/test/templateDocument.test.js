@@ -5,6 +5,8 @@ import {
   definedRuleTags,
   displayPattern,
   finalRuleTag,
+  ruleSourceDetour,
+  writeRuleSourceDetour,
   isRuleTagSelected,
   matchNodeTags,
   migrateLegacyRuleSets,
@@ -17,23 +19,26 @@ import {
   NODE_GROUP_REGEX_PRESETS,
 } from '../src/data/templateDocument.js';
 
-test('normalize adds direct and block, drops root outbounds, and is idempotent', () => {
+test('normalize adds direct, drops block and root outbounds, and is idempotent', () => {
   const input = {
     outbounds: [{ tag: 'old', type: 'direct' }],
-    policy_groups: [{ tag: '默认策略', type: 'selector', outbounds: ['直连'] }],
+    policy_groups: [
+      { tag: '默认策略', type: 'selector', outbounds: ['直连'] },
+      { tag: 'block', type: 'block' },
+    ],
     dns: { servers: [{ tag: 'dns_direct' }] },
   };
   const once = normalizeTemplateContent(input);
   const twice = normalizeTemplateContent(once);
 
-  assert.deepEqual(once.policy_groups[0], { tag: '直连', type: 'direct' });
-  assert.deepEqual(once.policy_groups[1], input.policy_groups[0]);
-  assert.deepEqual(once.policy_groups[2], { tag: 'block', type: 'block' });
+  assert.deepEqual(once.policy_groups, [
+    { tag: '直连', type: 'direct' },
+    { tag: '默认策略', type: 'selector', outbounds: ['直连'] },
+  ]);
   assert.equal(Object.hasOwn(once, 'outbounds'), false);
   assert.deepEqual(once.dns, input.dns);
   assert.deepEqual(twice, once);
-  assert.equal(JSON.stringify(twice), JSON.stringify(once));
-  assert.deepEqual(input.outbounds, [{ tag: 'old', type: 'direct' }]);
+  assert.deepEqual(input.policy_groups[1], { tag: 'block', type: 'block' });
 });
 
 test('normalize keeps an existing direct tag and does not rewrite placeholders', () => {
@@ -46,7 +51,10 @@ test('normalize keeps an existing direct tag and does not rewrite placeholders',
 
   assert.equal(next.policy_groups.filter((group) => group.type === 'direct').length, 1);
   assert.equal(next.policy_groups[0].tag, 'direct');
-  assert.equal(next.policy_groups.at(-1).type, 'block');
+  assert.equal(
+    next.policy_groups.some((group) => group.type === 'block'),
+    false,
+  );
   assert.deepEqual(next.node_groups[0].outbounds, ['{(?i)(港|hk)}', '{.*}']);
   assert.deepEqual(next.rule_sets, input.rule_sets);
 });
@@ -125,6 +133,15 @@ test('collisions count a second copy and references stay on the outer rule', () 
   assert.deepEqual(definedRuleTags(content), ['geosite-cn', 'geoip-cn']);
 });
 
+test('rule source detour defaults to ALL and writes only http_client.detour', () => {
+  assert.equal(ruleSourceDetour({}), 'ALL');
+  assert.equal(ruleSourceDetour({ http_client: { detour: '  ' } }), 'ALL');
+  const content = { rule_sets: [{ tag: ['cn'], http_client: { detour: 'ALL', extra: true } }] };
+  const next = writeRuleSourceDetour(content, 0, '直连');
+  assert.deepEqual(next.rule_sets[0].http_client, { detour: '直连' });
+  assert.deepEqual(content.rule_sets[0].http_client, { detour: 'ALL', extra: true });
+});
+
 test('legacy route rule_set folds into one DustinWin source and stays idempotent', () => {
   const input = {
     route: {
@@ -141,6 +158,8 @@ test('legacy route rule_set folds into one DustinWin source and stays idempotent
   assert.deepEqual(once.rule_sets[0].tag, ['cn', 'ai']);
   assert.equal(once.route.rule_set, undefined);
   assert.equal(once.route.final, '直连');
+  assert.deepEqual(once.rule_sets[0].http_client, { detour: 'ALL' });
+  assert.equal(once.rule_sets[0].download_detour, undefined);
   assert.equal(
     migrateLegacyRuleSets({ rule_sets: [{ tag: ['kept'] }], route: { rule_set: [{ tag: 'cn' }] } })
       .rule_sets[0].tag[0],

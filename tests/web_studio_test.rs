@@ -1714,7 +1714,7 @@ async fn test_relational_guards_prevent_dangling_template_and_empty_profile_sour
                     "tag": ["geosite-cn", "geosite-openai"],
                     "format": "binary",
                     "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/{tag}.srs",
-                    "download_detour": "ALL"
+                    "http_client": { "detour": "ALL" }
                 },
                 {
                     "name": "MetaCubeX GeoIP",
@@ -1723,7 +1723,7 @@ async fn test_relational_guards_prevent_dangling_template_and_empty_profile_sour
                     "tag": ["geoip-cn", "geoip-telegram"],
                     "format": "binary",
                     "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/{tag}.srs",
-                    "download_detour": "ALL"
+                    "http_client": { "detour": "直连" }
                 }
             ],
             "route": {
@@ -1805,7 +1805,7 @@ async fn test_ruleset_presets_and_template_rule_sets_flow() {
                     "tag": ["cn", "ai", "netflix"],
                     "format": "binary",
                     "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs",
-                    "download_detour": "ALL"
+                    "http_client": { "detour": "ALL" }
                 }
             ],
             "route": {
@@ -1929,6 +1929,120 @@ async fn test_ruleset_presets_and_template_rule_sets_flow() {
         preview["config"]["route"]["rule_set"][0]["format"],
         "binary"
     );
+    assert_eq!(
+        preview["config"]["route"]["rule_set"][0]["http_client"],
+        "http-ALL"
+    );
+    assert_eq!(
+        preview["config"]["route"]["default_http_client"],
+        "http-ALL"
+    );
+    assert_eq!(preview["config"]["http_clients"][0]["detour"], "ALL");
 
     let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn test_sing_box_accepts_compiled_config_without_deprecated_warnings() {
+    let sing_box = PathBuf::from("/opt/homebrew/bin/sing-box");
+    if !sing_box.exists() {
+        return;
+    }
+    let dir = temp_work_dir();
+    let config_path = dir.join("compiled.json");
+    let detour_path = dir.join("detour.json");
+    let implicit_path = dir.join("implicit.json");
+    let rule_set_path = dir.join("cn.json");
+    std::fs::write(
+        &rule_set_path,
+        br#"{"version":4,"rules":[{"domain_suffix":["example.com"]}]}"#,
+    )
+    .unwrap();
+    let compiled = json!({
+        "log": { "level": "warn" },
+        "dns": {
+            "servers": [
+                { "tag": "dns_direct", "type": "https", "server": "doh.pub", "domain_resolver": "dns_resolver" },
+                { "tag": "dns_resolver", "type": "udp", "server": "223.5.5.5" }
+            ],
+            "final": "dns_direct",
+            "strategy": "ipv4_only"
+        },
+        "inbounds": [{ "type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 2080 }],
+        "outbounds": [
+            { "type": "selector", "tag": "ALL", "outbounds": ["直连"] },
+            { "type": "direct", "tag": "直连" }
+        ],
+        "http_clients": [{ "tag": "http-ALL", "detour": "ALL" }],
+        "route": {
+            "default_domain_resolver": "dns_resolver",
+            "default_http_client": "http-ALL",
+            "rules": [{ "rule_set": ["cn"], "outbound": "直连" }],
+            "rule_set": [{
+                "type": "local",
+                "tag": "cn",
+                "format": "source",
+                "path": rule_set_path
+            }],
+            "final": "直连"
+        }
+    });
+    let remote_rule_set = json!({
+        "type": "remote",
+        "tag": ["cn"],
+        "format": "binary",
+        "url": "https://example.invalid/{tag}.srs"
+    });
+    let mut detour_rule_set = remote_rule_set.clone();
+    detour_rule_set["download_detour"] = json!("直连");
+    let base = json!({
+        "dns": { "servers": [{ "tag": "dns_direct", "type": "local" }], "final": "dns_direct" },
+        "inbounds": [{ "type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 2080 }],
+        "outbounds": [{ "type": "direct", "tag": "直连" }],
+        "route": { "rules": [{ "rule_set": ["cn"], "outbound": "直连" }], "final": "直连" }
+    });
+    let mut detour = base.clone();
+    let mut implicit = base;
+    detour["route"]["rule_set"] = json!([detour_rule_set]);
+    implicit["route"]["rule_set"] = json!([remote_rule_set]);
+    std::fs::write(&config_path, serde_json::to_vec_pretty(&compiled).unwrap()).unwrap();
+    std::fs::write(&detour_path, serde_json::to_vec_pretty(&detour).unwrap()).unwrap();
+    std::fs::write(
+        &implicit_path,
+        serde_json::to_vec_pretty(&implicit).unwrap(),
+    )
+    .unwrap();
+
+    let compiled_stderr = sing_box_startup_log(&sing_box, &config_path).await;
+    assert!(
+        !compiled_stderr.to_ascii_lowercase().contains("deprecated"),
+        "{compiled_stderr}"
+    );
+    let detour_stderr = sing_box_startup_log(&sing_box, &detour_path).await;
+    assert!(detour_stderr.contains("download_detour"), "{detour_stderr}");
+    let implicit_stderr = sing_box_startup_log(&sing_box, &implicit_path).await;
+    assert!(
+        implicit_stderr.contains("implicit default HTTP client"),
+        "{implicit_stderr}"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+async fn sing_box_startup_log(sing_box: &std::path::Path, config: &std::path::Path) -> String {
+    let mut child = tokio::process::Command::new(sing_box)
+        .args(["run", "-c"])
+        .arg(config)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stderr = child.stderr.take().unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    let _ = child.kill().await;
+    let _ = child.wait().await;
+    let mut output = Vec::new();
+    tokio::io::AsyncReadExt::read_to_end(&mut stderr, &mut output)
+        .await
+        .unwrap();
+    String::from_utf8_lossy(&output).into_owned()
 }

@@ -21,7 +21,6 @@ export const RCODES = ['NOERROR', 'FORMERR', 'SERVFAIL', 'NXDOMAIN', 'NOTIMP', '
 export const DNS_FLAGS = [
   { key: 'disable_cache', label: '禁用缓存' },
   { key: 'disable_expire', label: '禁用过期' },
-  { key: 'independent_cache', label: '独立缓存' },
   { key: 'reverse_mapping', label: '反向映射' },
 ];
 

@@ -163,15 +163,14 @@
       {#if activeProfile}
         <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div class="min-w-0 flex-1 space-y-2">
-            <h1>
-              <input
-                type="text"
-                bind:value={activeProfile.name}
-                oninput={persistActive}
-                aria-label="分发配置名称"
-                class="field w-full px-2 py-1 text-base font-semibold"
-              />
-            </h1>
+            <h1 class="text-base font-semibold text-slate-100">{activeProfile.name}</h1>
+            <input
+              type="text"
+              bind:value={activeProfile.name}
+              oninput={persistActive}
+              aria-label="分发配置名称"
+              class="field w-full px-2 py-1 text-sm"
+            />
             <p class="truncate font-mono text-xs text-slate-400">{activeProfile.publicUrl}</p>
           </div>
           <button

@@ -120,13 +120,10 @@ pub fn expand_profile(template_content: &Value, nodes: &[Value]) -> Expansion {
         expanded_node_groups.push(group);
     }
 
-    let (terminal_policies, selector_policies): (Vec<Value>, Vec<Value>) =
-        policy_groups.into_iter().partition(|o| {
-            matches!(
-                o.get("type").and_then(Value::as_str),
-                Some("direct" | "block")
-            )
-        });
+    let (terminal_policies, selector_policies): (Vec<Value>, Vec<Value>) = policy_groups
+        .into_iter()
+        .filter(|outbound| outbound.get("type").and_then(Value::as_str) != Some("block"))
+        .partition(|outbound| outbound.get("type").and_then(Value::as_str) == Some("direct"));
 
     let mut assembled_outbounds: Vec<Value> = Vec::new();
     assembled_outbounds.extend(selector_policies);
@@ -178,13 +175,43 @@ pub fn expand_profile(template_content: &Value, nodes: &[Value]) -> Expansion {
                         false
                     }
                 });
+                let mut clients = Vec::new();
+                let mut client_tags: HashMap<String, String> = HashMap::new();
                 for rs in rule_sets_arr.iter_mut() {
-                    if let Some(rs_obj) = rs.as_object_mut() {
-                        rs_obj.remove("name");
-                        rs_obj.remove("source_url");
-                        rs_obj.remove("tag_prefix");
-                        rs_obj.remove("category");
-                        rs_obj.remove("preset_id");
+                    let Some(rs_obj) = rs.as_object_mut() else {
+                        continue;
+                    };
+                    rs_obj.remove("name");
+                    rs_obj.remove("source_url");
+                    rs_obj.remove("tag_prefix");
+                    rs_obj.remove("category");
+                    rs_obj.remove("preset_id");
+                    rs_obj.remove("download_detour");
+                    let detour = rs_obj
+                        .remove("http_client")
+                        .as_ref()
+                        .and_then(|client| client.get("detour"))
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|detour| !detour.is_empty())
+                        .map(str::to_string);
+                    if let Some(detour) = detour {
+                        let client_tag = client_tags.entry(detour.clone()).or_insert_with(|| {
+                            let tag = format!("http-{detour}");
+                            clients.push(json!({ "tag": tag, "detour": detour }));
+                            tag
+                        });
+                        rs_obj.insert("http_client".to_string(), Value::String(client_tag.clone()));
+                    }
+                }
+                if !clients.is_empty() {
+                    let default_http_client = clients[0]["tag"].clone();
+                    obj.insert("http_clients".to_string(), Value::Array(clients));
+                    let route_entry = obj
+                        .entry("route".to_string())
+                        .or_insert_with(|| Value::Object(serde_json::Map::new()));
+                    if let Some(route_obj) = route_entry.as_object_mut() {
+                        route_obj.insert("default_http_client".to_string(), default_http_client);
                     }
                 }
             }
@@ -463,7 +490,7 @@ mod tests {
                     "tag": ["cn", "ai", "netflix"],
                     "format": "binary",
                     "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs",
-                    "download_detour": "ALL"
+                    "http_client": { "detour": "ALL" }
                 }
             ],
             "route": {
@@ -479,6 +506,87 @@ mod tests {
             json!(["cn", "ai", "netflix"])
         );
         assert_eq!(expansion.config["route"]["rule_set"][0]["format"], "binary");
+    }
+
+    #[test]
+    fn test_compiles_rule_source_detours_into_http_clients() {
+        let template = json!({
+            "rule_sets": [
+                {
+                    "type": "remote",
+                    "tag": ["cn"],
+                    "format": "binary",
+                    "url": "https://example.com/{tag}.srs",
+                    "http_client": { "detour": "ALL" },
+                    "name": "域名"
+                },
+                {
+                    "type": "remote",
+                    "tag": ["cnip"],
+                    "format": "binary",
+                    "url": "https://example.com/{tag}.srs",
+                    "http_client": { "detour": "直连" }
+                },
+                {
+                    "type": "remote",
+                    "tag": ["ai"],
+                    "format": "binary",
+                    "url": "https://example.com/{tag}.srs",
+                    "http_client": { "detour": "ALL" }
+                }
+            ]
+        });
+
+        let expansion = expand_profile(&template, &[]);
+
+        assert_eq!(
+            expansion.config["http_clients"],
+            json!([
+                { "tag": "http-ALL", "detour": "ALL" },
+                { "tag": "http-直连", "detour": "直连" }
+            ])
+        );
+        assert_eq!(expansion.config["route"]["default_http_client"], "http-ALL");
+        assert_eq!(
+            expansion.config["route"]["rule_set"][0]["http_client"],
+            "http-ALL"
+        );
+        assert_eq!(
+            expansion.config["route"]["rule_set"][1]["http_client"],
+            "http-直连"
+        );
+        assert_eq!(
+            expansion.config["route"]["rule_set"][2]["http_client"],
+            "http-ALL"
+        );
+        assert!(
+            expansion.config["route"]["rule_set"][0]
+                .get("name")
+                .is_none()
+        );
+        assert!(
+            expansion.config.get("http_clients").unwrap()[0]
+                .get("download_detour")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_omits_http_clients_without_rule_sources_and_drops_block() {
+        let template = json!({
+            "policy_groups": [
+                { "type": "direct", "tag": "直连" },
+                { "type": "block", "tag": "block" },
+                { "type": "selector", "tag": "默认策略", "outbounds": ["直连"] }
+            ],
+            "dns": { "strategy": "ipv4_only" }
+        });
+
+        let expansion = expand_profile(&template, &[]);
+
+        assert!(expansion.config.get("http_clients").is_none());
+        assert!(expansion.config.get("route").is_none());
+        assert_eq!(outbound_tags(&expansion.config), vec!["默认策略", "直连"]);
     }
     #[test]
     fn test_expands_with_direct_in_policy_groups_and_no_base_outbounds() {
@@ -497,11 +605,10 @@ mod tests {
 
         assert_eq!(
             outbound_tags(&expansion.config),
-            vec!["默认策略", "香港节点", "直连", "block", "HK-01"]
+            vec!["默认策略", "香港节点", "直连", "HK-01"]
         );
         assert_eq!(expansion.config["outbounds"][0]["type"], "selector");
         assert_eq!(expansion.config["outbounds"][1]["type"], "urltest");
         assert_eq!(expansion.config["outbounds"][2]["type"], "direct");
-        assert_eq!(expansion.config["outbounds"][3]["type"], "block");
     }
 }
