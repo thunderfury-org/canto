@@ -212,7 +212,7 @@
     <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none">
       <input
         type="checkbox"
-        class="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+        class="rounded border-slate-700 bg-slate-900 text-slate-300 focus:ring-0 focus:ring-offset-0 cursor-pointer"
         checked={log?.timestamp === true}
         onchange={(event) => commitLog(withLogTimestamp(log, event.currentTarget.checked))}
       />
@@ -418,7 +418,7 @@
     <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none">
       <input
         type="checkbox"
-        class="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+        class="rounded border-slate-700 bg-slate-900 text-slate-300 focus:ring-0 focus:ring-offset-0 cursor-pointer"
         checked={experimental?.cache_file?.enabled === true}
         onchange={(event) =>
           commitExperimental(withCacheEnabled(experimental, event.currentTarget.checked))}

@@ -60,7 +60,7 @@
   let conditionPicker = $state('');
 
   const TONE_CLASS = {
-    server: 'text-cyan-300 font-medium bg-cyan-950/40 border-cyan-800/50',
+    server: 'text-slate-200 font-medium bg-slate-800 border-slate-600',
     reject: 'text-rose-400 font-medium bg-rose-950/40 border-rose-800/50',
     predefined: 'text-amber-300 font-medium bg-amber-950/40 border-amber-800/50',
     missing: 'text-rose-400 bg-rose-950/40 border-rose-800/50',
@@ -423,7 +423,7 @@
       <label class="flex items-center gap-2 text-slate-400">
         <span class="text-slate-500">解析策略</span>
         <select
-          class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs font-mono text-cyan-300 cursor-pointer"
+          class="bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-xs font-mono text-slate-200 cursor-pointer"
           value={dns?.strategy || ''}
           onchange={(event) => onCommit(withDnsStrategy(baseDns(), event.target.value))}
         >
@@ -439,7 +439,7 @@
         <label class="flex items-center gap-2 text-slate-300 cursor-pointer select-none">
           <input
             type="checkbox"
-            class="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+            class="rounded border-slate-700 bg-slate-900 text-slate-300 focus:ring-0 focus:ring-offset-0 cursor-pointer"
             checked={dns?.[flag.key] === true}
             onchange={(event) => onCommit(withDnsFlag(baseDns(), flag.key, event.target.checked))}
           />
@@ -474,7 +474,7 @@
             class="group relative flex items-center gap-3 px-3 py-2 {isDragging
               ? 'opacity-25 bg-slate-900/90'
               : isOver
-                ? 'bg-cyan-950/60 ring-1 ring-cyan-500/80 z-10'
+                ? 'bg-slate-800 ring-1 ring-slate-400/70 z-10'
                 : 'hover:bg-slate-800/40'}"
             ondragover={(event) => onDragOver(event, rIdx)}
             ondrop={(event) => onDrop(event, rIdx)}
@@ -485,7 +485,7 @@
                 draggable="true"
                 title="拖动排序"
                 aria-label="拖动排序"
-                class="text-slate-600 group-hover:text-slate-300 hover:!text-cyan-400 cursor-grab active:cursor-grabbing p-0.5 bg-transparent border-0"
+                class="text-slate-600 group-hover:text-slate-300 hover:!text-slate-200 cursor-grab active:cursor-grabbing p-0.5 bg-transparent border-0"
                 ondragstart={(event) => onDragStart(event, rIdx)}
                 ondragend={onDragEnd}
               >
@@ -597,7 +597,7 @@
               namedServerTags,
             )
               ? 'text-rose-300'
-              : 'text-cyan-300'}"
+              : 'text-slate-200'}"
             value={dns?.final || ''}
             onchange={(event) => onCommit(withDnsFinal(baseDns(), event.target.value))}
           >
@@ -821,7 +821,7 @@
                   type="button"
                   onclick={() => chooseResult(mode.id)}
                   class="px-3 py-1.5 text-xs cursor-pointer {drawer.draft.resultMode === mode.id
-                    ? 'bg-cyan-600/30 text-cyan-100'
+                    ? 'bg-slate-700 text-slate-100'
                     : 'text-slate-400 hover:bg-slate-800'}"
                 >
                   {mode.label}
@@ -830,7 +830,7 @@
             </div>
             {#if drawer.draft.resultMode === 'server'}
               <select
-                class="field w-full px-2 py-1.5 text-xs font-mono text-cyan-300"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
                 value={drawer.draft.server}
                 onchange={(event) => {
                   drawer.draft.server = event.target.value;

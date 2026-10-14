@@ -237,7 +237,7 @@
                     type="text"
                     value={activeProfile.token}
                     readonly
-                    class="field w-full px-2.5 py-1.5 font-mono text-cyan-300"
+                    class="field w-full px-2.5 py-1.5 font-mono text-slate-200"
                   />
                   <button
                     type="button"
@@ -257,7 +257,7 @@
               <h3 class="text-sm font-semibold text-slate-200">基础配置模板</h3>
               <button
                 onclick={() => store.navigate('templates', { id: activeProfile?.templateId })}
-                class="text-xs text-cyan-400 hover:text-cyan-300"
+                class="text-xs text-slate-300 hover:text-slate-100"
               >
                 编辑模板细节 &rarr;
               </button>
@@ -268,7 +268,7 @@
                 <label
                   class="flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors {activeProfile.templateId ===
                   tpl.id
-                    ? 'bg-cyan-950/40 border-cyan-700/80 text-slate-100'
+                    ? 'bg-slate-800 border-slate-600 text-slate-100'
                     : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-950'}"
                 >
                   <input
@@ -277,7 +277,7 @@
                     value={tpl.id}
                     checked={activeProfile.templateId === tpl.id}
                     onchange={() => handleTemplateChange(tpl.id)}
-                    class="mt-0.5 text-cyan-500"
+                    class="mt-0.5 text-slate-300"
                   />
                   <div class="text-xs space-y-0.5">
                     <div class="font-semibold text-slate-200">{tpl.name}</div>
@@ -294,7 +294,7 @@
               <h3 class="text-sm font-semibold text-slate-200">节点池来源</h3>
               <button
                 onclick={() => store.navigate('sources')}
-                class="text-xs text-cyan-400 hover:text-cyan-300"
+                class="text-xs text-slate-300 hover:text-slate-100"
               >
                 管理节点源 &rarr;
               </button>
@@ -305,7 +305,7 @@
                 {@const isChecked = activeProfile.sourceIds.includes(src.id)}
                 <label
                   class="flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors {isChecked
-                    ? 'bg-cyan-950/30 border-cyan-700/60 text-slate-100'
+                    ? 'bg-slate-800 border-slate-600 text-slate-100'
                     : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-950'}"
                 >
                   <div class="flex items-center gap-2.5 text-xs">
@@ -313,7 +313,7 @@
                       type="checkbox"
                       checked={isChecked}
                       onchange={() => toggleSourceBinding(src.id)}
-                      class="rounded text-cyan-500"
+                      class="rounded text-slate-300"
                     />
                     <div>
                       <div class="font-semibold text-slate-200">{src.name}</div>
@@ -324,7 +324,7 @@
                   </div>
                   <span
                     class="text-xs font-mono px-1.5 py-0.5 rounded {isChecked
-                      ? 'bg-cyan-950 text-cyan-200 border border-cyan-800/50'
+                      ? 'bg-slate-800 text-slate-100 border border-slate-600'
                       : 'bg-slate-900 text-slate-500'}"
                   >
                     {src.type}
@@ -358,7 +358,7 @@
                   onclick={() => (activeRightTab = 'json')}
                   class="flex items-center gap-1.5 px-3 py-1 rounded font-medium {activeRightTab ===
                   'json'
-                    ? 'bg-cyan-950 text-cyan-300 border border-cyan-800/50'
+                    ? 'bg-slate-800 text-slate-200 border border-slate-600'
                     : 'text-slate-400 hover:text-slate-200'}"
                 >
                   <Code size={13} />
@@ -368,12 +368,12 @@
                   onclick={() => (activeRightTab = 'audit')}
                   class="flex items-center gap-1.5 px-3 py-1 rounded font-medium {activeRightTab ===
                   'audit'
-                    ? 'bg-cyan-950 text-cyan-300 border border-cyan-800/50'
+                    ? 'bg-slate-800 text-slate-200 border border-slate-600'
                     : 'text-slate-400 hover:text-slate-200'}"
                 >
                   <Sparkles size={13} />
                   <span>正则展开明细</span>
-                  <span class="font-mono text-xs bg-slate-950 px-1 rounded text-cyan-400"
+                  <span class="font-mono text-xs bg-slate-950 px-1 rounded text-slate-300"
                     >{compiledResult.usedCount} 节点</span
                   >
                 </button>
@@ -418,7 +418,7 @@
                 ></span
               >
               <span
-                >正则命中注入: <strong class="text-cyan-400 font-mono"
+                >正则命中注入: <strong class="text-slate-300 font-mono"
                   >{compiledResult.usedCount}</strong
                 ></span
               >
@@ -442,7 +442,7 @@
           {#if activeRightTab === 'audit'}
             <div class="p-4 max-h-[680px] overflow-y-auto space-y-3 text-xs bg-slate-950/60">
               <div class="text-slate-400">
-                各策略组中的 <code class="text-cyan-400 font-mono">&#123;regex&#125;</code> 占位符已在编译时被替换为匹配的实际节点
+                各策略组中的 <code class="text-slate-300 font-mono">&#123;regex&#125;</code> 占位符已在编译时被替换为匹配的实际节点
                 Tag，同时节点实体并入 outbounds 列表：
               </div>
 
@@ -457,7 +457,7 @@
                         <span>{groupTag}</span>
                       </span>
                       <span
-                        class="font-mono text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/40"
+                        class="font-mono text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-600"
                       >
                         匹配注入 {matchedNodes.length} 个节点
                       </span>

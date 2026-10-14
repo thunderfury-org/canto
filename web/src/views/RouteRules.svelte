@@ -54,7 +54,7 @@
 
   const TONE_CLASS = {
     direct: 'text-slate-400 bg-slate-900/80 border-slate-800',
-    outbound: 'text-cyan-300 font-medium bg-cyan-950/40 border-cyan-800/50',
+    outbound: 'text-slate-200 font-medium bg-slate-800 border-slate-600',
     reject: 'text-rose-400 font-medium bg-rose-950/40 border-rose-800/50',
     action: 'text-amber-300 font-medium bg-amber-950/40 border-amber-800/50',
     missing: 'text-rose-400 bg-rose-950/40 border-rose-800/50',
@@ -305,7 +305,7 @@
     <label class="flex items-center gap-2 text-slate-300 cursor-pointer select-none">
       <input
         type="checkbox"
-        class="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+        class="rounded border-slate-700 bg-slate-900 text-slate-300 focus:ring-0 focus:ring-offset-0 cursor-pointer"
         checked={route?.auto_detect_interface === true}
         onchange={(event) => onCommit(withAutoDetect(baseRoute(), event.target.checked))}
       />
@@ -343,14 +343,14 @@
           class="group relative flex flex-col md:flex-row md:items-center gap-2 md:gap-3 px-3 py-2.5 md:py-2 transition-colors {isDragging
             ? 'opacity-25 bg-slate-900/90'
             : isOver
-              ? 'bg-cyan-950/60 ring-1 ring-cyan-500/80 z-10 shadow-sm shadow-cyan-950/50'
+              ? 'bg-slate-800 ring-1 ring-slate-400/70 z-10 '
               : 'hover:bg-slate-800/40'}"
           ondragover={(event) => onDragOver(event, rIdx)}
           ondrop={(event) => onDrop(event, rIdx)}
         >
           {#if isOver}
             <div
-              class="absolute inset-x-0 -top-px h-0.5 bg-cyan-400 z-20 shadow-[0_0_8px_rgba(34,211,238,0.8)] pointer-events-none"
+              class="absolute inset-x-0 -top-px h-0.5 bg-slate-300 z-20 pointer-events-none"
             ></div>
           {/if}
 
@@ -365,7 +365,7 @@
                 draggable="true"
                 title="拖动排序"
                 aria-label="拖动排序"
-                class="text-slate-600 group-hover:text-slate-300 hover:!text-cyan-400 cursor-grab active:cursor-grabbing p-0.5 rounded transition-colors bg-transparent border-0"
+                class="text-slate-600 group-hover:text-slate-300 hover:!text-slate-200 cursor-grab active:cursor-grabbing p-0.5 rounded transition-colors bg-transparent border-0"
                 ondragstart={(event) => onDragStart(event, rIdx)}
                 ondragend={onDragEnd}
               >
@@ -379,11 +379,11 @@
             <!-- Col 2: Match Conditions (Clickable) -->
             <button
               type="button"
-              class="flex-1 min-w-0 cursor-pointer border-0 bg-transparent py-0.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
+              class="flex-1 min-w-0 cursor-pointer border-0 bg-transparent py-0.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e08a2c]"
               onclick={() => openEdit(rIdx)}
             >
               <div
-                class="font-mono text-xs text-slate-200 break-words leading-relaxed group-hover:text-cyan-100 transition-colors"
+                class="font-mono text-xs text-slate-200 break-words leading-relaxed group-hover:text-slate-100 transition-colors"
               >
                 {#if summary.conditionsText}
                   <span>{summary.conditionsText}</span>
@@ -420,7 +420,7 @@
             <!-- Col 3: Egress Target / Action (Clickable) -->
             <button
               type="button"
-              class="flex md:w-52 shrink-0 cursor-pointer items-center gap-1.5 border-0 bg-transparent text-left font-mono text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
+              class="flex md:w-52 shrink-0 cursor-pointer items-center gap-1.5 border-0 bg-transparent text-left font-mono text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e08a2c]"
               onclick={() => openEdit(rIdx)}
             >
               <span class="text-slate-600 shrink-0 select-none">↳</span>
@@ -497,7 +497,7 @@
           class="field cursor-pointer px-2.5 py-1 text-xs font-mono font-medium w-full md:w-auto {route?.final ===
             '直连' || route?.final === 'direct'
             ? 'text-slate-400'
-            : 'text-cyan-300'}"
+            : 'text-slate-200'}"
           value={route?.final || ''}
           onchange={(event) => onCommit(withFinal(baseRoute(), event.target.value))}
         >
@@ -657,7 +657,7 @@
                   type="button"
                   onclick={() => chooseResult(mode.id)}
                   class="px-3 py-1.5 text-xs cursor-pointer {drawer.draft.resultMode === mode.id
-                    ? 'bg-cyan-600/30 text-cyan-100'
+                    ? 'bg-slate-700 text-slate-100'
                     : 'text-slate-400 hover:bg-slate-800'}"
                 >
                   {mode.label}
@@ -666,7 +666,7 @@
             </div>
             {#if drawer.draft.resultMode === 'outbound'}
               <select
-                class="field w-full px-2 py-1.5 text-xs font-mono text-cyan-300"
+                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
                 value={drawer.draft.outbound}
                 onchange={(event) => {
                   drawer.draft.outbound = event.target.value;

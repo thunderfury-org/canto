@@ -142,7 +142,7 @@
                 ? 'text-emerald-400 font-semibold'
                 : item === 'block'
                   ? 'text-rose-400 font-semibold'
-                  : 'text-cyan-300'}">{item}</span
+                  : 'text-slate-200'}">{item}</span
             >
             <button
               type="button"
@@ -166,7 +166,7 @@
       {/if}
       <ChevronDown
         size={13}
-        class="transition-transform duration-150 {isOpen ? 'rotate-180 text-cyan-400' : ''}"
+        class="transition-transform duration-150 {isOpen ? 'rotate-180 text-slate-300' : ''}"
       />
     </div>
   </div>
@@ -199,7 +199,7 @@
           <button
             type="button"
             onclick={selectAll}
-            class="text-cyan-400 hover:text-cyan-300 cursor-pointer font-medium"
+            class="text-slate-300 hover:text-slate-100 cursor-pointer font-medium"
           >
             全选
           </button>
@@ -235,7 +235,7 @@
               checked={isChecked}
               tabindex="-1"
               onchange={(e) => toggleOption(opt.value, e)}
-              class="rounded border-slate-700 bg-slate-950 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+              class="rounded border-slate-700 bg-slate-950 text-slate-300 focus:ring-0 focus:ring-offset-0 cursor-pointer"
             />
             <span
               class="font-mono flex-1 truncate text-xs {isChecked
@@ -256,7 +256,7 @@
               >
             {:else}
               <span
-                class="text-[10px] px-1 py-0.2 rounded font-mono bg-cyan-950/80 border border-cyan-800/60 text-cyan-400"
+                class="text-[10px] px-1 py-0.2 rounded font-mono bg-slate-800 border border-slate-600 text-slate-300"
                 >分组</span
               >
             {/if}

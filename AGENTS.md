@@ -72,12 +72,10 @@ canto 是基于 Rust (Edition 2024) 构建的 sing-box 透明代理与配置编�
 ### 视觉层级与操作规范（Visual Hierarchy & Tokens）
 
 - **单一实心主操作（Primary Action Hierarchy）**：
-  - 全屏视口或抽屉内仅允许一个实心主操作按钮（`btn-primary`，使用青色 `#22d3ee` 背景与 `#020617` 文字），引导核心保存行为。
+  - 全屏视口或抽屉内仅允许一个实心主操作按钮（`btn-primary`），引导核心保存行为。
   - 次要操作（新建、克隆、展开、取消等）使用幽灵按钮（`btn-ghost` / `btn-secondary`）。
   - 危险操作（删除）默认使用低调幽灵态，悬停/聚焦时呈柔和红（muted red）。
-- **色彩克制与强调色约束**：
-  - 青色（Cyan）严格作为操作强调与交互聚焦色，严禁作为大面积装饰背景或常规文本滥用。
-  - 状态胶囊（Badges）统一采用半透明暗色背景配语义边框与文字（直连/健康用 Emerald，阻断/拦截用 Rose，动态匹配/警告用 Amber，普通出站/节点用 Slate/Cyan）。
+- **控制台表面**：实心主按钮和焦点环用铜，其余界面用炭灰与骨色。改 Web Studio 颜色、徽章或圆角时读 [ADR 0017](docs/adr/0017-console-surface-charcoal-and-copper.md)。
 
 ### 编码与提交规范
 

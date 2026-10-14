@@ -223,8 +223,8 @@
         <div>
           <div class="font-semibold text-slate-100 text-sm">把 HTTP 订阅端点当作网关源地址</div>
           <div class="text-slate-400 mt-0.5">
-            把 <span class="font-mono text-cyan-300">[singbox].source</span> 指到 Profile 的
-            <span class="font-mono text-cyan-300">/sub/:token</span>，覆盖入站后即可刷新。
+            把 <span class="font-mono text-slate-200">[singbox].source</span> 指到 Profile 的
+            <span class="font-mono text-slate-200">/sub/:token</span>，覆盖入站后即可刷新。
           </div>
         </div>
       </div>
@@ -250,7 +250,7 @@
         </div>
         <button
           onclick={() => store.navigate('sources')}
-          class="text-xs text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
+          class="text-xs text-slate-300 hover:text-slate-100 transition-colors flex items-center gap-1"
         >
           <span>管理节点源</span>
           <ArrowRight size={12} />
@@ -307,7 +307,7 @@
         </div>
         <button
           onclick={() => store.navigate('profiles')}
-          class="text-xs text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
+          class="text-xs text-slate-300 hover:text-slate-100 transition-colors flex items-center gap-1"
         >
           <span>管理全部</span>
           <ArrowRight size={12} />
@@ -340,7 +340,7 @@
                 <div class="flex items-center gap-2 flex-wrap">
                   <span class="font-medium text-slate-100 text-sm">{prof.name}</span>
                   <span
-                    class="font-mono text-xs px-2 py-0.5 rounded bg-slate-950 text-cyan-400 border border-slate-800"
+                    class="font-mono text-xs px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800"
                   >
                     {prof.token}
                   </span>

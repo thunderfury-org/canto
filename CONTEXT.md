@@ -91,3 +91,7 @@ _Avoid_: provider, 规则订阅源
 **规则源预设 (Rule Set Release Provider)**:
 提供批量规则集发布的 GitHub Release 资产源与预设配置，支持 Web Studio 自动化探测 Release 资产并提供规则勾选装配。
 _Avoid_: 规则订阅, 外部规则源, 规则抓取器
+
+**控制台表面**:
+Web Studio 的暗色工具表面。底是中性炭灰，铜只标记可提交的操作和键盘焦点。
+_Avoid_: 主题, 皮肤, 暗黑模式

@@ -44,7 +44,7 @@
 
 <div
   class="rounded-lg border transition-all duration-150 {isExpanded
-    ? 'border-cyan-800/80 bg-slate-900/95 shadow-md ring-1 ring-cyan-500/20'
+    ? 'border-slate-500 bg-slate-900/95 shadow-md ring-1 ring-slate-400/30'
     : 'border-slate-800/90 bg-slate-900/70 hover:border-slate-700/80 hover:bg-slate-900/90'}"
 >
   <!-- 1. Master Row (Compact Header / Summary, ~48px) -->
@@ -85,14 +85,14 @@
       <span
         class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-medium shrink-0 {group.type ===
         'urltest'
-          ? 'bg-cyan-950/70 text-cyan-300 border border-cyan-800/60'
-          : 'bg-indigo-950/70 text-indigo-300 border border-indigo-800/60'}"
+          ? 'bg-slate-800 text-slate-200 border border-slate-600'
+          : 'bg-slate-800 text-slate-200 border border-slate-600'}"
       >
         {#if group.type === 'urltest'}
-          <Zap size={11} class="text-cyan-400" />
+          <Zap size={11} class="text-slate-300" />
           <span>URLTest</span>
         {:else}
-          <MousePointerClick size={11} class="text-indigo-400" />
+          <MousePointerClick size={11} class="text-slate-300" />
           <span>Selector</span>
         {/if}
       </span>
@@ -155,7 +155,7 @@
       <button
         type="button"
         onclick={onToggleExpand}
-        class="p-1 rounded text-slate-400 hover:text-cyan-300 hover:bg-slate-800/80 transition-colors"
+        class="p-1 rounded text-slate-400 hover:text-slate-100 hover:bg-slate-800/80 transition-colors"
         aria-label={isExpanded ? '收起配置' : '展开配置'}
         title={isExpanded ? '收起配置' : '展开配置'}
       >
@@ -242,7 +242,7 @@
             </label>
           </div>
           <p class="text-[11px] text-slate-400 flex items-center gap-1">
-            <Zap size={11} class="text-cyan-400 shrink-0" />
+            <Zap size={11} class="text-slate-300 shrink-0" />
             <span>按指定测速间隔对命中节点发起 URL 测速并自动优选延迟最低的节点</span>
           </p>
         </div>
@@ -260,7 +260,7 @@
             <button
               type="button"
               onclick={() => (isPresetOpen = !isPresetOpen)}
-              class="flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-medium px-2 py-0.5 rounded hover:bg-slate-800/70 transition-colors cursor-pointer"
+              class="flex items-center gap-1 text-[11px] text-slate-300 hover:text-slate-100 font-medium px-2 py-0.5 rounded hover:bg-slate-800/70 transition-colors cursor-pointer"
             >
               <Sparkles size={11} />
               <span>常用预设</span>
@@ -298,7 +298,7 @@
                       </div>
                     </div>
                     {#if currentPattern === preset.pattern}
-                      <Check size={12} class="text-cyan-400 shrink-0" />
+                      <Check size={12} class="text-slate-300 shrink-0" />
                     {/if}
                   </button>
                 {/each}
@@ -352,7 +352,7 @@
               <button
                 type="button"
                 onclick={() => (showAllNodes = !showAllNodes)}
-                class="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium transition-colors cursor-pointer"
+                class="text-[11px] text-slate-300 hover:text-slate-100 font-medium transition-colors cursor-pointer"
               >
                 {showAllNodes ? '收起部分节点' : `查看全部 (${matchedNodes.length} 个节点)`}
               </button>
