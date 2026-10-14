@@ -359,7 +359,10 @@
 
   async function loadPresets() {
     try {
-      const res = await fetch('/api/rulesets/presets', { headers: store.authHeaders() });
+      const res = await fetch('/api/rulesets/presets', {
+        credentials: 'same-origin',
+        headers: store.authHeaders(),
+      });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
@@ -404,6 +407,7 @@
       if (store.isAuthenticated) {
         const res = await fetch('/api/rulesets/inspect-release', {
           method: 'POST',
+          credentials: 'same-origin',
           headers: store.authHeaders(),
           body: JSON.stringify({ url }),
         });

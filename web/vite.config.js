@@ -8,7 +8,11 @@ export default defineConfig({
     port: 5173,
     host: true,
     proxy: {
-      '/api': 'http://127.0.0.1:5800',
+      '/api': {
+        target: 'http://127.0.0.1:5800',
+        changeOrigin: true,
+        cookieDomainRewrite: '127.0.0.1',
+      },
     },
   },
 });
