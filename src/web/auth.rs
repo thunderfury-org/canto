@@ -242,10 +242,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_empty_verify_body_uses_cookie() {
-        let dir = std::env::temp_dir().join(format!(
-            "canto-auth-empty-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("canto-auth-empty-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let mut settings = crate::config::WebSettings::default();
         settings.admin_token = "secret".to_string();
