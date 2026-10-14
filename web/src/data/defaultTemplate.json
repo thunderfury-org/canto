@@ -80,7 +80,6 @@
     "strategy": "ipv4_only",
     "disable_cache": false,
     "disable_expire": false,
-    "independent_cache": false,
     "reverse_mapping": true
   },
   "inbounds": [
@@ -188,10 +187,6 @@
     {
       "tag": "直连",
       "type": "direct"
-    },
-    {
-      "tag": "block",
-      "type": "block"
     },
     {
       "tag": "默认策略",
@@ -351,7 +346,7 @@
       ],
       "format": "binary",
       "url": "https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs",
-      "download_detour": "ALL",
+      "http_client": { "detour": "ALL" },
       "source_url": "DustinWin/ruleset_geodata@sing-box-ruleset",
       "tag_prefix": "",
       "category": "domain_and_ip"

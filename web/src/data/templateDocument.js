@@ -18,11 +18,9 @@ export function normalizeTemplateContent(content) {
   if (!content || typeof content !== 'object' || Array.isArray(content)) return content;
   const next = cloneJson(content);
   if (!Array.isArray(next.policy_groups)) next.policy_groups = [];
+  next.policy_groups = next.policy_groups.filter((group) => !group || group.type !== 'block');
   if (!next.policy_groups.some((group) => group && group.type === 'direct')) {
     next.policy_groups.unshift({ tag: '直连', type: 'direct' });
-  }
-  if (!next.policy_groups.some((group) => group && group.type === 'block')) {
-    next.policy_groups.push({ tag: 'block', type: 'block' });
   }
   if (Object.prototype.hasOwnProperty.call(next, 'outbounds')) delete next.outbounds;
   return next;
@@ -114,6 +112,20 @@ function ruleTagList(raw) {
 
 function ruleSources(content) {
   return content && Array.isArray(content.rule_sets) ? content.rule_sets : [];
+}
+
+export function ruleSourceDetour(source) {
+  const detour = source?.http_client?.detour;
+  return typeof detour === 'string' && detour.trim() ? detour : 'ALL';
+}
+
+export function writeRuleSourceDetour(content, index, detour) {
+  return replaceRuleSource(content, index, (current) => {
+    current.http_client = {
+      detour: typeof detour === 'string' && detour.trim() ? detour : 'ALL',
+    };
+    return current;
+  });
 }
 
 export function finalRuleTag(prefix, rawTag) {
@@ -213,7 +225,7 @@ const DUSTINWIN_RULE_SOURCE = {
   type: 'remote',
   format: 'binary',
   url: 'https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs',
-  download_detour: 'ALL',
+  http_client: { detour: 'ALL' },
   source_url: 'DustinWin/ruleset_geodata@sing-box-ruleset',
   tag_prefix: '',
   category: 'domain_and_ip',

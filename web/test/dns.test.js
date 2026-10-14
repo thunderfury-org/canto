@@ -243,6 +243,7 @@ test('final strategy and flags do not drop servers or rules', () => {
   assert.equal(flagged.disable_cache, false);
   assert.deepEqual(flagged.servers, dns.servers);
   assert.equal(withDnsFlag(dns, 'disable_cache', false).disable_cache, false);
+  assert.equal(withDnsFlag(dns, 'independent_cache', true).independent_cache, undefined);
   assert.equal(withDnsFlag(dns, 'nope', true).nope, undefined);
 
   const cleared = withDnsFinal(withDnsStrategy(dns, ''), '');

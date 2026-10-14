@@ -8,6 +8,8 @@
     displayPattern,
     finalRuleTag,
     isRuleTagSelected,
+    ruleSourceDetour,
+    writeRuleSourceDetour,
     matchNodeTags,
     migrateLegacyRuleSets,
     normalizeTemplateContent,
@@ -137,11 +139,9 @@
     (store.selectedTemplate?.content?.node_groups || []).map((g) => g.tag).filter(Boolean),
   );
 
-  // User-configurable policy groups (excluding built-in direct and block)
+  // User-configurable policy groups (excluding built-in direct)
   let userPolicyGroups = $derived(
-    (store.selectedTemplate?.content?.policy_groups || []).filter(
-      (p) => p?.type !== 'direct' && p?.type !== 'block',
-    ),
+    (store.selectedTemplate?.content?.policy_groups || []).filter((p) => p?.type !== 'direct'),
   );
 
   // Collect policy group tags
@@ -153,14 +153,11 @@
   let directOutbound = $derived(
     store.selectedTemplate?.content?.policy_groups?.find((o) => o?.type === 'direct'),
   );
-  let blockOutbound = $derived(
-    store.selectedTemplate?.content?.policy_groups?.find((o) => o?.type === 'block'),
-  );
 
   // Collect base outbound tags from policy_groups
   let availableBaseOutboundTags = $derived(
     (store.selectedTemplate?.content?.policy_groups || [])
-      .filter((o) => o?.type === 'direct' || o?.type === 'block')
+      .filter((o) => o?.type === 'direct')
       .map((o) => o.tag)
       .filter(Boolean),
   );
@@ -173,9 +170,6 @@
   let policyCandidateOptions = $derived([
     ...(directOutbound?.tag
       ? [{ value: directOutbound.tag, label: directOutbound.tag, type: 'direct' }]
-      : []),
-    ...(blockOutbound?.tag
-      ? [{ value: blockOutbound.tag, label: blockOutbound.tag, type: 'block' }]
       : []),
     ...availableNodeGroupTags.map((tag) => ({ value: tag, label: tag, type: 'node_group' })),
   ]);
@@ -485,7 +479,7 @@
       tag: [],
       format: nextPreset.format || 'binary',
       url: nextPreset.urlPattern,
-      download_detour: 'ALL',
+      http_client: { detour: 'ALL' },
       source_url:
         nextPreset.id === 'dustinwin-ruleset'
           ? `${nextPreset.repo}@${nextPreset.tag}`
@@ -1149,7 +1143,7 @@
               <div class="text-xs text-slate-400">
                 管理业务分流策略组与系统基础出站。策略组均为 <strong
                   class="text-slate-200 font-mono">Selector</strong
-                > 类型，候选目标由节点分组及内置直连/阻断组成。
+                > 类型，候选目标由节点分组和直连组成。
               </div>
               <button
                 type="button"
@@ -1198,37 +1192,6 @@
                     <div
                       class="flex items-center gap-1 text-[11px] text-slate-500 shrink-0 font-mono"
                       title="系统核心直连出站，不可删除"
-                    >
-                      <Lock size={12} class="text-slate-500" />
-                      <span>内置不可删</span>
-                    </div>
-                  </div>
-                {/if}
-
-                <!-- Block outbound -->
-                {#if blockOutbound}
-                  <div
-                    class="flex items-center gap-2.5 bg-slate-950/70 border border-slate-800/90 rounded-lg p-2.5"
-                  >
-                    <span
-                      class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-rose-950/80 border border-rose-800/60 text-rose-400 shrink-0"
-                    >
-                      block
-                    </span>
-                    <div class="flex items-center gap-1.5 flex-1 min-w-0">
-                      <span class="text-slate-400 text-xs shrink-0">标签:</span>
-                      <input
-                        type="text"
-                        bind:value={blockOutbound.tag}
-                        oninput={triggerUpdate}
-                        placeholder="block"
-                        title="编辑阻断出站标签"
-                        class="field flex-1 px-2 py-1 text-xs font-mono font-medium"
-                      />
-                    </div>
-                    <div
-                      class="flex items-center gap-1 text-[11px] text-slate-500 shrink-0 font-mono"
-                      title="系统核心阻断出站，不可删除"
                     >
                       <Lock size={12} class="text-slate-500" />
                       <span>内置不可删</span>
@@ -1483,8 +1446,15 @@
                           <span class="text-[11px] text-slate-400 font-sans block">下载 Detour</span
                           >
                           <select
-                            bind:value={p.download_detour}
-                            onchange={triggerUpdate}
+                            value={ruleSourceDetour(p)}
+                            onchange={(event) => {
+                              store.selectedTemplate.content = writeRuleSourceDetour(
+                                store.selectedTemplate.content,
+                                pIdx,
+                                event.currentTarget.value,
+                              );
+                              triggerUpdate();
+                            }}
                             class="field w-full px-2 py-1 text-xs text-slate-200 font-mono"
                           >
                             <option value="ALL">ALL (默认)</option>

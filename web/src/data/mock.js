@@ -35,7 +35,6 @@ export const initialTemplates = [
       ],
       policy_groups: [
         { type: 'direct', tag: '直连' },
-        { type: 'block', tag: 'block' },
         { type: 'selector', tag: '默认策略', outbounds: ['全部节点', '直连'] },
       ],
       node_groups: [{ type: 'urltest', tag: '全部节点', outbounds: ['{.*}'] }],
@@ -45,7 +44,7 @@ export const initialTemplates = [
           type: 'remote',
           format: 'binary',
           url: 'https://github.com/DustinWin/ruleset_geodata/releases/download/sing-box-ruleset/{tag}.srs',
-          download_detour: 'ALL',
+          http_client: { detour: 'ALL' },
         },
       ],
       route: {

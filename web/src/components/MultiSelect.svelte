@@ -140,9 +140,7 @@
             <span
               class="truncate max-w-[150px] {item === '直连'
                 ? 'text-emerald-400 font-semibold'
-                : item === 'block'
-                  ? 'text-rose-400 font-semibold'
-                  : 'text-slate-200'}">{item}</span
+                : 'text-slate-200'}">{item}</span
             >
             <button
               type="button"
@@ -248,11 +246,6 @@
               <span
                 class="text-[10px] px-1 py-0.2 rounded font-mono bg-emerald-950/80 border border-emerald-800/60 text-emerald-400"
                 >直连</span
-              >
-            {:else if opt.type === 'block'}
-              <span
-                class="text-[10px] px-1 py-0.2 rounded font-mono bg-rose-950/80 border border-rose-800/60 text-rose-400"
-                >阻断</span
               >
             {:else}
               <span

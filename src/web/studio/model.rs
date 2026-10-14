@@ -295,11 +295,16 @@ pub fn validate_template_content(content: &Value) -> std::result::Result<(), Str
             if typ.is_empty() {
                 return Err(format!("policy group '{tag}' must have a non-empty type"));
             }
-            if matches!(typ, "direct" | "block") {
+            if typ == "block" {
+                return Err(format!(
+                    "policy group '{tag}' uses removed type 'block'; reject is a route action"
+                ));
+            }
+            if typ == "direct" {
                 base_tags.insert(tag.to_string());
             } else if !matches!(typ, "selector" | "urltest") {
                 return Err(format!(
-                    "policy group '{tag}' has unsupported type '{typ}'; must be selector, urltest, direct, or block"
+                    "policy group '{tag}' has unsupported type '{typ}'; must be selector, urltest, or direct"
                 ));
             }
         }
@@ -343,7 +348,7 @@ pub fn validate_template_content(content: &Value) -> std::result::Result<(), Str
                 }
                 let is_allowed = node_group_tags.contains(target)
                     || base_tags.contains(target)
-                    || matches!(target, "直连" | "direct" | "reject" | "block");
+                    || matches!(target, "直连" | "direct");
                 if !is_allowed {
                     return Err(format!(
                         "policy group '{tag}' references unknown target '{target}'; candidates must be node groups or basic outbounds"
@@ -396,6 +401,7 @@ pub fn validate_template_content(content: &Value) -> std::result::Result<(), Str
                     return Err(format!("duplicate rule_set tag '{tag}'"));
                 }
             }
+            validate_rule_source_http_client(item)?;
         }
     }
 
@@ -443,6 +449,27 @@ pub fn validate_template_content(content: &Value) -> std::result::Result<(), Str
         }
     }
 
+    Ok(())
+}
+
+fn validate_rule_source_http_client(
+    item: &serde_json::Map<String, Value>,
+) -> std::result::Result<(), String> {
+    if item.contains_key("download_detour") {
+        return Err("rule source uses removed field 'download_detour'".to_string());
+    }
+    let Some(client) = item.get("http_client") else {
+        return Ok(());
+    };
+    let detour = client
+        .as_object()
+        .and_then(|obj| obj.get("detour"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("");
+    if detour.is_empty() || client.as_object().is_none_or(|obj| obj.len() != 1) {
+        return Err("rule source http_client must be { \"detour\": \"<outbound>\" }".to_string());
+    }
     Ok(())
 }
 
@@ -571,15 +598,40 @@ mod tests {
             }))
             .is_ok()
         );
-        // policy_groups with direct and block and no outbounds field is also ok
         assert!(
             validate_template_content(&json!({
-                "log": { "level": "warn" },
                 "policy_groups": [
                     { "type": "direct", "tag": "直连" },
-                    { "type": "block", "tag": "block" },
-                    { "type": "selector", "tag": "默认策略", "outbounds": ["直连"] }
+                    { "type": "block", "tag": "block" }
                 ]
+            }))
+            .is_err()
+        );
+        assert!(
+            validate_template_content(&json!({
+                "policy_groups": [
+                    { "type": "selector", "tag": "默认策略", "outbounds": ["block"] }
+                ]
+            }))
+            .is_err()
+        );
+        assert!(
+            validate_template_content(&json!({
+                "rule_sets": [{
+                    "type": "remote",
+                    "tag": "cn",
+                    "http_client": { "detour": "" }
+                }]
+            }))
+            .is_err()
+        );
+        assert!(
+            validate_template_content(&json!({
+                "rule_sets": [{
+                    "type": "remote",
+                    "tag": "cn",
+                    "http_client": { "detour": "ALL" }
+                }]
             }))
             .is_ok()
         );
