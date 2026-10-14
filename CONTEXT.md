@@ -64,6 +64,18 @@ _Avoid_: 节点池, 订阅源
 绑定配置模板与若干节点源的分发单元，具备独立访问 Token 与公开 HTTP 订阅端点。
 _Avoid_: 订阅配置, 导出档案
 
+**访问 Token**:
+一份配置档案对外分发订阅的凭证。持有它不能进入 Web Studio。
+_Avoid_: 密码, Admin Token, 管理认证
+
+**管理认证**:
+Web Studio 的进入门槛，凭据是密码。
+_Avoid_: 访问 Token, admin-auth, 登录
+
+**密码**:
+管理认证的凭据。不是访问 Token，也不是账号密码。
+_Avoid_: 管理口令, 口令, Admin Token, 访问 Token
+
 **节点分组 (Node Group)**:
 配置模板中负责按地区或用途通过正则占位符（如 `{(?i)hk}`）筛选并聚合代理节点的分组单元（通常为 `urltest` 自动测速或 `selector` 手动分组）。
 _Avoid_: 策略组, 节点池, 代理列表

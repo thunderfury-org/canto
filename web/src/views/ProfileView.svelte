@@ -122,375 +122,363 @@
 </script>
 
 <div class="space-y-4">
-  {#if !store.isAuthenticated}
-    <div class="bg-slate-900/80 border border-amber-800/50 rounded-lg p-6 space-y-1">
-      <h2 class="text-sm font-semibold text-slate-100">需要管理员 Token</h2>
-      <p class="text-xs text-slate-400">认证后再组装 Profile 并复制给网关用的源地址。</p>
-      {#if store.authStatusMessage}
-        <p class="text-xs text-rose-400">{store.authStatusMessage}</p>
-      {/if}
-    </div>
-  {:else}
-    <!-- Top Profile Selector & Meta -->
-    <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 space-y-3">
-      <div class="flex flex-wrap items-center gap-2">
-        <label class="text-xs text-slate-400" for="profile-switcher">切换分发配置</label>
-        <select
-          id="profile-switcher"
-          bind:value={store.selectedProfileId}
-          class="field px-2.5 py-1 text-sm font-medium"
+  <!-- Top Profile Selector & Meta -->
+  <div class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 space-y-3">
+    <div class="flex flex-wrap items-center gap-2">
+      <label class="text-xs text-slate-400" for="profile-switcher">切换分发配置</label>
+      <select
+        id="profile-switcher"
+        bind:value={store.selectedProfileId}
+        class="field px-2.5 py-1 text-sm font-medium"
+      >
+        {#each store.profiles as p}
+          <option value={p.id}>{p.name}</option>
+        {/each}
+      </select>
+      <button type="button" onclick={handleCreateProfile} class="btn btn-secondary">
+        <Plus size={13} />
+        <span>新建</span>
+      </button>
+      {#if store.profiles.length > 1}
+        <button
+          type="button"
+          onclick={handleDeleteProfile}
+          class="btn btn-ghost btn-icon btn-danger"
+          aria-label="删除当前分发配置"
         >
-          {#each store.profiles as p}
-            <option value={p.id}>{p.name}</option>
-          {/each}
-        </select>
-        <button type="button" onclick={handleCreateProfile} class="btn btn-secondary">
-          <Plus size={13} />
-          <span>新建</span>
+          <Trash2 size={14} />
         </button>
-        {#if store.profiles.length > 1}
-          <button
-            type="button"
-            onclick={handleDeleteProfile}
-            class="btn btn-ghost btn-icon btn-danger"
-            aria-label="删除当前分发配置"
-          >
-            <Trash2 size={14} />
-          </button>
-        {/if}
-      </div>
-
-      {#if activeProfile}
-        <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div class="min-w-0 flex-1 space-y-2">
-            <h1 class="text-base font-semibold text-slate-100">{activeProfile.name}</h1>
-            <input
-              type="text"
-              bind:value={activeProfile.name}
-              oninput={persistActive}
-              aria-label="分发配置名称"
-              class="field w-full px-2 py-1 text-sm"
-            />
-            <p class="truncate font-mono text-xs text-slate-400">{activeProfile.publicUrl}</p>
-          </div>
-          <button
-            type="button"
-            onclick={() => copyText(activeProfile.publicUrl, 'url')}
-            class="btn btn-primary shrink-0"
-          >
-            {#if copiedUrl}
-              <Check size={13} />
-              <span>已复制链接</span>
-            {:else}
-              <Copy size={13} />
-              <span>复制订阅链接</span>
-            {/if}
-          </button>
-        </div>
       {/if}
     </div>
 
     {#if activeProfile}
-      {#if store.profileSaveError || store.previewError}
-        <div
-          class="text-xs text-rose-400 bg-rose-950/40 border border-rose-900/60 rounded px-3 py-2"
+      <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div class="min-w-0 flex-1 space-y-2">
+          <h1 class="text-base font-semibold text-slate-100">{activeProfile.name}</h1>
+          <input
+            type="text"
+            bind:value={activeProfile.name}
+            oninput={persistActive}
+            aria-label="分发配置名称"
+            class="field w-full px-2 py-1 text-sm"
+          />
+          <p class="truncate font-mono text-xs text-slate-400">{activeProfile.publicUrl}</p>
+        </div>
+        <button
+          type="button"
+          onclick={() => copyText(activeProfile.publicUrl, 'url')}
+          class="btn btn-primary shrink-0"
         >
-          {store.profileSaveError || store.previewError}
-        </div>
-      {/if}
-
-      <!-- Main 2-Column Split: Assembly Config (Left) vs Live Output (Right) -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        <!-- Left Column: Assembly Settings -->
-        <div class="lg:col-span-5 space-y-4">
-          <!-- 1. Profile Details Card -->
-          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
-            <h3 class="text-sm font-semibold text-slate-200">基础信息</h3>
-
-            <div class="space-y-2 text-xs">
-              <div>
-                <label for="prof-name" class="block text-slate-400 mb-1">配置名称</label>
-                <input
-                  id="prof-name"
-                  type="text"
-                  bind:value={activeProfile.name}
-                  oninput={persistActive}
-                  class="field w-full px-2.5 py-1.5 text-xs font-medium"
-                />
-              </div>
-              <div>
-                <label for="prof-desc" class="block text-slate-400 mb-1">用途说明</label>
-                <input
-                  id="prof-desc"
-                  type="text"
-                  bind:value={activeProfile.description}
-                  oninput={persistActive}
-                  class="field w-full px-2.5 py-1.5 text-xs"
-                />
-              </div>
-              <div>
-                <label for="prof-token" class="block text-slate-400 mb-1">唯一随机订阅 Token</label>
-                <div class="flex items-center gap-2">
-                  <input
-                    id="prof-token"
-                    type="text"
-                    value={activeProfile.token}
-                    readonly
-                    class="field w-full px-2.5 py-1.5 font-mono text-slate-200"
-                  />
-                  <button
-                    type="button"
-                    onclick={handleRotateToken}
-                    class="btn btn-secondary shrink-0"
-                  >
-                    重置 Token
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 2. Bind Template Card -->
-          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
-            <div class="flex items-center justify-between">
-              <h3 class="text-sm font-semibold text-slate-200">基础配置模板</h3>
-              <button
-                onclick={() => store.navigate('templates', { id: activeProfile?.templateId })}
-                class="text-xs text-slate-300 hover:text-slate-100"
-              >
-                编辑模板细节 &rarr;
-              </button>
-            </div>
-
-            <div class="space-y-2">
-              {#each store.templates as tpl}
-                <label
-                  class="flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors {activeProfile.templateId ===
-                  tpl.id
-                    ? 'bg-slate-800 border-slate-600 text-slate-100'
-                    : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-950'}"
-                >
-                  <input
-                    type="radio"
-                    name="template_choice"
-                    value={tpl.id}
-                    checked={activeProfile.templateId === tpl.id}
-                    onchange={() => handleTemplateChange(tpl.id)}
-                    class="mt-0.5 text-slate-300"
-                  />
-                  <div class="text-xs space-y-0.5">
-                    <div class="font-semibold text-slate-200">{tpl.name}</div>
-                    <div class="text-slate-400 text-[11px]">{tpl.description}</div>
-                  </div>
-                </label>
-              {/each}
-            </div>
-          </div>
-
-          <!-- 3. Bind Node Sources Card -->
-          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
-            <div class="flex items-center justify-between">
-              <h3 class="text-sm font-semibold text-slate-200">节点池来源</h3>
-              <button
-                onclick={() => store.navigate('sources')}
-                class="text-xs text-slate-300 hover:text-slate-100"
-              >
-                管理节点源 &rarr;
-              </button>
-            </div>
-
-            <div class="space-y-2">
-              {#each store.sources as src}
-                {@const isChecked = activeProfile.sourceIds.includes(src.id)}
-                <label
-                  class="flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors {isChecked
-                    ? 'bg-slate-800 border-slate-600 text-slate-100'
-                    : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-950'}"
-                >
-                  <div class="flex items-center gap-2.5 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onchange={() => toggleSourceBinding(src.id)}
-                      class="rounded text-slate-300"
-                    />
-                    <div>
-                      <div class="font-semibold text-slate-200">{src.name}</div>
-                      <div class="text-slate-500 text-[11px]">
-                        提供 {src.nodes?.length || 0} 个节点
-                      </div>
-                    </div>
-                  </div>
-                  <span
-                    class="text-xs font-mono px-1.5 py-0.5 rounded {isChecked
-                      ? 'bg-slate-800 text-slate-100 border border-slate-600'
-                      : 'bg-slate-900 text-slate-500'}"
-                  >
-                    {src.type}
-                  </span>
-                </label>
-              {/each}
-            </div>
-          </div>
-        </div>
-
-        <!-- Right Column: Live Compilation & JSON Output -->
-        <div
-          class="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-lg overflow-hidden space-y-0 sticky top-16"
-        >
-          {#if templateHasDraft}
-            <div
-              class="px-3.5 py-2 text-xs text-amber-200 bg-amber-950/40 border-b border-amber-900/50"
-            >
-              预览的是已保存模板，编辑器里还有未保存修改。
-            </div>
+          {#if copiedUrl}
+            <Check size={13} />
+            <span>已复制链接</span>
+          {:else}
+            <Copy size={13} />
+            <span>复制订阅链接</span>
           {/if}
-          <!-- Right Column Header -->
-          <div
-            class="p-3 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between gap-3"
-          >
-            <div class="flex items-center gap-2">
-              <div
-                class="flex items-center bg-slate-900 p-0.5 rounded border border-slate-800 text-xs"
-              >
-                <button
-                  onclick={() => (activeRightTab = 'json')}
-                  class="flex items-center gap-1.5 px-3 py-1 rounded font-medium {activeRightTab ===
-                  'json'
-                    ? 'bg-slate-800 text-slate-200 border border-slate-600'
-                    : 'text-slate-400 hover:text-slate-200'}"
-                >
-                  <Code size={13} />
-                  <span>编译生成 JSON</span>
-                </button>
-                <button
-                  onclick={() => (activeRightTab = 'audit')}
-                  class="flex items-center gap-1.5 px-3 py-1 rounded font-medium {activeRightTab ===
-                  'audit'
-                    ? 'bg-slate-800 text-slate-200 border border-slate-600'
-                    : 'text-slate-400 hover:text-slate-200'}"
-                >
-                  <Sparkles size={13} />
-                  <span>正则展开明细</span>
-                  <span class="font-mono text-xs bg-slate-950 px-1 rounded text-slate-300"
-                    >{compiledResult.usedCount} 节点</span
-                  >
-                </button>
-              </div>
-            </div>
-
-            <!-- Actions -->
-            <div class="flex items-center gap-2">
-              <button
-                type="button"
-                onclick={() => copyText(JSON.stringify(compiledResult.config, null, 2), 'json')}
-                class="btn btn-secondary"
-              >
-                {#if copiedJson}
-                  <Check size={13} class="text-emerald-400" />
-                  <span class="text-emerald-400">已复制</span>
-                {:else}
-                  <Copy size={13} />
-                  <span>复制 JSON</span>
-                {/if}
-              </button>
-
-              <button type="button" onclick={downloadJson} class="btn btn-secondary">
-                <Download size={13} />
-                <span>下载 config.json</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Compilation Summary Bar -->
-          <div
-            class="bg-slate-950/40 px-3.5 py-2 border-b border-slate-800 text-[11px] text-slate-400 flex flex-wrap items-center justify-between gap-2"
-          >
-            <div class="flex items-center gap-3">
-              <span class="flex items-center gap-1 text-emerald-400">
-                <ShieldCheck size={13} />
-                <span>sing-box 语法结构有效</span>
-              </span>
-              <span
-                >可用节点池: <strong class="text-slate-200 font-mono"
-                  >{compiledResult.totalNodes}</strong
-                ></span
-              >
-              <span
-                >正则命中注入: <strong class="text-slate-300 font-mono"
-                  >{compiledResult.usedCount}</strong
-                ></span
-              >
-            </div>
-
-            <div class="text-slate-500">随时可在客户端通过 HTTP 自动刷新拉取此配置</div>
-          </div>
-
-          <!-- Tab 1: Live JSON View -->
-          {#if activeRightTab === 'json'}
-            <div
-              class="relative bg-slate-950 p-4 max-h-[680px] overflow-y-auto font-mono text-xs text-slate-300 leading-relaxed"
-            >
-              <pre class="overflow-x-auto whitespace-pre font-mono"><code
-                  >{JSON.stringify(compiledResult.config, null, 2)}</code
-                ></pre>
-            </div>
-          {/if}
-
-          <!-- Tab 2: Regex Expansion Audit Details -->
-          {#if activeRightTab === 'audit'}
-            <div class="p-4 max-h-[680px] overflow-y-auto space-y-3 text-xs bg-slate-950/60">
-              <div class="text-slate-400">
-                各策略组中的 <code class="text-slate-300 font-mono">&#123;regex&#125;</code> 占位符已在编译时被替换为匹配的实际节点
-                Tag，同时节点实体并入 outbounds 列表：
-              </div>
-
-              <div class="space-y-2.5">
-                {#each Object.entries(compiledResult.matchedMap) as [groupTag, matchedNodes]}
-                  <div class="bg-slate-900 border border-slate-800 rounded-lg p-3 space-y-2">
-                    <div class="flex items-center justify-between">
-                      <span
-                        class="font-bold text-slate-200 text-sm font-mono flex items-center gap-1.5"
-                      >
-                        <Radio size={14} class="text-slate-400" />
-                        <span>{groupTag}</span>
-                      </span>
-                      <span
-                        class="font-mono text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-600"
-                      >
-                        匹配注入 {matchedNodes.length} 个节点
-                      </span>
-                    </div>
-
-                    {#if matchedNodes.length > 0}
-                      <div class="flex flex-wrap gap-1.5">
-                        {#each matchedNodes as nodeTag}
-                          <span
-                            class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800 font-mono text-[11px]"
-                          >
-                            {nodeTag}
-                          </span>
-                        {/each}
-                      </div>
-                    {:else}
-                      <div class="text-slate-500 text-[11px]">
-                        （未匹配到外部节点，保留 direct 直连兜底）
-                      </div>
-                    {/if}
-                  </div>
-                {/each}
-              </div>
-            </div>
-          {/if}
-        </div>
-      </div>
-    {:else}
-      <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-8 text-center space-y-2">
-        <p class="text-sm text-slate-200">还没有配置档案</p>
-        <p class="text-xs text-slate-500">
-          先准备一份配置模板和一个节点源，再组装 Profile。生成的 HTTP 订阅端点可作为网关源地址。
-        </p>
+        </button>
       </div>
     {/if}
+  </div>
+
+  {#if activeProfile}
+    {#if store.profileSaveError || store.previewError}
+      <div class="text-xs text-rose-400 bg-rose-950/40 border border-rose-900/60 rounded px-3 py-2">
+        {store.profileSaveError || store.previewError}
+      </div>
+    {/if}
+
+    <!-- Main 2-Column Split: Assembly Config (Left) vs Live Output (Right) -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      <!-- Left Column: Assembly Settings -->
+      <div class="lg:col-span-5 space-y-4">
+        <!-- 1. Profile Details Card -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
+          <h3 class="text-sm font-semibold text-slate-200">基础信息</h3>
+
+          <div class="space-y-2 text-xs">
+            <div>
+              <label for="prof-name" class="block text-slate-400 mb-1">配置名称</label>
+              <input
+                id="prof-name"
+                type="text"
+                bind:value={activeProfile.name}
+                oninput={persistActive}
+                class="field w-full px-2.5 py-1.5 text-xs font-medium"
+              />
+            </div>
+            <div>
+              <label for="prof-desc" class="block text-slate-400 mb-1">用途说明</label>
+              <input
+                id="prof-desc"
+                type="text"
+                bind:value={activeProfile.description}
+                oninput={persistActive}
+                class="field w-full px-2.5 py-1.5 text-xs"
+              />
+            </div>
+            <div>
+              <label for="prof-token" class="block text-slate-400 mb-1">唯一随机订阅 Token</label>
+              <div class="flex items-center gap-2">
+                <input
+                  id="prof-token"
+                  type="text"
+                  value={activeProfile.token}
+                  readonly
+                  class="field w-full px-2.5 py-1.5 font-mono text-slate-200"
+                />
+                <button
+                  type="button"
+                  onclick={handleRotateToken}
+                  class="btn btn-secondary shrink-0"
+                >
+                  重置 Token
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Bind Template Card -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-slate-200">基础配置模板</h3>
+            <button
+              onclick={() => store.navigate('templates', { id: activeProfile?.templateId })}
+              class="text-xs text-slate-300 hover:text-slate-100"
+            >
+              编辑模板细节 &rarr;
+            </button>
+          </div>
+
+          <div class="space-y-2">
+            {#each store.templates as tpl}
+              <label
+                class="flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors {activeProfile.templateId ===
+                tpl.id
+                  ? 'bg-slate-800 border-slate-600 text-slate-100'
+                  : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-950'}"
+              >
+                <input
+                  type="radio"
+                  name="template_choice"
+                  value={tpl.id}
+                  checked={activeProfile.templateId === tpl.id}
+                  onchange={() => handleTemplateChange(tpl.id)}
+                  class="mt-0.5 text-slate-300"
+                />
+                <div class="text-xs space-y-0.5">
+                  <div class="font-semibold text-slate-200">{tpl.name}</div>
+                  <div class="text-slate-400 text-[11px]">{tpl.description}</div>
+                </div>
+              </label>
+            {/each}
+          </div>
+        </div>
+
+        <!-- 3. Bind Node Sources Card -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-slate-200">节点池来源</h3>
+            <button
+              onclick={() => store.navigate('sources')}
+              class="text-xs text-slate-300 hover:text-slate-100"
+            >
+              管理节点源 &rarr;
+            </button>
+          </div>
+
+          <div class="space-y-2">
+            {#each store.sources as src}
+              {@const isChecked = activeProfile.sourceIds.includes(src.id)}
+              <label
+                class="flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors {isChecked
+                  ? 'bg-slate-800 border-slate-600 text-slate-100'
+                  : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-950'}"
+              >
+                <div class="flex items-center gap-2.5 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onchange={() => toggleSourceBinding(src.id)}
+                    class="rounded text-slate-300"
+                  />
+                  <div>
+                    <div class="font-semibold text-slate-200">{src.name}</div>
+                    <div class="text-slate-500 text-[11px]">
+                      提供 {src.nodes?.length || 0} 个节点
+                    </div>
+                  </div>
+                </div>
+                <span
+                  class="text-xs font-mono px-1.5 py-0.5 rounded {isChecked
+                    ? 'bg-slate-800 text-slate-100 border border-slate-600'
+                    : 'bg-slate-900 text-slate-500'}"
+                >
+                  {src.type}
+                </span>
+              </label>
+            {/each}
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Live Compilation & JSON Output -->
+      <div
+        class="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-lg overflow-hidden space-y-0 sticky top-16"
+      >
+        {#if templateHasDraft}
+          <div
+            class="px-3.5 py-2 text-xs text-amber-200 bg-amber-950/40 border-b border-amber-900/50"
+          >
+            预览的是已保存模板，编辑器里还有未保存修改。
+          </div>
+        {/if}
+        <!-- Right Column Header -->
+        <div
+          class="p-3 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between gap-3"
+        >
+          <div class="flex items-center gap-2">
+            <div
+              class="flex items-center bg-slate-900 p-0.5 rounded border border-slate-800 text-xs"
+            >
+              <button
+                onclick={() => (activeRightTab = 'json')}
+                class="flex items-center gap-1.5 px-3 py-1 rounded font-medium {activeRightTab ===
+                'json'
+                  ? 'bg-slate-800 text-slate-200 border border-slate-600'
+                  : 'text-slate-400 hover:text-slate-200'}"
+              >
+                <Code size={13} />
+                <span>编译生成 JSON</span>
+              </button>
+              <button
+                onclick={() => (activeRightTab = 'audit')}
+                class="flex items-center gap-1.5 px-3 py-1 rounded font-medium {activeRightTab ===
+                'audit'
+                  ? 'bg-slate-800 text-slate-200 border border-slate-600'
+                  : 'text-slate-400 hover:text-slate-200'}"
+              >
+                <Sparkles size={13} />
+                <span>正则展开明细</span>
+                <span class="font-mono text-xs bg-slate-950 px-1 rounded text-slate-300"
+                  >{compiledResult.usedCount} 节点</span
+                >
+              </button>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              onclick={() => copyText(JSON.stringify(compiledResult.config, null, 2), 'json')}
+              class="btn btn-secondary"
+            >
+              {#if copiedJson}
+                <Check size={13} class="text-emerald-400" />
+                <span class="text-emerald-400">已复制</span>
+              {:else}
+                <Copy size={13} />
+                <span>复制 JSON</span>
+              {/if}
+            </button>
+
+            <button type="button" onclick={downloadJson} class="btn btn-secondary">
+              <Download size={13} />
+              <span>下载 config.json</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Compilation Summary Bar -->
+        <div
+          class="bg-slate-950/40 px-3.5 py-2 border-b border-slate-800 text-[11px] text-slate-400 flex flex-wrap items-center justify-between gap-2"
+        >
+          <div class="flex items-center gap-3">
+            <span class="flex items-center gap-1 text-emerald-400">
+              <ShieldCheck size={13} />
+              <span>sing-box 语法结构有效</span>
+            </span>
+            <span
+              >可用节点池: <strong class="text-slate-200 font-mono"
+                >{compiledResult.totalNodes}</strong
+              ></span
+            >
+            <span
+              >正则命中注入: <strong class="text-slate-300 font-mono"
+                >{compiledResult.usedCount}</strong
+              ></span
+            >
+          </div>
+
+          <div class="text-slate-500">随时可在客户端通过 HTTP 自动刷新拉取此配置</div>
+        </div>
+
+        <!-- Tab 1: Live JSON View -->
+        {#if activeRightTab === 'json'}
+          <div
+            class="relative bg-slate-950 p-4 max-h-[680px] overflow-y-auto font-mono text-xs text-slate-300 leading-relaxed"
+          >
+            <pre class="overflow-x-auto whitespace-pre font-mono"><code
+                >{JSON.stringify(compiledResult.config, null, 2)}</code
+              ></pre>
+          </div>
+        {/if}
+
+        <!-- Tab 2: Regex Expansion Audit Details -->
+        {#if activeRightTab === 'audit'}
+          <div class="p-4 max-h-[680px] overflow-y-auto space-y-3 text-xs bg-slate-950/60">
+            <div class="text-slate-400">
+              各策略组中的 <code class="text-slate-300 font-mono">&#123;regex&#125;</code> 占位符已在编译时被替换为匹配的实际节点
+              Tag，同时节点实体并入 outbounds 列表：
+            </div>
+
+            <div class="space-y-2.5">
+              {#each Object.entries(compiledResult.matchedMap) as [groupTag, matchedNodes]}
+                <div class="bg-slate-900 border border-slate-800 rounded-lg p-3 space-y-2">
+                  <div class="flex items-center justify-between">
+                    <span
+                      class="font-bold text-slate-200 text-sm font-mono flex items-center gap-1.5"
+                    >
+                      <Radio size={14} class="text-slate-400" />
+                      <span>{groupTag}</span>
+                    </span>
+                    <span
+                      class="font-mono text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-600"
+                    >
+                      匹配注入 {matchedNodes.length} 个节点
+                    </span>
+                  </div>
+
+                  {#if matchedNodes.length > 0}
+                    <div class="flex flex-wrap gap-1.5">
+                      {#each matchedNodes as nodeTag}
+                        <span
+                          class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800 font-mono text-[11px]"
+                        >
+                          {nodeTag}
+                        </span>
+                      {/each}
+                    </div>
+                  {:else}
+                    <div class="text-slate-500 text-[11px]">
+                      （未匹配到外部节点，保留 direct 直连兜底）
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {:else}
+    <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-8 text-center space-y-2">
+      <p class="text-sm text-slate-200">还没有配置档案</p>
+      <p class="text-xs text-slate-500">
+        先准备一份配置模板和一个节点源，再组装 Profile。生成的 HTTP 订阅端点可作为网关源地址。
+      </p>
+    </div>
   {/if}
 </div>

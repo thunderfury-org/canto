@@ -1,6 +1,15 @@
 import { initialTemplates, initialSources, initialProfiles } from './mock.js';
 import defaultTemplateRaw from './defaultTemplate.json';
 import { getInitialRoute, navigate } from './router.js';
+import {
+  AUTH_CHECKING,
+  AUTH_ENTERED,
+  AUTH_REQUIRED,
+  CANNOT_EXIT,
+  authMessage,
+  silentAuthMessage,
+  verifyBody,
+} from './studioAuth.js';
 import { migrateLegacyRuleSets, normalizeTemplateContent } from './templateDocument.js';
 import {
   commitTemplateSave,
@@ -35,11 +44,7 @@ class StudioStore {
   templateSubTab = $state(
     initialRoute.tab === 'templates' && initialRoute.subtab ? initialRoute.subtab : 'node_groups',
   );
-  adminToken = $state(
-    typeof window !== 'undefined' && localStorage.getItem('canto_admin_token')
-      ? localStorage.getItem('canto_admin_token')
-      : 'secret_admin_tok_canto_2026',
-  );
+  authPhase = $state(AUTH_CHECKING);
   isAuthenticated = $state(false);
   authStatusMessage = $state('');
   templateSaveError = $state('');
@@ -94,54 +99,70 @@ class StudioStore {
     }
   }
 
-  async verifyAuth(tokenToTest) {
-    const token = tokenToTest ?? this.adminToken;
+  markUnauthenticated(message) {
+    this.isAuthenticated = false;
+    this.authPhase = AUTH_REQUIRED;
+    this.authStatusMessage = message;
+    this.templatesLoaded = false;
+    this.studioStatus = null;
+  }
+
+  async readAuthBody(res) {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async verifyAuth(password) {
+    const submitting = password !== undefined;
     try {
       const res = await fetch('/api/auth/verify', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ token }),
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: verifyBody(password),
       });
       if (res.ok) {
         this.isAuthenticated = true;
-        this.adminToken = token;
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('canto_admin_token', token);
-        }
-        this.authStatusMessage = '认证通过，已保存至浏览器';
+        this.authPhase = AUTH_ENTERED;
+        this.authStatusMessage = '';
         await this.loadSources();
         await this.loadTemplates();
         await this.loadProfiles();
         await this.loadStatus();
         return true;
-      } else {
-        this.isAuthenticated = false;
-        this.authStatusMessage = 'Token 校验失败 (HTTP 401 Unauthorized)';
-        return false;
       }
-    } catch (e) {
-      this.isAuthenticated = false;
-      this.authStatusMessage = '无法连接到后端服务: ' + e.message;
+      const message = submitting
+        ? authMessage(res.status, await this.readAuthBody(res))
+        : silentAuthMessage(res.status, await this.readAuthBody(res));
+      this.markUnauthenticated(message);
+      return false;
+    } catch {
+      const message = submitting ? authMessage(0, null) : silentAuthMessage(0, null);
+      this.markUnauthenticated(message);
       return false;
     }
   }
 
   async logout() {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-    } catch (_) {}
-    this.isAuthenticated = false;
-    this.templatesLoaded = false;
-    this.adminToken = '';
-    this.authStatusMessage = '已退出登录';
-    this.studioStatus = null;
-    this.statusError = '';
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('canto_admin_token');
+      const res = await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) {
+        this.authStatusMessage = CANNOT_EXIT;
+        return false;
+      }
+    } catch {
+      this.authStatusMessage = CANNOT_EXIT;
+      return false;
     }
+    this.markUnauthenticated('');
+    this.statusError = '';
+    return true;
   }
 
   resetData() {
@@ -222,6 +243,7 @@ class StudioStore {
   templateFetch(url, init = {}) {
     return fetch(url, {
       ...init,
+      credentials: 'same-origin',
       headers: {
         ...(init.headers || {}),
         ...this.authHeaders(),
@@ -328,8 +350,12 @@ class StudioStore {
 
   async loadTemplates() {
     try {
-      const res = await fetch('/api/templates', { headers: this.authHeaders() });
+      const res = await fetch('/api/templates', {
+        credentials: 'same-origin',
+        headers: this.authHeaders(),
+      });
       if (!res.ok) {
+        if (res.status === 401) this.noteUnauthorized();
         return false;
       }
       const data = await res.json();
@@ -391,6 +417,7 @@ class StudioStore {
     if (this.isAuthenticated) {
       const res = await fetch(`/api/templates/${id}`, {
         method: 'DELETE',
+        credentials: 'same-origin',
         headers: this.authHeaders(),
       });
       if (!res.ok && res.status !== 204) {
@@ -408,8 +435,11 @@ class StudioStore {
   authHeaders() {
     return {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.adminToken}`,
     };
+  }
+
+  noteUnauthorized() {
+    this.markUnauthenticated(authMessage(401, null));
   }
 
   async loadStatus() {
@@ -418,13 +448,13 @@ class StudioStore {
       return false;
     }
     try {
-      const res = await fetch('/api/status', { headers: this.authHeaders() });
+      const res = await fetch('/api/status', {
+        credentials: 'same-origin',
+        headers: this.authHeaders(),
+      });
       if (!res.ok) {
         this.statusError = await this.apiError(res);
-        if (res.status === 401) {
-          this.isAuthenticated = false;
-          this.authStatusMessage = 'Token 校验失败 (HTTP 401 Unauthorized)';
-        }
+        if (res.status === 401) this.noteUnauthorized();
         return false;
       }
       this.studioStatus = await res.json();
@@ -438,8 +468,12 @@ class StudioStore {
 
   async loadSources() {
     try {
-      const res = await fetch('/api/sources', { headers: this.authHeaders() });
+      const res = await fetch('/api/sources', {
+        credentials: 'same-origin',
+        headers: this.authHeaders(),
+      });
       if (!res.ok) {
+        if (res.status === 401) this.noteUnauthorized();
         return false;
       }
       const data = await res.json();
@@ -451,6 +485,7 @@ class StudioStore {
   }
 
   async apiError(res) {
+    if (res.status === 401) this.noteUnauthorized();
     try {
       const data = await res.json();
       return data.error || `HTTP ${res.status}`;
@@ -477,6 +512,7 @@ class StudioStore {
     }
     const res = await fetch('/api/sources', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: this.authHeaders(),
       body: JSON.stringify(payload),
     });
@@ -499,6 +535,7 @@ class StudioStore {
     }
     const res = await fetch(`/api/sources/${id}`, {
       method: 'PUT',
+      credentials: 'same-origin',
       headers: this.authHeaders(),
       body: JSON.stringify(payload),
     });
@@ -521,6 +558,7 @@ class StudioStore {
     }
     const res = await fetch(`/api/sources/${sourceId}/refresh`, {
       method: 'POST',
+      credentials: 'same-origin',
       headers: this.authHeaders(),
     });
     if (!res.ok) {
@@ -542,6 +580,7 @@ class StudioStore {
     if (this.isAuthenticated) {
       const res = await fetch(`/api/sources/${sourceId}`, {
         method: 'DELETE',
+        credentials: 'same-origin',
         headers: this.authHeaders(),
       });
       if (!res.ok && res.status !== 204) {
@@ -576,8 +615,12 @@ class StudioStore {
 
   async loadProfiles() {
     try {
-      const res = await fetch('/api/profiles', { headers: this.authHeaders() });
+      const res = await fetch('/api/profiles', {
+        credentials: 'same-origin',
+        headers: this.authHeaders(),
+      });
       if (!res.ok) {
+        if (res.status === 401) this.noteUnauthorized();
         return false;
       }
       const data = await res.json();
@@ -601,6 +644,7 @@ class StudioStore {
     }
     try {
       const res = await fetch(`/api/profiles/${prof.id}/preview`, {
+        credentials: 'same-origin',
         headers: this.authHeaders(),
       });
       if (!res.ok) {
@@ -641,6 +685,7 @@ class StudioStore {
     }
     const res = await fetch(`/api/profiles/${prof.id}`, {
       method: 'PUT',
+      credentials: 'same-origin',
       headers: this.authHeaders(),
       body: JSON.stringify({
         name: prof.name,
@@ -691,6 +736,7 @@ class StudioStore {
     }
     const res = await fetch('/api/profiles', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: this.authHeaders(),
       body: JSON.stringify(body),
     });
@@ -708,6 +754,7 @@ class StudioStore {
     if (this.isAuthenticated) {
       const res = await fetch(`/api/profiles/${profileId}`, {
         method: 'DELETE',
+        credentials: 'same-origin',
         headers: this.authHeaders(),
       });
       if (!res.ok && res.status !== 204) {

@@ -1,5 +1,5 @@
 use axum::Json;
-use axum::body::Body;
+use axum::body::{Body, Bytes};
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::Next;
@@ -112,10 +112,21 @@ pub async fn handle_status(State(state): State<WebState>) -> Response {
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
+pub fn submitted_password(body: &[u8]) -> Option<String> {
+    let trimmed = body.trim_ascii();
+    if trimmed.is_empty() {
+        return None;
+    }
+    serde_json::from_slice::<VerifyAuthRequest>(trimmed)
+        .ok()
+        .and_then(|request| request.token)
+        .filter(|token| !token.is_empty())
+}
+
 pub async fn handle_verify_auth(
     State(state): State<WebState>,
     headers: HeaderMap,
-    body: Option<Json<VerifyAuthRequest>>,
+    body: Bytes,
 ) -> Response {
     let configured = state.settings.admin_token.trim();
     if configured.is_empty() {
@@ -129,9 +140,7 @@ pub async fn handle_verify_auth(
             .into_response();
     }
 
-    let candidate = body
-        .and_then(|b| b.token.clone())
-        .or_else(|| extract_token(&headers));
+    let candidate = submitted_password(&body).or_else(|| extract_token(&headers));
 
     if let Some(token) = candidate
         && constant_time_eq(token.as_bytes(), configured.as_bytes())
@@ -222,5 +231,66 @@ mod tests {
         assert!(is_authorized(&headers, "my_token"));
         assert!(!is_authorized(&headers, "wrong_token"));
         assert!(!is_authorized(&headers, ""));
+    }
+
+    #[test]
+    fn test_empty_verify_body_is_not_a_submitted_password() {
+        assert_eq!(submitted_password(b""), None);
+        assert_eq!(submitted_password(b"{}"), None);
+        assert_eq!(submitted_password(b"{\n}"), None);
+    }
+
+    #[tokio::test]
+    async fn test_empty_verify_body_uses_cookie() {
+        let dir = std::env::temp_dir().join(format!(
+            "canto-auth-empty-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut settings = crate::config::WebSettings::default();
+        settings.admin_token = "secret".to_string();
+        let state = WebState::new(settings, dir.clone());
+        let app = crate::web::router::create_app(state);
+
+        let empty = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::empty())
+            .unwrap();
+        let response = tower::ServiceExt::oneshot(app.clone(), empty)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let cookie = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/auth/verify")
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::COOKIE, "canto_admin_token=secret")
+            .body(Body::empty())
+            .unwrap();
+        let response = tower::ServiceExt::oneshot(app, cookie).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let set_cookie = response
+            .headers()
+            .get(header::SET_COOKIE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        assert!(set_cookie.starts_with("canto_admin_token=secret;"));
+        assert!(set_cookie.contains("HttpOnly"));
+        assert!(set_cookie.contains("SameSite=Lax"));
+        assert!(!set_cookie.contains("Secure"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_submitted_password_reads_only_a_present_token() {
+        assert_eq!(
+            submitted_password(br#"{"token":"secret"}"#),
+            Some("secret".to_string())
+        );
+        assert_eq!(submitted_password(br#"{"token":""}"#), None);
+        assert_eq!(submitted_password(b"not-json"), None);
     }
 }

@@ -1,44 +1,23 @@
 <script>
-  import { onMount } from 'svelte';
   import { store } from '../data/store.svelte.js';
   import LayoutDashboard from 'lucide-svelte/icons/layout-dashboard';
   import FileCode2 from 'lucide-svelte/icons/file-code-2';
   import Network from 'lucide-svelte/icons/network';
   import Boxes from 'lucide-svelte/icons/boxes';
-  import ShieldCheck from 'lucide-svelte/icons/shield-check';
-  import ShieldAlert from 'lucide-svelte/icons/shield-alert';
-  import Key from 'lucide-svelte/icons/key';
-  import X from 'lucide-svelte/icons/x';
+  import LogOut from 'lucide-svelte/icons/log-out';
 
-  let showAuthModal = $state(false);
   let logoutPrompt = $state(false);
   let logoutBusy = $state(false);
-  let tokenInput = $state(store.adminToken);
-  let isChecking = $state(false);
-
-  onMount(() => {
-    store.verifyAuth();
-  });
-
-  async function handleVerifyToken() {
-    isChecking = true;
-    await store.verifyAuth(tokenInput);
-    isChecking = false;
-    if (store.isAuthenticated) {
-      setTimeout(() => {
-        showAuthModal = false;
-      }, 800);
-    }
-  }
+  let exitError = $state('');
 
   async function handleLogout() {
+    exitError = '';
     if (store.hasDirtyTemplates) {
       logoutPrompt = true;
       return;
     }
-    tokenInput = '';
-    showAuthModal = false;
-    await store.logout();
+    const ok = await store.logout();
+    if (!ok) exitError = store.authStatusMessage;
   }
 
   async function confirmLogoutSave() {
@@ -47,21 +26,18 @@
     logoutBusy = false;
     if (!ok) {
       logoutPrompt = false;
-      showAuthModal = false;
       return;
     }
     logoutPrompt = false;
-    tokenInput = '';
-    showAuthModal = false;
-    await store.logout();
+    const exited = await store.logout();
+    if (!exited) exitError = store.authStatusMessage;
   }
 
   async function confirmLogoutDiscard() {
     store.discardAllDrafts();
     logoutPrompt = false;
-    tokenInput = '';
-    showAuthModal = false;
-    await store.logout();
+    const exited = await store.logout();
+    if (!exited) exitError = store.authStatusMessage;
   }
 </script>
 
@@ -71,44 +47,15 @@
   <div
     class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4"
   >
-    <!-- Brand & Mobile Auth Row -->
     <div class="flex items-center justify-between w-full md:w-auto gap-3">
-      <div class="flex items-center gap-2.5">
-        <div
-          class="w-7 h-7 md:w-8 md:h-8 rounded bg-slate-800 border border-slate-600 flex items-center justify-center text-slate-300 font-mono font-bold text-sm md:text-base"
-        >
-          C
-        </div>
-        <div class="flex items-baseline gap-2">
-          <span class="font-semibold text-slate-100 tracking-tight text-sm md:text-base"
-            >canto studio</span
-          >
-          <span
-            class="text-[11px] px-1.5 py-0.2 rounded bg-slate-900 text-slate-400 border border-slate-700 font-mono whitespace-nowrap"
-          >
-            Web Studio
-          </span>
-        </div>
-      </div>
-
-      <!-- Admin Auth Trigger Button (Mobile) -->
+      <span class="font-semibold tracking-tight text-slate-100 text-sm md:text-base">Canto</span>
       <button
-        onclick={() => {
-          tokenInput = store.adminToken;
-          showAuthModal = true;
-        }}
-        title="管理认证与 Token 设置"
-        class="flex md:hidden items-center gap-1 text-xs px-2 py-1 rounded transition-all border cursor-pointer {store.isAuthenticated
-          ? 'text-emerald-400 bg-emerald-950/40 border-emerald-800/40 hover:bg-emerald-900/50'
-          : 'text-amber-400 bg-amber-950/40 border-amber-800/40 hover:bg-amber-900/50'}"
+        type="button"
+        onclick={handleLogout}
+        class="btn btn-ghost btn-icon md:hidden"
+        aria-label="退出"
       >
-        {#if store.isAuthenticated}
-          <ShieldCheck size={13} />
-          <span class="font-mono text-[11px]">admin-auth</span>
-        {:else}
-          <ShieldAlert size={13} />
-          <span class="font-mono text-[11px]">需认证</span>
-        {/if}
+        <LogOut size={14} />
       </button>
     </div>
 
@@ -192,29 +139,20 @@
       </a>
     </nav>
 
-    <!-- Top Right Status & Utilities (Desktop) -->
-    <div class="hidden md:flex items-center gap-2.5">
-      <button
-        onclick={() => {
-          tokenInput = store.adminToken;
-          showAuthModal = true;
-        }}
-        title="管理认证与 Token 设置"
-        class="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded transition-all border cursor-pointer {store.isAuthenticated
-          ? 'text-emerald-400 bg-emerald-950/40 border-emerald-800/40 hover:bg-emerald-900/50'
-          : 'text-amber-400 bg-amber-950/40 border-amber-800/40 hover:bg-amber-900/50'}"
-      >
-        {#if store.isAuthenticated}
-          <ShieldCheck size={14} />
-          <span class="font-mono">admin-auth</span>
-        {:else}
-          <ShieldAlert size={14} />
-          <span class="font-mono">需认证</span>
-        {/if}
-      </button>
-    </div>
+    <button
+      type="button"
+      onclick={handleLogout}
+      class="btn btn-ghost btn-icon hidden md:inline-flex"
+      aria-label="退出"
+    >
+      <LogOut size={14} />
+    </button>
   </div>
 </header>
+
+{#if exitError}
+  <p class="max-w-7xl mx-auto px-4 pt-2 text-xs text-rose-400">{exitError}</p>
+{/if}
 
 <!-- Logout with unsaved template drafts -->
 {#if logoutPrompt}
@@ -251,91 +189,6 @@
         >
           {logoutBusy ? '保存中' : '保存'}
         </button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- Admin Authentication Modal -->
-{#if showAuthModal}
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-    <div
-      class="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl max-w-md w-full p-6 text-slate-100 relative"
-    >
-      <button
-        type="button"
-        onclick={() => (showAuthModal = false)}
-        class="btn btn-ghost btn-icon absolute top-4 right-4"
-        aria-label="关闭认证"
-      >
-        <X size={16} />
-      </button>
-
-      <div class="flex items-center gap-3 mb-4">
-        <div
-          class="p-2.5 rounded-lg {store.isAuthenticated
-            ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50'
-            : 'bg-amber-950/60 text-amber-400 border border-amber-800/50'}"
-        >
-          <Key size={20} />
-        </div>
-        <div>
-          <h3 class="text-base font-semibold text-slate-100">Web Studio 管理认证</h3>
-          <p class="text-xs text-slate-400">配置用于访问 `/api/*` 受保护端点的 Admin Token</p>
-        </div>
-      </div>
-
-      <div class="space-y-4">
-        <div>
-          <label for="admin-token-input" class="block text-xs font-medium text-slate-300 mb-1.5">
-            Admin Token (canto.toml [web].admin_token)
-          </label>
-          <input
-            id="admin-token-input"
-            type="password"
-            bind:value={tokenInput}
-            placeholder="输入管理 Token"
-            class="field w-full rounded-lg px-3 py-2 text-sm font-mono"
-          />
-        </div>
-
-        {#if store.authStatusMessage}
-          <div
-            class="text-xs px-3 py-2 rounded-md {store.isAuthenticated
-              ? 'bg-emerald-950/40 border border-emerald-800/40 text-emerald-400'
-              : 'bg-rose-950/40 border border-rose-800/40 text-rose-400'}"
-          >
-            {store.authStatusMessage}
-          </div>
-        {/if}
-
-        <div class="flex items-center justify-between pt-2 border-t border-slate-800/80">
-          {#if store.isAuthenticated}
-            <button
-              type="button"
-              onclick={handleLogout}
-              class="text-xs text-rose-400 hover:text-rose-300 transition-colors"
-            >
-              清除/退出认证
-            </button>
-          {:else}
-            <div></div>
-          {/if}
-
-          <div class="flex items-center gap-2">
-            <button type="button" onclick={() => (showAuthModal = false)} class="btn btn-ghost">
-              关闭
-            </button>
-            <button
-              type="button"
-              onclick={handleVerifyToken}
-              disabled={isChecking}
-              class="btn btn-primary"
-            >
-              {isChecking ? '验证中...' : '验证并保存'}
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   </div>
