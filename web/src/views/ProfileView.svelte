@@ -111,7 +111,7 @@
   }
 
   function onKeydown(event) {
-    if (event.key === 'Escape' && drawerOpen) closeDrawer();
+    if (event.key === 'Escape' && drawerOpen && !store.leaveOpen) closeDrawer();
   }
 
   $effect(() => {

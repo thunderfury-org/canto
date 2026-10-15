@@ -31,6 +31,7 @@ import {
   createDraft,
   emptyDraft,
   isDirty as subscriptionDirty,
+  saveBlocker,
   unsavedKind,
   viewOf,
 } from './subscriptionDraft.js';
@@ -113,6 +114,7 @@ class StudioStore {
       action();
       return;
     }
+    this.profileSaveError = '';
     this.leaveAction = action;
     this.leaveOpen = true;
   }
@@ -120,12 +122,18 @@ class StudioStore {
   cancelLeave() {
     this.leaveOpen = false;
     this.leaveAction = null;
+    this.profileSaveError = '';
   }
 
   async confirmLeaveSave() {
     let ok = true;
     if (this.hasDirtyTemplates) ok = await this.saveAllDrafts();
     if (ok && this.hasDirtySubscription) {
+      const blocker = saveBlocker(this.profileDraft);
+      if (blocker) {
+        this.profileSaveError = blocker;
+        return false;
+      }
       try {
         await this.saveProfileDraft();
       } catch (err) {
@@ -739,6 +747,10 @@ class StudioStore {
 
   async saveProfileDraft() {
     const draft = viewOf(this.profileDraft);
+    const blocker = saveBlocker(draft);
+    if (blocker) {
+      throw new Error(blocker);
+    }
     const body = {
       name: draft.name.trim(),
       description: draft.description.trim(),

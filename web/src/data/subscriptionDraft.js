@@ -77,5 +77,5 @@ export function leavePrompt(kind) {
       body: '包括订阅和配置模板。保存会一起保存，某一份失败时不会离开。',
     };
   }
-  return null;
+  return { title: '', body: '' };
 }

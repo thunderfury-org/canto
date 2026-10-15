@@ -69,5 +69,16 @@ test('leave copy names whichever drafts are actually unsaved', () => {
   assert.equal(leavePrompt('both').title, '还有未保存的修改');
   assert.match(leavePrompt('both').body, /订阅/);
   assert.match(leavePrompt('both').body, /配置模板/);
-  assert.equal(leavePrompt('none'), null);
+  assert.equal(leavePrompt('none').title, '');
+  assert.equal(leavePrompt('none').body, '');
+});
+
+test('confirmLeaveSave checks saveBlocker before attempting save', () => {
+  const source = readFileSync(new URL('../src/data/store.svelte.js', import.meta.url), 'utf8');
+  assert.match(source, /saveBlocker\(/);
+});
+
+test('ProfileView does not intercept Escape when leave modal is open', () => {
+  const source = readFileSync(new URL('../src/views/ProfileView.svelte', import.meta.url), 'utf8');
+  assert.match(source, /onKeydown[\s\S]*?!store\.leaveOpen/);
 });

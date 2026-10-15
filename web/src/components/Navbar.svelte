@@ -30,6 +30,12 @@
   }
 </script>
 
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === 'Escape' && store.leaveOpen && !logoutBusy) store.cancelLeave();
+  }}
+/>
+
 <header
   class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-30 px-3 md:px-4 py-2 md:py-2.5"
 >
@@ -38,6 +44,14 @@
   >
     <div class="flex items-center justify-between w-full md:w-auto gap-3">
       <span class="font-semibold tracking-tight text-slate-100 text-sm md:text-base">Canto</span>
+      <button
+        type="button"
+        onclick={handleLogout}
+        class="btn btn-ghost btn-icon md:hidden"
+        aria-label="退出"
+      >
+        <LogOut size={14} />
+      </button>
     </div>
 
     <!-- Navigation Tabs -->
@@ -141,8 +155,15 @@
     <div
       class="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl max-w-md w-full p-5 text-slate-100"
     >
-      <h3 class="text-sm font-semibold text-slate-100">{leavePrompt(store.pendingKind()).title}</h3>
-      <p class="mt-2 text-xs text-slate-400">{leavePrompt(store.pendingKind()).body}</p>
+      <h3 class="text-sm font-semibold text-slate-100">
+        {leavePrompt(store.pendingKind())?.title || ''}
+      </h3>
+      <p class="mt-2 text-xs text-slate-400">{leavePrompt(store.pendingKind())?.body || ''}</p>
+      {#if store.profileSaveError || store.templateSaveError}
+        <p class="mt-3 text-xs text-rose-400">
+          {store.profileSaveError || store.templateSaveError}
+        </p>
+      {/if}
       <div class="mt-4 flex flex-wrap justify-end gap-2">
         <button
           type="button"

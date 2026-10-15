@@ -50,3 +50,9 @@ test('console surface maps slate utilities onto the charcoal ramp', () => {
   assert.match(css, /--color-slate-400:\s*#a39e96/i);
   assert.match(css, /--color-slate-700:\s*#3c3a36/i);
 });
+
+test('navbar includes exit buttons for both mobile and desktop viewports', () => {
+  const navbar = read('components/Navbar.svelte');
+  assert.match(navbar, /btn-icon\s+md:hidden/);
+  assert.match(navbar, /btn-icon\s+hidden\s+md:inline-flex/);
+});
