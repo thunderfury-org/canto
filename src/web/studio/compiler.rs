@@ -244,7 +244,6 @@ mod tests {
         // Compile by token
         let by_token = compiler.compile_by_token("tok_test123").await.unwrap();
         assert_eq!(by_token.etag, compiled.etag);
-
     }
 
     #[tokio::test]
