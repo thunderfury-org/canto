@@ -7,18 +7,10 @@
   import Copy from 'lucide-svelte/icons/copy';
   import Check from 'lucide-svelte/icons/check';
   import Boxes from 'lucide-svelte/icons/boxes';
-  import Code from 'lucide-svelte/icons/code';
-  import Download from 'lucide-svelte/icons/download';
-  import Radio from 'lucide-svelte/icons/radio';
   import X from 'lucide-svelte/icons/x';
 
   let saving = $state(false);
   let copiedId = $state('');
-  let copiedJson = $state(false);
-  let compileOpen = $state(false);
-  let compiling = $state(false);
-  let compiled = $state(null);
-  let compileError = $state('');
 
   let drawerOpen = $derived(store.creatingProfile || !!store.selectedProfileId);
   let published = $derived(store.selectedProfile);
@@ -71,7 +63,6 @@
     store.profileSaveError = '';
     try {
       await store.saveProfileDraft();
-      compileOpen = false;
     } catch (err) {
       store.profileSaveError = err.message || String(err);
     } finally {
@@ -81,7 +72,6 @@
 
   function discard() {
     store.discardProfileDraft();
-    compileOpen = false;
   }
 
   async function copyPublished(item) {
@@ -118,40 +108,6 @@
     } catch (err) {
       store.profileSaveError = err.message || String(err);
     }
-  }
-
-  async function openCompile() {
-    compileOpen = true;
-    compiling = true;
-    compileError = '';
-    compiled = null;
-    try {
-      compiled = await store.previewCompilation(draft);
-    } catch (err) {
-      compileError = err.message || String(err);
-    } finally {
-      compiling = false;
-    }
-  }
-
-  async function copyJson() {
-    if (!compiled?.config) return;
-    await navigator.clipboard.writeText(JSON.stringify(compiled.config, null, 2));
-    copiedJson = true;
-    setTimeout(() => (copiedJson = false), 2000);
-  }
-
-  function downloadJson() {
-    if (!compiled?.config) return;
-    const blob = new Blob([JSON.stringify(compiled.config, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = 'sing-box.json';
-    anchor.click();
-    URL.revokeObjectURL(url);
   }
 
   function onKeydown(event) {
@@ -352,61 +308,6 @@
               </label>
             {/each}
           </div>
-        </section>
-
-        <section class="space-y-3">
-          <div class="flex items-center justify-between gap-3">
-            <h3 class="text-sm font-semibold text-slate-200">编译</h3>
-            <button type="button" onclick={openCompile} class="btn btn-secondary">
-              <Code size={13} />
-              <span>{compileOpen ? '重新编译' : '查看编译结果'}</span>
-            </button>
-          </div>
-          {#if compileOpen}
-            {#if dirty && published}
-              <p class="text-xs text-amber-200">尚未保存。链接仍是已保存的那份。</p>
-            {/if}
-            {#if compiling}
-              <p class="text-xs text-slate-400">正在编译</p>
-            {:else if compileError}
-              <p class="text-xs text-rose-300">{compileError}</p>
-            {:else if compiled}
-              <div class="space-y-2">
-                {#each Object.entries(compiled.matchedMap || {}) as [group, nodes]}
-                  <div class="space-y-2 rounded border border-slate-800 p-3">
-                    <p class="flex items-center gap-1.5 font-mono text-sm text-slate-100">
-                      <Radio size={13} />
-                      <span>{group}</span>
-                      <span class="text-xs text-slate-400">{nodes.length}</span>
-                    </p>
-                    <div class="flex flex-wrap gap-1.5">
-                      {#each nodes as tag}
-                        <span
-                          class="rounded border border-slate-800 px-2 py-0.5 font-mono text-xs text-slate-300"
-                        >
-                          {tag}
-                        </span>
-                      {/each}
-                    </div>
-                  </div>
-                {/each}
-              </div>
-              <div class="flex gap-2">
-                <button type="button" onclick={copyJson} class="btn btn-secondary">
-                  {copiedJson ? '已复制' : '复制 JSON'}
-                </button>
-                <button type="button" onclick={downloadJson} class="btn btn-secondary">
-                  <Download size={13} />
-                  <span>下载</span>
-                </button>
-              </div>
-              <pre class="max-h-48 overflow-auto font-mono text-xs text-slate-300">{JSON.stringify(
-                  compiled.config,
-                  null,
-                  2,
-                )}</pre>
-            {/if}
-          {/if}
         </section>
       </div>
 

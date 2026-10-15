@@ -24,9 +24,6 @@ pub struct CompiledProfile {
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum CompileError {
-    #[error("profile '{0}' not found")]
-    ProfileNotFound(String),
-
     #[error("subscription not found")]
     TokenNotFound(String),
 
@@ -66,13 +63,6 @@ impl ProfileCompiler {
         }
     }
 
-    pub async fn compile_by_id(&self, id: &str) -> Result<CompiledProfile, CompileError> {
-        let Some(profile) = self.profiles.get(id).await else {
-            return Err(CompileError::ProfileNotFound(id.to_string()));
-        };
-        self.compile(&profile).await
-    }
-
     pub async fn compile_by_token(&self, token: &str) -> Result<CompiledProfile, CompileError> {
         let Some(profile) = self.profiles.get_by_token(token).await else {
             return Err(CompileError::TokenNotFound(token.to_string()));
@@ -80,7 +70,7 @@ impl ProfileCompiler {
         self.compile(&profile).await
     }
 
-    pub async fn compile_refs(
+    async fn compile_refs(
         &self,
         template_id: &str,
         source_ids: &[String],
@@ -251,26 +241,10 @@ mod tests {
             json!(["HK-Node", "US-Node"])
         );
 
-        // Compile by id
-        let by_id = compiler.compile_by_id("prof_1").await.unwrap();
-        assert_eq!(by_id.etag, compiled.etag);
-
         // Compile by token
         let by_token = compiler.compile_by_token("tok_test123").await.unwrap();
         assert_eq!(by_token.etag, compiled.etag);
 
-        // A draft preview uses the requested refs and does not rewrite the saved profile.
-        let before = profiles.get("prof_1").await.unwrap();
-        let drafted = compiler
-            .compile_refs("tpl_main", &["src_1".to_string()])
-            .await
-            .unwrap();
-        assert_eq!(drafted.etag, compiled.etag);
-        assert_eq!(profiles.get("prof_1").await.unwrap().token, before.token);
-        assert_eq!(
-            profiles.get("prof_1").await.unwrap().source_ids,
-            before.source_ids
-        );
     }
 
     #[tokio::test]
@@ -281,11 +255,6 @@ mod tests {
         let profiles = Arc::new(ProfileStore::empty(&dir));
 
         let compiler = ProfileCompiler::new(templates, sources, profiles);
-
-        assert_eq!(
-            compiler.compile_by_id("missing").await.unwrap_err(),
-            CompileError::ProfileNotFound("missing".to_string())
-        );
 
         assert_eq!(
             compiler.compile_by_token("missing").await.unwrap_err(),

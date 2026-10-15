@@ -737,21 +737,6 @@ class StudioStore {
     }
   }
 
-  async previewCompilation(draft) {
-    const body = viewOf(draft);
-    if (!this.isAuthenticated) {
-      return { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 };
-    }
-    const res = await fetch('/api/profiles/preview', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: this.authHeaders(),
-      body: JSON.stringify({ templateId: body.templateId, sourceIds: body.sourceIds }),
-    });
-    if (!res.ok) throw new Error(await this.apiError(res));
-    return res.json();
-  }
-
   async saveProfileDraft() {
     const draft = viewOf(this.profileDraft);
     const body = {

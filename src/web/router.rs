@@ -12,8 +12,7 @@ use crate::web::static_files::static_handler;
 use crate::web::studio::api::{
     create_profile, create_source, create_template, delete_profile, delete_source, delete_template,
     get_source, get_subscription, get_template, list_profiles, list_sources, list_templates,
-    preview_compilation, preview_profile, refresh_source, update_profile, update_source,
-    update_template,
+    refresh_source, update_profile, update_source, update_template,
 };
 use crate::web::studio::ruleset::{inspect_release, list_ruleset_presets};
 
@@ -44,8 +43,6 @@ pub fn create_app(state: WebState) -> Router {
         )
         .route("/profiles", get(list_profiles).post(create_profile))
         .route("/profiles/{id}", put(update_profile).delete(delete_profile))
-        .route("/profiles/{id}/preview", get(preview_profile))
-        .route("/profiles/preview", post(preview_compilation))
         .route("/rulesets/presets", get(list_ruleset_presets))
         .route("/rulesets/inspect-release", post(inspect_release))
         .fallback(api_fallback_404)
