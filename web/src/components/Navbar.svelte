@@ -38,14 +38,6 @@
   >
     <div class="flex items-center justify-between w-full md:w-auto gap-3">
       <span class="font-semibold tracking-tight text-slate-100 text-sm md:text-base">Canto</span>
-      <button
-        type="button"
-        onclick={handleLogout}
-        class="btn btn-ghost btn-icon md:hidden"
-        aria-label="退出"
-      >
-        <LogOut size={14} />
-      </button>
     </div>
 
     <!-- Navigation Tabs -->
