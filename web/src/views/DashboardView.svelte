@@ -349,7 +349,7 @@
                   <span class="text-emerald-400 font-medium">已复制链接</span>
                 {:else}
                   <Copy size={13} class="text-slate-400" />
-                  <span>复制源地址</span>
+                  <span>复制链接</span>
                 {/if}
               </button>
 
@@ -368,3 +368,4 @@
     {/if}
   </div>
 </div>
+v>
