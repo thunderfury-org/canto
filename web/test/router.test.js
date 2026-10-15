@@ -7,6 +7,7 @@ test('parseRoute handles empty and default hash', () => {
   assert.equal(res.tab, 'dashboard');
   assert.equal(res.id, null);
   assert.equal(res.subtab, null);
+  assert.equal(res.creating, false);
 });
 
 test('parseRoute handles standard tabs', () => {
@@ -36,10 +37,22 @@ test('parseRoute falls back to node_groups when subtab is invalid', () => {
   assert.equal(res.subtab, 'node_groups');
 });
 
-test('parseRoute extracts profile id', () => {
-  const res = parseRoute('#/profiles?id=prof_gateway');
+test('parseRoute extracts profile id and keeps the list address bare', () => {
+  const detail = parseRoute('#/profiles?id=prof_gateway');
+  assert.equal(detail.tab, 'profiles');
+  assert.equal(detail.id, 'prof_gateway');
+  assert.equal(detail.creating, false);
+
+  const list = parseRoute('#/profiles');
+  assert.equal(list.id, null);
+  assert.equal(list.creating, false);
+});
+
+test('parseRoute marks a new subscription without assigning an id', () => {
+  const res = parseRoute('#/profiles?new=1');
   assert.equal(res.tab, 'profiles');
-  assert.equal(res.id, 'prof_gateway');
+  assert.equal(res.id, null);
+  assert.equal(res.creating, true);
 });
 
 test('parseRoute supports pathname fallback when hash is empty', () => {
@@ -63,4 +76,7 @@ test('buildHash formats hash strings accurately', () => {
     '#/templates?id=tpl_1',
   );
   assert.equal(buildHash({ tab: 'profiles', id: 'prof_1' }), '#/profiles?id=prof_1');
+  assert.equal(buildHash({ tab: 'profiles' }), '#/profiles');
+  assert.equal(buildHash({ tab: 'profiles', subtab: 'new' }), '#/profiles?new=1');
+  assert.equal(buildHash({ tab: 'profiles', id: 'prof_1', subtab: 'new' }), '#/profiles?id=prof_1');
 });

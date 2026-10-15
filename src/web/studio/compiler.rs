@@ -80,13 +80,20 @@ impl ProfileCompiler {
         self.compile(&profile).await
     }
 
-    pub async fn compile(&self, profile: &Profile) -> Result<CompiledProfile, CompileError> {
-        let Some(template) = self.templates.get(&profile.template_id).await else {
-            return Err(CompileError::TemplateNotFound(profile.template_id.clone()));
-        };
+    pub async fn compile_refs(
+        &self,
+        template_id: &str,
+        source_ids: &[String],
+    ) -> Result<CompiledProfile, CompileError> {
+        self.validate_refs(template_id, source_ids).await?;
+        let template = self
+            .templates
+            .get(template_id)
+            .await
+            .ok_or_else(|| CompileError::TemplateNotFound(template_id.to_string()))?;
 
         let mut nodes = Vec::new();
-        for source_id in &profile.source_ids {
+        for source_id in source_ids {
             let Some(source) = self.sources.get(source_id).await else {
                 continue;
             };
@@ -106,6 +113,11 @@ impl ProfileCompiler {
             etag,
             raw_bytes,
         })
+    }
+
+    pub async fn compile(&self, profile: &Profile) -> Result<CompiledProfile, CompileError> {
+        self.compile_refs(&profile.template_id, &profile.source_ids)
+            .await
     }
 
     pub async fn validate_refs(
@@ -225,7 +237,7 @@ mod tests {
         };
         profiles.insert(profile.clone()).await.unwrap();
 
-        let compiler = ProfileCompiler::new(templates, sources, profiles);
+        let compiler = ProfileCompiler::new(templates, sources, Arc::clone(&profiles));
 
         // Compile by profile
         let compiled = compiler.compile(&profile).await.unwrap();
@@ -246,6 +258,19 @@ mod tests {
         // Compile by token
         let by_token = compiler.compile_by_token("tok_test123").await.unwrap();
         assert_eq!(by_token.etag, compiled.etag);
+
+        // A draft preview uses the requested refs and does not rewrite the saved profile.
+        let before = profiles.get("prof_1").await.unwrap();
+        let drafted = compiler
+            .compile_refs("tpl_main", &["src_1".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(drafted.etag, compiled.etag);
+        assert_eq!(profiles.get("prof_1").await.unwrap().token, before.token);
+        assert_eq!(
+            profiles.get("prof_1").await.unwrap().source_ids,
+            before.source_ids
+        );
     }
 
     #[tokio::test]

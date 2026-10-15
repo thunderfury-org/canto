@@ -450,6 +450,31 @@ pub async fn preview_profile(State(state): State<WebState>, Path(id): Path<Strin
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewCompilationRequest {
+    pub template_id: String,
+    pub source_ids: Vec<String>,
+}
+
+pub async fn preview_compilation(
+    State(state): State<WebState>,
+    Json(req): Json<PreviewCompilationRequest>,
+) -> Response {
+    let source_ids = unique_ids(&req.source_ids);
+    match state
+        .compiler
+        .compile_refs(&req.template_id, &source_ids)
+        .await
+    {
+        Ok(compiled) => (StatusCode::OK, Json(compiled)).into_response(),
+        Err(err) => {
+            let (status, msg) = compile_error_response(err);
+            json_error(status, &msg)
+        }
+    }
+}
+
 pub async fn get_subscription(
     State(state): State<WebState>,
     Path(token): Path<String>,

@@ -27,6 +27,13 @@ import {
   noteUserEdit as markUserEdit,
   saveAllDrafts as commitAllDrafts,
 } from './templateDraft.js';
+import {
+  createDraft,
+  emptyDraft,
+  isDirty as subscriptionDirty,
+  unsavedKind,
+  viewOf,
+} from './subscriptionDraft.js';
 
 const initialRoute = getInitialRoute();
 
@@ -38,9 +45,9 @@ class StudioStore {
   selectedTemplateId = $state(
     initialRoute.tab === 'templates' && initialRoute.id ? initialRoute.id : null,
   );
-  selectedProfileId = $state(
-    initialRoute.tab === 'profiles' && initialRoute.id ? initialRoute.id : 'prof_home_router',
-  );
+  selectedProfileId = $state(initialRoute.tab === 'profiles' ? initialRoute.id : null);
+  creatingProfile = $state(initialRoute.tab === 'profiles' && initialRoute.creating);
+  profileDraft = $state(null);
   templateSubTab = $state(
     initialRoute.tab === 'templates' && initialRoute.subtab ? initialRoute.subtab : 'node_groups',
   );
@@ -52,10 +59,9 @@ class StudioStore {
   draftEpoch = $state(0);
   // True only after /api/templates replaces the in-memory demo.
   templatesLoaded = $state(false);
-  profilePersistTimers = {};
   profileSaveError = $state('');
-  preview = $state({ config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 });
-  previewError = $state('');
+  leaveOpen = $state(false);
+  leaveAction = null;
   studioStatus = $state(null);
   statusError = $state('');
 
@@ -67,16 +73,17 @@ class StudioStore {
   );
 
   selectedProfile = $derived(
-    this.profiles.find((p) => p.id === this.selectedProfileId) || this.profiles[0],
+    this.selectedProfileId
+      ? this.profiles.find((p) => p.id === this.selectedProfileId) || null
+      : null,
+  );
+
+  hasDirtySubscription = $derived(
+    this.profileDraft != null &&
+      subscriptionDirty(this.profileDraft, this.creatingProfile ? null : this.selectedProfile),
   );
 
   totalNodesCount = $derived(this.sources.reduce((sum, s) => sum + (s.nodes?.length || 0), 0));
-
-  currentCompiled = $derived(
-    this.isAuthenticated
-      ? this.preview || { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 }
-      : { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 },
-  );
 
   hasDirtyTemplates = $derived(
     this.isAuthenticated &&
@@ -84,7 +91,69 @@ class StudioStore {
       dirtyIds(this.templateSession, this.templates).length > 0,
   );
 
+  pendingKind() {
+    return unsavedKind({
+      subscription: this.hasDirtySubscription,
+      template: this.hasDirtyTemplates,
+    });
+  }
+
+  destinationChanges(tab, params = {}) {
+    if (tab !== this.currentTab) return true;
+    if (tab === 'templates') return (params.id || null) !== this.selectedTemplateId;
+    if (tab === 'profiles') {
+      const creating = params.subtab === 'new' && !params.id;
+      return creating !== this.creatingProfile || (params.id || null) !== this.selectedProfileId;
+    }
+    return false;
+  }
+
+  askLeave(action) {
+    if (this.pendingKind() === 'none') {
+      action();
+      return;
+    }
+    this.leaveAction = action;
+    this.leaveOpen = true;
+  }
+
+  cancelLeave() {
+    this.leaveOpen = false;
+    this.leaveAction = null;
+  }
+
+  async confirmLeaveSave() {
+    let ok = true;
+    if (this.hasDirtyTemplates) ok = await this.saveAllDrafts();
+    if (ok && this.hasDirtySubscription) {
+      try {
+        await this.saveProfileDraft();
+      } catch (err) {
+        this.profileSaveError = err.message || String(err);
+        ok = false;
+      }
+    }
+    if (!ok) return false;
+    const action = this.leaveAction;
+    this.cancelLeave();
+    action?.();
+    return true;
+  }
+
+  confirmLeaveDiscard() {
+    this.discardAllDrafts();
+    this.profileDraft = null;
+    this.creatingProfile = false;
+    const action = this.leaveAction;
+    this.cancelLeave();
+    action?.();
+  }
+
   navigate(tab, params = {}, options = {}) {
+    if (!options.force && this.destinationChanges(tab, params)) {
+      this.askLeave(() => this.navigate(tab, params, { ...options, force: true }));
+      return;
+    }
     navigate(tab, params, options);
     this.currentTab = tab;
     if (tab === 'templates') {
@@ -94,8 +163,16 @@ class StudioStore {
       } else if (!params.id) {
         this.templateSubTab = 'node_groups';
       }
-    } else if (tab === 'profiles' && params.id) {
-      this.selectedProfileId = params.id;
+    } else if (tab === 'profiles') {
+      const creating = params.subtab === 'new' && !params.id;
+      const nextId = params.id || null;
+      if (creating !== this.creatingProfile || nextId !== this.selectedProfileId) {
+        this.profileDraft = null;
+      }
+      this.creatingProfile = creating;
+      this.selectedProfileId = nextId;
+    } else {
+      this.creatingProfile = false;
     }
   }
 
@@ -167,7 +244,9 @@ class StudioStore {
 
   resetData() {
     this.profiles = JSON.parse(JSON.stringify(initialProfiles));
-    this.selectedProfileId = 'prof_home_router';
+    this.selectedProfileId = null;
+    this.creatingProfile = false;
+    this.profileDraft = null;
     this.templateSubTab = 'node_groups';
     if (this.isAuthenticated) {
       this.loadSources();
@@ -279,7 +358,6 @@ class StudioStore {
       template.updatedAt = result.updated?.updatedAt ?? template.updatedAt;
       this.templateSaveError = '';
       this.draftEpoch += 1;
-      void this.refreshPreview();
       return true;
     }
     this.templateSaveError = this.saveFailureMessage(result);
@@ -303,7 +381,6 @@ class StudioStore {
       return false;
     }
     this.templateSaveError = '';
-    void this.refreshPreview();
     return true;
   }
 
@@ -601,7 +678,7 @@ class StudioStore {
   deleteProfile(profileId) {
     this.profiles = this.profiles.filter((p) => p.id !== profileId);
     if (this.selectedProfileId === profileId) {
-      this.selectedProfileId = this.profiles[0]?.id || '';
+      this.selectedProfileId = null;
     }
   }
 
@@ -625,57 +702,77 @@ class StudioStore {
       }
       const data = await res.json();
       this.profiles = Array.isArray(data) ? data : [];
-      if (!this.profiles.some((p) => p.id === this.selectedProfileId)) {
-        this.selectedProfileId = this.profiles[0]?.id || '';
+      if (this.selectedProfileId && !this.profiles.some((p) => p.id === this.selectedProfileId)) {
+        this.selectedProfileId = null;
       }
-      await this.refreshPreview();
       return true;
     } catch {
       return false;
     }
   }
 
-  async refreshPreview() {
-    const prof = this.selectedProfile;
-    if (!this.isAuthenticated || !prof?.id) {
-      this.preview = { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 };
-      this.previewError = '';
+  beginProfileDraft() {
+    if (this.creatingProfile) {
+      this.profileDraft = this.profileDraft || createDraft(this.templates, this.sources);
       return;
     }
-    try {
-      const res = await fetch(`/api/profiles/${prof.id}/preview`, {
-        credentials: 'same-origin',
-        headers: this.authHeaders(),
-      });
-      if (!res.ok) {
-        this.previewError = await this.apiError(res);
-        this.preview = { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 };
-        return;
-      }
-      this.preview = await res.json();
-      this.previewError = '';
-    } catch (err) {
-      this.previewError = '预览失败: ' + (err.message || err);
+    if (!this.selectedProfile) {
+      this.profileDraft = null;
+      return;
+    }
+    if (!this.profileDraft) this.profileDraft = viewOf(this.selectedProfile);
+  }
+
+  editProfileDraft(patch) {
+    this.beginProfileDraft();
+    this.profileDraft = { ...(this.profileDraft || emptyDraft()), ...patch };
+  }
+
+  discardProfileDraft() {
+    this.profileDraft = this.selectedProfile ? viewOf(this.selectedProfile) : null;
+    this.profileSaveError = '';
+    if (this.creatingProfile) {
+      this.creatingProfile = false;
+      this.navigate('profiles', {}, { replace: true });
     }
   }
 
-  scheduleProfilePersist(profileId) {
-    if (!this.isAuthenticated || !profileId) return;
-    clearTimeout(this.profilePersistTimers[profileId]);
-    this.profilePersistTimers[profileId] = setTimeout(() => {
-      void this.flushProfile(profileId);
-    }, 400);
+  async previewCompilation(draft) {
+    const body = viewOf(draft);
+    if (!this.isAuthenticated) {
+      return { config: {}, matchedMap: {}, totalNodes: 0, usedCount: 0 };
+    }
+    const res = await fetch('/api/profiles/preview', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: this.authHeaders(),
+      body: JSON.stringify({ templateId: body.templateId, sourceIds: body.sourceIds }),
+    });
+    if (!res.ok) throw new Error(await this.apiError(res));
+    return res.json();
   }
 
-  async flushProfile(profileId, extra = {}) {
-    const prof = this.profiles.find((p) => p.id === profileId);
-    if (!prof || !this.isAuthenticated) return;
-    try {
-      await this.saveProfile(prof, extra);
-      this.profileSaveError = '';
-    } catch (err) {
-      this.profileSaveError = '保存 Profile 失败: ' + (err.message || err);
+  async saveProfileDraft() {
+    const draft = viewOf(this.profileDraft);
+    const body = {
+      name: draft.name.trim(),
+      description: draft.description.trim(),
+      templateId: draft.templateId,
+      sourceIds: draft.sourceIds,
+    };
+    if (!this.isAuthenticated) {
+      throw new Error('先进入 canto');
     }
+    if (this.creatingProfile || !this.selectedProfileId) {
+      const created = await this.createProfile(body);
+      this.creatingProfile = false;
+      this.profileDraft = viewOf(created);
+      this.navigate('profiles', { id: created.id }, { replace: true });
+      return created;
+    }
+    const updated = await this.saveProfile({ ...this.selectedProfile, ...body });
+    this.profileDraft = viewOf(updated);
+    return updated;
   }
 
   async saveProfile(prof, extra = {}) {
@@ -700,7 +797,6 @@ class StudioStore {
     }
     const updated = await res.json();
     this.replaceProfile(updated);
-    await this.refreshPreview();
     return updated;
   }
 
@@ -717,10 +813,10 @@ class StudioStore {
 
   async createProfile(payload = {}) {
     const body = {
-      name: payload.name || `新设备分发配置 ${this.profiles.length + 1}`,
-      description: payload.description || '自定义组装分发配置',
-      templateId: payload.templateId || this.templates[0]?.id,
-      sourceIds: payload.sourceIds || (this.sources[0] ? [this.sources[0].id] : []),
+      name: payload.name,
+      description: payload.description || '',
+      templateId: payload.templateId,
+      sourceIds: payload.sourceIds || [],
     };
     if (!this.isAuthenticated) {
       const newToken = 'tok_' + Math.random().toString(36).substring(2, 10);
@@ -746,7 +842,6 @@ class StudioStore {
     const created = await res.json();
     this.profiles = [...this.profiles, created];
     this.selectedProfileId = created.id;
-    await this.refreshPreview();
     return created;
   }
 
@@ -762,7 +857,7 @@ class StudioStore {
       }
     }
     this.deleteProfile(profileId);
-    await this.refreshPreview();
+    this.profileDraft = null;
   }
 
   async rotateProfileToken(profileId) {

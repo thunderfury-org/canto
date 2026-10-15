@@ -119,11 +119,11 @@
       class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between"
     >
       <div>
-        <div class="text-xs font-medium text-slate-400">分发配置</div>
+        <div class="text-xs font-medium text-slate-400">订阅</div>
         <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">
           {store.profiles.length}
         </div>
-        <div class="text-xs text-slate-400 mt-1">HTTP 订阅端点</div>
+        <div class="text-xs text-slate-400 mt-1">已发布的链接</div>
       </div>
       <div
         class="w-10 h-10 rounded-md bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400"
@@ -193,9 +193,9 @@
         <Sparkles size={16} />
       </div>
       <div>
-        <div class="font-semibold text-slate-100 text-sm">把 HTTP 订阅端点当作网关源地址</div>
+        <div class="font-semibold text-slate-100 text-sm">把这条链接当作网关源地址</div>
         <div class="text-slate-400 mt-0.5">
-          把 <span class="font-mono text-slate-200">[singbox].source</span> 指到 Profile 的
+          把 <span class="font-mono text-slate-200">[singbox].source</span> 指到订阅的
           <span class="font-mono text-slate-200">/sub/:token</span>，覆盖入站后即可刷新。
         </div>
       </div>
@@ -207,7 +207,7 @@
         <ArrowRight size={12} />
       </button>
       <button type="button" onclick={() => store.navigate('profiles')} class="btn btn-primary">
-        <span>组装配置</span>
+        <span>查看订阅</span>
         <ArrowRight size={12} />
       </button>
     </div>
@@ -231,9 +231,7 @@
     {#if store.sources.length === 0}
       <div class="p-6 text-center space-y-2">
         <p class="text-sm text-slate-300">还没有节点源</p>
-        <p class="text-xs text-slate-500">
-          添加外部节点源或手动录入节点后，才能组装给网关用的 Profile。
-        </p>
+        <p class="text-xs text-slate-500">添加外部节点源或手动录入节点后，才能做给网关用的订阅。</p>
         <button
           type="button"
           onclick={() => store.navigate('sources')}
@@ -275,7 +273,7 @@
     <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
       <div class="flex items-center gap-2">
         <Boxes size={16} class="text-slate-400" />
-        <h2 class="text-sm font-semibold text-slate-200">当前活跃分发配置</h2>
+        <h2 class="text-sm font-semibold text-slate-200">订阅</h2>
       </div>
       <button
         onclick={() => store.navigate('profiles')}
@@ -288,9 +286,9 @@
 
     {#if store.profiles.length === 0}
       <div class="p-8 text-center space-y-2">
-        <p class="text-sm text-slate-200">还没有配置档案</p>
+        <p class="text-sm text-slate-200">还没有订阅</p>
         <p class="text-xs text-slate-500">
-          绑定一份模板和节点源，生成带 Token 的 HTTP 订阅端点，供网关
+          绑定一份配置模板和节点源，保存后得到一条链接，供网关
           <span class="font-mono text-slate-400">[singbox].source</span> 拉取。
         </p>
         <button
@@ -299,7 +297,7 @@
           class="btn btn-primary mt-2"
         >
           <Plus size={12} />
-          <span>组装配置</span>
+          <span>新建订阅</span>
         </button>
       </div>
     {:else}
@@ -348,7 +346,7 @@
               >
                 {#if copiedToken === prof.id}
                   <Check size={13} class="text-emerald-400" />
-                  <span class="text-emerald-400 font-medium">已复制源地址</span>
+                  <span class="text-emerald-400 font-medium">已复制链接</span>
                 {:else}
                   <Copy size={13} class="text-slate-400" />
                   <span>复制源地址</span>
@@ -361,7 +359,7 @@
                 class="btn btn-ghost"
               >
                 <Eye size={13} />
-                <span>实时编译预览</span>
+                <span>打开</span>
               </button>
             </div>
           </div>
