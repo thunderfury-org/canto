@@ -161,16 +161,9 @@
       {#each store.profiles as item (item.id)}
         <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div class="min-w-0 space-y-1.5 flex-1">
-            <div class="flex items-center gap-2 flex-wrap">
-              <h2 class="truncate text-sm font-semibold text-slate-100">
-                {item.name || '未命名订阅'}
-              </h2>
-              {#if item.updatedAt}
-                <span class="text-xs text-slate-500 font-normal">
-                  更新于 {formatTime(item.updatedAt)}
-                </span>
-              {/if}
-            </div>
+            <h2 class="truncate text-sm font-semibold text-slate-100">
+              {item.name || '未命名订阅'}
+            </h2>
 
             {#if item.description}
               <p class="truncate text-xs text-slate-400">{item.description}</p>
