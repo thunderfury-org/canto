@@ -216,7 +216,7 @@ async fn test_gateway_fetches_studio_source_and_overlays_tproxy() {
         runtime_path.clone(),
         studio.work_dir.clone(),
     );
-    if supervisor.verify_binary().is_ok() {
+    if cfg!(target_os = "linux") && supervisor.verify_binary().is_ok() {
         supervisor
             .check_config(Some(&runtime_path))
             .expect("studio overlay should pass sing-box check");

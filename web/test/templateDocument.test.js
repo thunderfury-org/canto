@@ -16,6 +16,7 @@ import {
   toggleRuleSourceTag,
   writeNodeGroupPattern,
   moveNodeGroup,
+  moveUserPolicyGroup,
   NODE_GROUP_REGEX_PRESETS,
 } from '../src/data/templateDocument.js';
 
@@ -202,4 +203,34 @@ test('NODE_GROUP_REGEX_PRESETS contains valid regex patterns', () => {
     const res = matchNodeTags(preset.pattern, ['HK-01', 'JP-01', 'SG-01', 'US-01']);
     assert.equal(res.ok, true);
   }
+});
+
+test('moveUserPolicyGroup reorders user policy groups while preserving direct', () => {
+  const input = {
+    policy_groups: [
+      { tag: '直连', type: 'direct' },
+      { tag: 'group-1', type: 'selector' },
+      { tag: 'group-2', type: 'selector' },
+      { tag: 'group-3', type: 'selector' },
+    ],
+  };
+
+  const movedDown = moveUserPolicyGroup(input, 0, 1);
+  assert.deepEqual(
+    movedDown.policy_groups.map((g) => g.tag),
+    ['直连', 'group-2', 'group-1', 'group-3'],
+  );
+  assert.equal(input.policy_groups[1].tag, 'group-1');
+
+  const movedUp = moveUserPolicyGroup(movedDown, 2, 0);
+  assert.deepEqual(
+    movedUp.policy_groups.map((g) => g.tag),
+    ['直连', 'group-3', 'group-2', 'group-1'],
+  );
+
+  // out of bounds or invalid
+  assert.deepEqual(moveUserPolicyGroup(input, 0, 0), input);
+  assert.deepEqual(moveUserPolicyGroup(input, -1, 1), input);
+  assert.deepEqual(moveUserPolicyGroup(input, 0, 5), input);
+  assert.deepEqual(moveUserPolicyGroup({}, 0, 1), {});
 });

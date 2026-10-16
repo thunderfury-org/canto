@@ -18,11 +18,14 @@
     toggleRuleSourceTag,
     writeNodeGroupPattern,
     moveNodeGroup,
+    moveUserPolicyGroup,
   } from '../data/templateDocument.js';
   import MultiSelect from '../components/MultiSelect.svelte';
   import TemplateCardGrid from '../components/TemplateCardGrid.svelte';
   import NodeGroupCard from '../components/NodeGroupCard.svelte';
   import ArrowLeft from 'lucide-svelte/icons/arrow-left';
+  import ArrowUp from 'lucide-svelte/icons/arrow-up';
+  import ArrowDown from 'lucide-svelte/icons/arrow-down';
   import RouteRules from './RouteRules.svelte';
   import DnsEditor from './DnsEditor.svelte';
   import InboundEditor from './InboundEditor.svelte';
@@ -584,7 +587,15 @@
     triggerUpdate();
   }
 
+  function movePolicyGroupItem(fromIndex, toIndex) {
+    const tpl = store.selectedTemplate;
+    if (!tpl?.content) return;
+    tpl.content = moveUserPolicyGroup(tpl.content, fromIndex, toIndex);
+    triggerUpdate();
+  }
+
   function removePolicyGroup(targetPg) {
+    if (!confirm(`确定删除出站策略组「${targetPg?.tag || '此策略组'}」吗？`)) return;
     const tpl = store.selectedTemplate;
     if (tpl.content.policy_groups) {
       const idx = tpl.content.policy_groups.indexOf(targetPg);
@@ -699,6 +710,8 @@
 
   function removeNodeGroup(idx) {
     const tpl = store.selectedTemplate;
+    const group = tpl?.content?.node_groups?.[idx];
+    if (!confirm(`确定删除节点分组「${group?.tag || '此分组'}」吗？`)) return;
     if (tpl.content.node_groups) {
       tpl.content.node_groups.splice(idx, 1);
       triggerUpdate();
@@ -1216,11 +1229,11 @@
                       <th class="py-2.5 px-3.5 w-[200px]">策略组标签 (Tag)</th>
                       <th class="py-2.5 px-3 min-w-[340px]">包含节点分组 (多选下拉)</th>
                       <th class="py-2.5 px-3 w-[180px]">默认选中 (Default)</th>
-                      <th class="py-2.5 px-3 w-[60px] text-center">操作</th>
+                      <th class="py-2.5 px-3 w-[100px] text-center">操作</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-800/60 font-mono">
-                    {#each userPolicyGroups as pg}
+                    {#each userPolicyGroups as pg, pgIdx}
                       <tr class="hover:bg-slate-950/30 transition-colors align-middle">
                         <!-- Tag Name -->
                         <td class="py-2.5 px-3.5">
@@ -1257,16 +1270,39 @@
                           </select>
                         </td>
 
-                        <!-- Delete Action -->
+                        <!-- Actions: Reorder & Delete -->
                         <td class="py-2.5 px-3 text-center">
-                          <button
-                            type="button"
-                            onclick={() => removePolicyGroup(pg)}
-                            class="btn btn-ghost btn-icon btn-danger"
-                            aria-label="删除此策略组"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                          <div class="flex items-center justify-center gap-0.5">
+                            <button
+                              type="button"
+                              onclick={() => movePolicyGroupItem(pgIdx, pgIdx - 1)}
+                              disabled={pgIdx === 0}
+                              class="btn btn-ghost btn-icon p-1 text-slate-400 hover:text-slate-100 disabled:opacity-30"
+                              title="上移"
+                              aria-label="上移"
+                            >
+                              <ArrowUp size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onclick={() => movePolicyGroupItem(pgIdx, pgIdx + 1)}
+                              disabled={pgIdx === userPolicyGroups.length - 1}
+                              class="btn btn-ghost btn-icon p-1 text-slate-400 hover:text-slate-100 disabled:opacity-30"
+                              title="下移"
+                              aria-label="下移"
+                            >
+                              <ArrowDown size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onclick={() => removePolicyGroup(pg)}
+                              class="btn btn-ghost btn-icon btn-danger p-1"
+                              title="删除此策略组"
+                              aria-label="删除此策略组"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     {/each}
@@ -1864,7 +1900,7 @@
                     >{Array.isArray(p?.tag) ? p.tag.length : 0}</span
                   > 条规则
                 </span>
-                <button type="button" onclick={closeBrowseModal} class="btn btn-primary">
+                <button type="button" onclick={closeBrowseModal} class="btn btn-secondary">
                   完成
                 </button>
               </div>

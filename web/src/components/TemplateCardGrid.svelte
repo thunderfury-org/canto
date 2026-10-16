@@ -63,7 +63,7 @@
       type="button"
       onclick={onCreateTemplate}
       disabled={creating}
-      class="btn btn-primary shrink-0"
+      class="btn btn-secondary shrink-0"
     >
       <Plus size={14} />
       <span>{creating ? '创建中...' : '新建空白模板'}</span>
@@ -84,7 +84,7 @@
         type="button"
         onclick={onCreateTemplate}
         disabled={creating}
-        class="btn btn-primary mt-2"
+        class="btn btn-secondary mt-2"
       >
         <Plus size={14} />
         <span>立即创建</span>
