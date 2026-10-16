@@ -268,7 +268,9 @@
     {:else}
       <div class="divide-y divide-slate-800/80">
         {#each store.sources as src}
-          <div class="px-4 py-3 flex items-center justify-between gap-3 text-xs">
+          <div
+            class="px-4 py-3 flex items-center justify-between gap-3 text-xs hover:bg-slate-850/40 transition-colors"
+          >
             <div class="min-w-0">
               <div class="font-medium text-slate-200 truncate">{src.name}</div>
               <div class="text-slate-500 mt-0.5">
@@ -278,13 +280,24 @@
                 {/if}
               </div>
             </div>
-            <div class="text-right shrink-0">
-              <div
-                class="font-mono {src.status === 'error' ? 'text-rose-300' : 'text-emerald-400'}"
-              >
-                {src.status === 'error' ? 'error' : src.status || 'active'}
+            <div class="flex items-center gap-3 shrink-0">
+              <div class="text-right">
+                <div
+                  class="font-mono {src.status === 'error' ? 'text-rose-300' : 'text-emerald-400'}"
+                >
+                  {src.status === 'error' ? 'error' : src.status || 'active'}
+                </div>
+                <div class="text-slate-500 mt-0.5">{formatFreshness(src.lastUpdated)}</div>
               </div>
-              <div class="text-slate-500 mt-0.5">{formatFreshness(src.lastUpdated)}</div>
+              <button
+                type="button"
+                onclick={() => store.navigate('sources', { id: src.id, subtab: 'inspect' })}
+                class="btn btn-secondary text-xs px-2.5 py-1"
+                title="查看此源解析出来的所有节点"
+              >
+                <Eye size={12} />
+                <span>查看节点</span>
+              </button>
             </div>
           </div>
         {/each}

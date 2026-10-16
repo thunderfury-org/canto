@@ -7,6 +7,7 @@
     createSourceDraft,
     emptySourceDraft,
     sourceSaveBlocker,
+    isSourceDirty,
   } from '../data/sourceDraft.js';
   import Network from 'lucide-svelte/icons/network';
   import Plus from 'lucide-svelte/icons/plus';
@@ -31,6 +32,8 @@
 
   let blocker = $derived(sourceSaveBlocker(draft));
   let savable = $derived(canSaveSource(draft));
+  let originalSource = $derived(editingId ? store.sources.find((s) => s.id === editingId) : null);
+  let dirty = $derived(isSourceDirty(draft, originalSource));
 
   onMount(() => {
     if (store.isAuthenticated) {
@@ -49,6 +52,7 @@
     formError = '';
     editDrawerOpen = true;
     inspectingSource = null;
+    store.navigate('sources', {});
   }
 
   function openEdit(src) {
@@ -57,25 +61,34 @@
     formError = '';
     editDrawerOpen = true;
     inspectingSource = null;
+    store.navigate('sources', { id: src.id, subtab: 'edit' });
   }
 
-  function closeEditDrawer() {
-    if (saving) return;
+  function forceCloseEditDrawer() {
     editDrawerOpen = false;
     editingId = null;
     draft = emptySourceDraft();
     formError = '';
+    if (store.selectedSourceId) store.navigate('sources', {});
+  }
+
+  function closeEditDrawer() {
+    if (saving) return;
+    if (dirty && !confirm('当前有未保存的修改，确定放弃编辑吗？')) return;
+    forceCloseEditDrawer();
   }
 
   function openInspect(src) {
     inspectingSource = src;
     inspectSearch = '';
     editDrawerOpen = false;
+    store.navigate('sources', { id: src.id, subtab: 'inspect' });
   }
 
   function closeInspectDrawer() {
     inspectingSource = null;
     inspectSearch = '';
+    if (store.selectedSourceId) store.navigate('sources', {});
   }
 
   async function handleSaveSource() {
@@ -89,7 +102,7 @@
       } else {
         await store.createSource(payload);
       }
-      closeEditDrawer();
+      forceCloseEditDrawer();
     } catch (err) {
       formError = err.message || String(err);
     } finally {
@@ -138,6 +151,38 @@
       else if (inspectingSource) closeInspectDrawer();
     }
   }
+
+  $effect(() => {
+    if (store.currentTab !== 'sources') return;
+    const targetId = store.selectedSourceId;
+    const subtab = store.sourceSubTab;
+    if (!targetId) {
+      if (editDrawerOpen && !saving && !dirty) {
+        editDrawerOpen = false;
+        editingId = null;
+        draft = emptySourceDraft();
+      }
+      if (inspectingSource) {
+        inspectingSource = null;
+      }
+      return;
+    }
+    const targetSource = store.sources.find((s) => s.id === targetId);
+    if (!targetSource) return;
+    if (subtab === 'edit') {
+      if (editingId !== targetId) {
+        editingId = targetId;
+        draft = createSourceDraft(targetSource);
+        editDrawerOpen = true;
+        inspectingSource = null;
+      }
+    } else {
+      if (inspectingSource?.id !== targetId) {
+        inspectingSource = targetSource;
+        editDrawerOpen = false;
+      }
+    }
+  });
 
   let filteredSources = $derived.by(() => {
     const q = searchKeyword.trim().toLowerCase();

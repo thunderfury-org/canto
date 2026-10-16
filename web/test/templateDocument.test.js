@@ -17,6 +17,11 @@ import {
   writeNodeGroupPattern,
   moveNodeGroup,
   moveUserPolicyGroup,
+  findProfilesUsingTemplate,
+  findPolicyGroupsUsingNodeGroup,
+  findRulesUsingPolicyGroup,
+  findRulesUsingInbound,
+  findRulesUsingDnsServer,
   NODE_GROUP_REGEX_PRESETS,
 } from '../src/data/templateDocument.js';
 
@@ -233,4 +238,84 @@ test('moveUserPolicyGroup reorders user policy groups while preserving direct', 
   assert.deepEqual(moveUserPolicyGroup(input, -1, 1), input);
   assert.deepEqual(moveUserPolicyGroup(input, 0, 5), input);
   assert.deepEqual(moveUserPolicyGroup({}, 0, 1), {});
+});
+
+test('findProfilesUsingTemplate locates referencing profiles correctly', () => {
+  const profiles = [
+    { id: 'p1', name: '订阅A', templateId: 'tpl-1' },
+    { id: 'p2', name: '订阅B', templateId: 'tpl-2' },
+    { id: 'p3', name: '订阅C', templateId: 'tpl-1' },
+  ];
+  assert.deepEqual(
+    findProfilesUsingTemplate('tpl-1', profiles).map((p) => p.name),
+    ['订阅A', '订阅C'],
+  );
+  assert.deepEqual(findProfilesUsingTemplate('tpl-3', profiles), []);
+  assert.deepEqual(findProfilesUsingTemplate('', profiles), []);
+  assert.deepEqual(findProfilesUsingTemplate('tpl-1', null), []);
+});
+
+test('findPolicyGroupsUsingNodeGroup finds parent policy groups', () => {
+  const content = {
+    policy_groups: [
+      { tag: '直连', type: 'direct' },
+      { tag: '自动选择', type: 'urltest', outbounds: ['香港节点', '日本节点'] },
+      { tag: '备用出站', type: 'selector', outbounds: ['美国节点', '香港节点'] },
+    ],
+  };
+  assert.deepEqual(findPolicyGroupsUsingNodeGroup('香港节点', content), ['自动选择', '备用出站']);
+  assert.deepEqual(findPolicyGroupsUsingNodeGroup('日本节点', content), ['自动选择']);
+  assert.deepEqual(findPolicyGroupsUsingNodeGroup('新加坡节点', content), []);
+  assert.deepEqual(findPolicyGroupsUsingNodeGroup('', content), []);
+});
+
+test('findRulesUsingPolicyGroup finds referencing route and DNS rules', () => {
+  const content = {
+    route: {
+      rules: [
+        { rule_set: ['cn'], outbound: '直连' },
+        { rule_set: ['proxy'], outbound: '节点选择' },
+      ],
+    },
+    dns: {
+      servers: [{ tag: 'remote', detour: '节点选择' }],
+      rules: [{ rule_set: ['proxy'], server: '节点选择' }],
+    },
+  };
+  const refs = findRulesUsingPolicyGroup('节点选择', content);
+  assert.deepEqual(refs, ['第 2 条分流规则', '第 1 条 DNS 规则', 'DNS 服务器「remote」的出站链路']);
+  assert.deepEqual(findRulesUsingPolicyGroup('直连', content), ['第 1 条分流规则']);
+  assert.deepEqual(findRulesUsingPolicyGroup('未知策略', content), []);
+});
+
+test('findRulesUsingInbound finds matching route rules', () => {
+  const content = {
+    route: {
+      rules: [
+        { inbound: ['tproxy-in', 'tun-in'], outbound: '直连' },
+        { inbound: 'mixed-in', outbound: '代理' },
+        { rule_set: ['cn'], outbound: '直连' },
+      ],
+    },
+  };
+  assert.deepEqual(findRulesUsingInbound('tproxy-in', content), ['第 1 条分流规则']);
+  assert.deepEqual(findRulesUsingInbound('mixed-in', content), ['第 2 条分流规则']);
+  assert.deepEqual(findRulesUsingInbound('missing-in', content), []);
+});
+
+test('findRulesUsingDnsServer finds referencing rules and upstream detours', () => {
+  const content = {
+    dns: {
+      servers: [
+        { tag: 'local_dns', detour: 'direct' },
+        { tag: 'remote_dns', detour: 'proxy', resolver: 'local_dns' },
+      ],
+      rules: [{ rule_set: ['cn'], server: 'local_dns' }],
+    },
+  };
+  assert.deepEqual(findRulesUsingDnsServer('local_dns', content), [
+    '第 1 条 DNS 规则',
+    'DNS 服务器「remote_dns」的上游解析器',
+  ]);
+  assert.deepEqual(findRulesUsingDnsServer('remote_dns', content), []);
 });

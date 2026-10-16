@@ -79,4 +79,30 @@ test('buildHash formats hash strings accurately', () => {
   assert.equal(buildHash({ tab: 'profiles' }), '#/profiles');
   assert.equal(buildHash({ tab: 'profiles', subtab: 'new' }), '#/profiles?new=1');
   assert.equal(buildHash({ tab: 'profiles', id: 'prof_1', subtab: 'new' }), '#/profiles?id=prof_1');
+  assert.equal(
+    buildHash({ tab: 'sources', id: 'src_1', subtab: 'inspect' }),
+    '#/sources?id=src_1&action=inspect',
+  );
+  assert.equal(
+    buildHash({ tab: 'sources', id: 'src_1', subtab: 'edit' }),
+    '#/sources?id=src_1&action=edit',
+  );
+  assert.equal(buildHash({ tab: 'sources' }), '#/sources');
+});
+
+test('parseRoute extracts id and action for sources', () => {
+  const inspect = parseRoute('#/sources?id=src_1&action=inspect');
+  assert.equal(inspect.tab, 'sources');
+  assert.equal(inspect.id, 'src_1');
+  assert.equal(inspect.subtab, 'inspect');
+
+  const edit = parseRoute('#/sources?id=src_2&action=edit');
+  assert.equal(edit.tab, 'sources');
+  assert.equal(edit.id, 'src_2');
+  assert.equal(edit.subtab, 'edit');
+
+  const fallback = parseRoute('#/sources?id=src_3');
+  assert.equal(fallback.tab, 'sources');
+  assert.equal(fallback.id, 'src_3');
+  assert.equal(fallback.subtab, 'inspect');
 });

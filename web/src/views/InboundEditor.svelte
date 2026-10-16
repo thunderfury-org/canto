@@ -19,6 +19,8 @@
     summarizeInbound,
     typeOptions,
   } from '../data/inbounds.js';
+  import { store } from '../data/store.svelte.js';
+  import { findRulesUsingInbound } from '../data/templateDocument.js';
   import Cable from 'lucide-svelte/icons/cable';
   import Waypoints from 'lucide-svelte/icons/waypoints';
   import Plus from 'lucide-svelte/icons/plus';
@@ -33,6 +35,7 @@
   } = $props();
 
   let drawer = $state(null);
+  let initialDraftJson = '';
 
   let inboundItems = $derived(Array.isArray(inbounds) ? inbounds : []);
   let endpointItems = $derived(Array.isArray(endpoints) ? endpoints : []);
@@ -77,6 +80,7 @@
       index,
       draft: createInboundDraft(source ? cloneData(source) : {}),
     };
+    initialDraftJson = JSON.stringify(drawer.draft);
   }
 
   function openInboundCreate() {
@@ -86,6 +90,7 @@
       index: -1,
       draft: createNewInboundDraft(inboundItems.map((item) => item?.tag).filter(Boolean)),
     };
+    initialDraftJson = JSON.stringify(drawer.draft);
   }
 
   function openEndpointEdit(index) {
@@ -96,6 +101,7 @@
       index,
       draft: createEndpointDraft(source ? cloneData(source) : {}),
     };
+    initialDraftJson = JSON.stringify(drawer.draft);
   }
 
   function openEndpointCreate() {
@@ -105,10 +111,21 @@
       index: -1,
       draft: createNewEndpointDraft(endpointItems.map((item) => item?.tag).filter(Boolean)),
     };
+    initialDraftJson = JSON.stringify(drawer.draft);
+  }
+
+  function forceCancelDrawer() {
+    drawer = null;
   }
 
   function cancelDrawer() {
-    drawer = null;
+    if (drawer) {
+      const isDirty = initialDraftJson !== JSON.stringify(drawer.draft);
+      if (isDirty && !confirm('当前抽屉有未保存的修改，确定放弃吗？')) {
+        return;
+      }
+    }
+    forceCancelDrawer();
   }
 
   function finishDrawer() {
@@ -136,13 +153,24 @@
   }
 
   function removeInbound(index) {
+    const inbound = inboundItems[index];
+    const tag = inbound?.tag || '';
+    const refs = findRulesUsingInbound(tag, store.selectedTemplate?.content);
+    const warning =
+      refs.length > 0
+        ? `\n\n⚠️ 警告：该入站正被以下分流规则引用：\n${refs.map((r) => `· ${r}`).join('\n')}\n删除后可能导致这些分流规则失效！`
+        : '';
+    if (!confirm(`确定删除入站「${tag || '此入站'}」吗？${warning}`)) return;
     onCommitInbounds(inboundItems.filter((_, itemIndex) => itemIndex !== index));
-    if (drawer?.kind === 'inbound' && drawer.mode === 'edit') cancelDrawer();
+    if (drawer?.kind === 'inbound' && drawer.mode === 'edit') forceCancelDrawer();
   }
 
   function removeEndpoint(index) {
+    const ep = endpointItems[index];
+    const tag = ep?.tag || '';
+    if (!confirm(`确定删除端点「${tag || '此端点'}」吗？`)) return;
     onCommitEndpoints(endpointItems.filter((_, itemIndex) => itemIndex !== index));
-    if (drawer?.kind === 'endpoint' && drawer.mode === 'edit') cancelDrawer();
+    if (drawer?.kind === 'endpoint' && drawer.mode === 'edit') forceCancelDrawer();
   }
 
   function onInboundType(event) {
