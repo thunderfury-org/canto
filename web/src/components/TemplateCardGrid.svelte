@@ -106,11 +106,7 @@
           class="bg-slate-900/80 border border-slate-800 hover:border-slate-700/80 rounded-lg p-3.5 sm:p-4 transition-all shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 group"
         >
           <!-- Left: Summary, Metadata & Metrics -->
-          <button
-            type="button"
-            onclick={() => onSelectTemplate(tpl.id)}
-            class="space-y-1.5 min-w-0 flex-1 text-left cursor-pointer bg-transparent border-0 p-0"
-          >
+          <div class="space-y-1.5 min-w-0 flex-1">
             <!-- Title & Status Badges -->
             <div class="flex items-center gap-2 flex-wrap">
               <span
@@ -199,7 +195,7 @@
                 </div>
               {/if}
             </div>
-          </button>
+          </div>
 
           <!-- Right: Actions -->
           <div class="flex items-center gap-2 shrink-0 self-end md:self-center">
