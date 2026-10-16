@@ -2,6 +2,7 @@
   import { store } from '../data/store.svelte.js';
   import { canSave, isDirty, saveBlocker, viewOf } from '../data/subscriptionDraft.js';
   import Plus from 'lucide-svelte/icons/plus';
+  import RefreshCw from 'lucide-svelte/icons/refresh-cw';
   import Pencil from 'lucide-svelte/icons/pencil';
   import Trash2 from 'lucide-svelte/icons/trash-2';
   import Copy from 'lucide-svelte/icons/copy';
@@ -375,10 +376,11 @@
               type="button"
               onclick={resetLink}
               disabled={dirty}
-              class="btn btn-ghost"
-              title={dirty ? '先保存或放弃修改' : '旧链接会失效'}
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
+              title={dirty ? '先保存或放弃修改' : '重新生成 Token，旧链接立刻失效'}
             >
-              重置链接
+              <RefreshCw size={13} />
+              <span>重置链接</span>
             </button>
           {/if}
         </div>

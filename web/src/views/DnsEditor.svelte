@@ -923,7 +923,7 @@
             type="button"
             disabled={!!drawerProblem}
             onclick={finishDrawer}
-            class="btn {drawerProblem ? 'btn-ghost' : 'btn-primary'}"
+            class="btn btn-primary"
           >
             完成
           </button>
