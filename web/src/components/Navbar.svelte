@@ -1,45 +1,40 @@
 <script>
   import { store } from '../data/store.svelte.js';
+  import { leavePrompt } from '../data/subscriptionDraft.js';
   import LayoutDashboard from 'lucide-svelte/icons/layout-dashboard';
   import FileCode2 from 'lucide-svelte/icons/file-code-2';
   import Network from 'lucide-svelte/icons/network';
   import Boxes from 'lucide-svelte/icons/boxes';
   import LogOut from 'lucide-svelte/icons/log-out';
 
-  let logoutPrompt = $state(false);
   let logoutBusy = $state(false);
   let exitError = $state('');
 
   async function handleLogout() {
     exitError = '';
-    if (store.hasDirtyTemplates) {
-      logoutPrompt = true;
-      return;
-    }
-    const ok = await store.logout();
-    if (!ok) exitError = store.authStatusMessage;
+    store.askLeave(async () => {
+      const ok = await store.logout();
+      if (!ok) exitError = store.authStatusMessage;
+    });
   }
 
   async function confirmLogoutSave() {
     logoutBusy = true;
-    const ok = await store.saveAllDrafts();
+    const ok = await store.confirmLeaveSave();
     logoutBusy = false;
-    if (!ok) {
-      logoutPrompt = false;
-      return;
-    }
-    logoutPrompt = false;
-    const exited = await store.logout();
-    if (!exited) exitError = store.authStatusMessage;
+    if (!ok) return;
   }
 
-  async function confirmLogoutDiscard() {
-    store.discardAllDrafts();
-    logoutPrompt = false;
-    const exited = await store.logout();
-    if (!exited) exitError = store.authStatusMessage;
+  function confirmLogoutDiscard() {
+    store.confirmLeaveDiscard();
   }
 </script>
+
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === 'Escape' && store.leaveOpen && !logoutBusy) store.cancelLeave();
+  }}
+/>
 
 <header
   class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-30 px-3 md:px-4 py-2 md:py-2.5"
@@ -122,7 +117,7 @@
         href="#/profiles"
         onclick={(e) => {
           e.preventDefault();
-          store.navigate('profiles', { id: store.selectedProfileId });
+          store.navigate('profiles', {});
         }}
         class="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md transition-all font-medium whitespace-nowrap shrink-0 flex-1 sm:flex-initial {store.currentTab ===
         'profiles'
@@ -130,7 +125,7 @@
           : 'text-slate-400 hover:text-slate-200'}"
       >
         <Boxes size={14} class="shrink-0" />
-        <span>分发配置</span>
+        <span>订阅</span>
         <span
           class="text-[10px] sm:text-xs bg-slate-900 text-slate-400 px-1.5 rounded-full border border-slate-800 font-mono whitespace-nowrap"
         >
@@ -155,19 +150,24 @@
 {/if}
 
 <!-- Logout with unsaved template drafts -->
-{#if logoutPrompt}
+{#if store.leaveOpen}
   <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
     <div
       class="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl max-w-md w-full p-5 text-slate-100"
     >
-      <h3 class="text-sm font-semibold text-slate-100">还有未保存的配置模板</h3>
-      <p class="mt-2 text-xs text-slate-400">
-        保存会尝试保存每一份草稿。某一份失败时不会退出。基准已旧的草稿不会被强行保存。
-      </p>
+      <h3 class="text-sm font-semibold text-slate-100">
+        {leavePrompt(store.pendingKind())?.title || ''}
+      </h3>
+      <p class="mt-2 text-xs text-slate-400">{leavePrompt(store.pendingKind())?.body || ''}</p>
+      {#if store.profileSaveError || store.templateSaveError}
+        <p class="mt-3 text-xs text-rose-400">
+          {store.profileSaveError || store.templateSaveError}
+        </p>
+      {/if}
       <div class="mt-4 flex flex-wrap justify-end gap-2">
         <button
           type="button"
-          onclick={() => (logoutPrompt = false)}
+          onclick={() => store.cancelLeave()}
           disabled={logoutBusy}
           class="btn btn-ghost"
         >

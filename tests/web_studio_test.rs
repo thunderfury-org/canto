@@ -1211,27 +1211,6 @@ async fn test_profiles_crud_preview_and_public_subscription() {
     assert!(persisted.contains(&token));
     assert!(!persisted.contains("publicUrl"));
 
-    let (status, preview) = json_body(
-        app.clone()
-            .oneshot(auth_req(
-                "GET",
-                &format!("/api/profiles/{profile_id}/preview"),
-                Body::empty(),
-            ))
-            .await
-            .unwrap(),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{preview}");
-    assert_eq!(preview["config"]["outbounds"][1]["outbounds"][0], "HK-01");
-    assert_eq!(preview["config"]["outbounds"][3]["tag"], "HK-01");
-    assert_eq!(preview["config"]["outbounds"][3]["type"], "vless");
-    assert_eq!(preview["usedCount"], 1);
-    assert_eq!(preview["totalNodes"], 2);
-    assert_eq!(preview["matchedMap"]["香港节点"][0], "HK-01");
-    let leftover = serde_json::to_string(&preview["config"]).unwrap();
-    assert!(!leftover.contains("{(?i)(港|hk)}"), "{leftover}");
-
     let public = app
         .clone()
         .oneshot(
@@ -1258,7 +1237,6 @@ async fn test_profiles_crud_preview_and_public_subscription() {
         .unwrap();
     assert!(content_type.contains("application/json"));
     let (_, compiled) = json_body(public).await;
-    assert_eq!(compiled, preview["config"]);
     assert_eq!(compiled["outbounds"][1]["outbounds"][0], "HK-01");
     assert_eq!(compiled["outbounds"][3]["server"], "hk.example.com");
     assert_eq!(compiled["log"]["level"], "warn");
@@ -1906,38 +1884,28 @@ async fn test_ruleset_presets_and_template_rule_sets_flow() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED);
-    let prof_id = profile["id"].as_str().unwrap();
-
-    let (status, preview) = json_body(
-        app.clone()
-            .oneshot(auth_req(
-                "GET",
-                &format!("/api/profiles/{prof_id}/preview"),
-                Body::empty(),
-            ))
-            .await
-            .unwrap(),
-    )
-    .await;
+    let token = profile["token"].as_str().unwrap();
+    let public = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/sub/{token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let (status, compiled) = json_body(public).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(preview["config"].get("rule_sets").is_none());
+    assert!(compiled.get("rule_sets").is_none());
     assert_eq!(
-        preview["config"]["route"]["rule_set"][0]["tag"],
+        compiled["route"]["rule_set"][0]["tag"],
         json!(["cn", "ai", "netflix"])
     );
-    assert_eq!(
-        preview["config"]["route"]["rule_set"][0]["format"],
-        "binary"
-    );
-    assert_eq!(
-        preview["config"]["route"]["rule_set"][0]["http_client"],
-        "http-ALL"
-    );
-    assert_eq!(
-        preview["config"]["route"]["default_http_client"],
-        "http-ALL"
-    );
-    assert_eq!(preview["config"]["http_clients"][0]["detour"], "ALL");
+    assert_eq!(compiled["route"]["rule_set"][0]["format"], "binary");
+    assert_eq!(compiled["route"]["rule_set"][0]["http_client"], "http-ALL");
+    assert_eq!(compiled["route"]["default_http_client"], "http-ALL");
+    assert_eq!(compiled["http_clients"][0]["detour"], "ALL");
 
     let _ = std::fs::remove_dir_all(dir);
 }

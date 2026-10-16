@@ -1,6 +1,6 @@
 # Canto
 
-canto 是基于 sing-box 的透明代理网关控制面与可视化配置中心：既能在 Linux / OpenWrt 上消费完整 sing-box JSON、覆盖入站并编排劫持规则；也能通过内置 Web Studio 管理模板与节点源、组装 Profile 并向各端分发订阅。
+canto 是基于 sing-box 的透明代理网关控制面与可视化配置中心：既能在 Linux / OpenWrt 上消费完整 sing-box JSON、覆盖入站并编排劫持规则；也能通过内置 Web Studio 管理配置模板、节点源和订阅。
 
 ## Language
 
@@ -41,15 +41,15 @@ nft 在打标/tproxy 之前按 `cn_ip.txt` 对目的地址 return。
 _Avoid_: geoip, 源配置 cnip
 
 **配置模板 (Template)**:
-Web Studio 中可被多份配置档案共用的 sing-box 配置骨架。配置编译只读取已保存的这份。
+Web Studio 中可被多份订阅共用的 sing-box 配置骨架。配置编译只读取已保存的这份。
 _Avoid_: 模板文件, 基础配置, 草稿
 
 **草稿 (Draft)**:
-已登录后，用户对一份配置模板做出、但尚未保存的修改。同一次打开里离开编辑器再回来，草稿仍在。保存之前不影响任何配置档案。
+已登录后，用户对一份配置模板或订阅做出、但尚未保存的修改。同一次打开里离开后再回来，草稿仍在。保存之前不影响已发布的内容。
 _Avoid_: 已同步更新, 自动保存, 临时模板
 
 **保存 (Save)**:
-用按下保存时编辑器展示的这份模板，替换已保存的配置模板。引用它的每份配置档案在下次编译时都看到新内容。
+用按下保存时展示的这份，替换已保存的那份。引用它的每份订阅在下次编译时都看到新内容。
 _Avoid_: 同步, 自动保存
 
 **放弃 (Discard)**:
@@ -60,13 +60,13 @@ _Avoid_: 还原, 撤销, 重置
 向 Web Studio 提供代理节点的输入源，支持 Clash YAML（`proxies:`）、Base64 协议 URI 列表与 sing-box 原生 JSON。
 _Avoid_: 节点池, 订阅源
 
-**配置档案 (Profile)**:
-绑定配置模板与若干节点源的分发单元，具备独立访问 Token 与公开 HTTP 订阅端点。
-_Avoid_: 订阅配置, 导出档案
+**订阅 (Profile)**:
+一份配置模板加若干节点源。保存后得到一条链接。不是节点源，也不是网关的源配置。
+_Avoid_: 配置档案, 分发配置, 源配置, 订阅配置
 
 **访问 Token**:
-一份配置档案对外分发订阅的凭证。持有它不能进入 Web Studio。
-_Avoid_: 密码, Admin Token, 管理认证
+一条订阅的链接凭证。持有它不能进入 Web Studio。
+_Avoid_: 密码, Admin Token, 管理认证, 订阅 Token
 
 **管理认证**:
 Web Studio 的进入门槛，凭据是密码。
@@ -93,7 +93,7 @@ Web Studio 在编译配置时，将节点分组中的正则占位符匹配并替
 _Avoid_: 宏展开, 占位符替换
 
 **配置编译 (Compilation)**:
-Web Studio 将配置档案（Profile）结合配置模板（Template）与关联节点源（Node Source），经由标签展开与完整性校验组装为可用 sing-box JSON 与分发元数据的过程。
+Web Studio 将订阅结合配置模板与关联节点源，经由标签展开与完整性校验组装为可用 sing-box JSON 的过程。
 _Avoid_: 动态生成, 导出配置, 打包
 
 **规则集 (Rule Set)**:

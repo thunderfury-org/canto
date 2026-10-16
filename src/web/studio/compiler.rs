@@ -24,9 +24,6 @@ pub struct CompiledProfile {
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum CompileError {
-    #[error("profile '{0}' not found")]
-    ProfileNotFound(String),
-
     #[error("subscription not found")]
     TokenNotFound(String),
 
@@ -66,13 +63,6 @@ impl ProfileCompiler {
         }
     }
 
-    pub async fn compile_by_id(&self, id: &str) -> Result<CompiledProfile, CompileError> {
-        let Some(profile) = self.profiles.get(id).await else {
-            return Err(CompileError::ProfileNotFound(id.to_string()));
-        };
-        self.compile(&profile).await
-    }
-
     pub async fn compile_by_token(&self, token: &str) -> Result<CompiledProfile, CompileError> {
         let Some(profile) = self.profiles.get_by_token(token).await else {
             return Err(CompileError::TokenNotFound(token.to_string()));
@@ -80,13 +70,20 @@ impl ProfileCompiler {
         self.compile(&profile).await
     }
 
-    pub async fn compile(&self, profile: &Profile) -> Result<CompiledProfile, CompileError> {
-        let Some(template) = self.templates.get(&profile.template_id).await else {
-            return Err(CompileError::TemplateNotFound(profile.template_id.clone()));
-        };
+    async fn compile_refs(
+        &self,
+        template_id: &str,
+        source_ids: &[String],
+    ) -> Result<CompiledProfile, CompileError> {
+        self.validate_refs(template_id, source_ids).await?;
+        let template = self
+            .templates
+            .get(template_id)
+            .await
+            .ok_or_else(|| CompileError::TemplateNotFound(template_id.to_string()))?;
 
         let mut nodes = Vec::new();
-        for source_id in &profile.source_ids {
+        for source_id in source_ids {
             let Some(source) = self.sources.get(source_id).await else {
                 continue;
             };
@@ -106,6 +103,11 @@ impl ProfileCompiler {
             etag,
             raw_bytes,
         })
+    }
+
+    pub async fn compile(&self, profile: &Profile) -> Result<CompiledProfile, CompileError> {
+        self.compile_refs(&profile.template_id, &profile.source_ids)
+            .await
     }
 
     pub async fn validate_refs(
@@ -225,7 +227,7 @@ mod tests {
         };
         profiles.insert(profile.clone()).await.unwrap();
 
-        let compiler = ProfileCompiler::new(templates, sources, profiles);
+        let compiler = ProfileCompiler::new(templates, sources, Arc::clone(&profiles));
 
         // Compile by profile
         let compiled = compiler.compile(&profile).await.unwrap();
@@ -238,10 +240,6 @@ mod tests {
             compiled.config["outbounds"][1]["outbounds"],
             json!(["HK-Node", "US-Node"])
         );
-
-        // Compile by id
-        let by_id = compiler.compile_by_id("prof_1").await.unwrap();
-        assert_eq!(by_id.etag, compiled.etag);
 
         // Compile by token
         let by_token = compiler.compile_by_token("tok_test123").await.unwrap();
@@ -256,11 +254,6 @@ mod tests {
         let profiles = Arc::new(ProfileStore::empty(&dir));
 
         let compiler = ProfileCompiler::new(templates, sources, profiles);
-
-        assert_eq!(
-            compiler.compile_by_id("missing").await.unwrap_err(),
-            CompileError::ProfileNotFound("missing".to_string())
-        );
 
         assert_eq!(
             compiler.compile_by_token("missing").await.unwrap_err(),

@@ -44,6 +44,7 @@ export function parseRoute(
 
   const searchParams = new URLSearchParams(queryPart);
   const id = searchParams.get('id') || null;
+  const creating = tab === 'profiles' && searchParams.get('new') === '1';
   const rawSubtab = searchParams.get('subtab') || null;
   const subtab =
     tab === 'templates' && id
@@ -52,7 +53,7 @@ export function parseRoute(
         : 'node_groups'
       : null;
 
-  return { tab, id, subtab };
+  return { tab, id, subtab, creating };
 }
 
 export function buildHash({ tab, id, subtab }) {
@@ -68,6 +69,7 @@ export function buildHash({ tab, id, subtab }) {
     }
   } else if (targetTab === 'profiles') {
     if (id) params.set('id', id);
+    else if (subtab === 'new') params.set('new', '1');
   }
 
   const qs = params.toString();
@@ -76,7 +78,7 @@ export function buildHash({ tab, id, subtab }) {
 
 export function getInitialRoute() {
   if (typeof window === 'undefined') {
-    return { tab: 'dashboard', id: null, subtab: null };
+    return { tab: 'dashboard', id: null, subtab: null, creating: false };
   }
   return parseRoute(window.location.hash, window.location.pathname);
 }
@@ -108,25 +110,38 @@ export function initRouter(store) {
 
   function handleHashChange() {
     const route = parseRoute();
-    if (store.currentTab !== route.tab) {
-      store.currentTab = route.tab;
+    const next = buildHash({ tab: route.tab, ...routeParams(route) });
+    if (buildHash(hashFromStore()) === next) return;
+    if (store.pendingKind() !== 'none') {
+      syncHash(hashFromStore());
+      store.askLeave(() => store.navigate(route.tab, routeParams(route), { force: true }));
+      return;
     }
-    if (route.tab === 'templates') {
-      if (route.id !== store.selectedTemplateId) {
-        store.selectedTemplateId = route.id;
-      }
-      if (route.subtab && route.subtab !== store.templateSubTab) {
-        store.templateSubTab = route.subtab;
-      }
-    } else if (route.tab === 'profiles') {
-      if (route.id && route.id !== store.selectedProfileId) {
-        store.selectedProfileId = route.id;
-      }
+    store.navigate(route.tab, routeParams(route), { force: true });
+  }
+
+  function routeParams(route) {
+    if (route.tab === 'templates') return { id: route.id, subtab: route.subtab };
+    if (route.tab === 'profiles' && route.creating) return { subtab: 'new' };
+    if (route.tab === 'profiles') return { id: route.id };
+    return {};
+  }
+
+  function hashFromStore() {
+    if (store.currentTab === 'templates') {
+      return { tab: 'templates', id: store.selectedTemplateId, subtab: store.templateSubTab };
     }
+    if (store.currentTab === 'profiles' && store.creatingProfile) {
+      return { tab: 'profiles', subtab: 'new' };
+    }
+    if (store.currentTab === 'profiles') {
+      return { tab: 'profiles', id: store.selectedProfileId };
+    }
+    return { tab: store.currentTab };
   }
 
   const initial = parseRoute();
-  syncHash(initial);
+  syncHash(initial.creating ? { tab: 'profiles', subtab: 'new' } : initial);
 
   window.addEventListener('hashchange', handleHashChange);
   return () => {

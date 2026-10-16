@@ -13,7 +13,7 @@
   onMount(() => {
     const cleanup = initRouter(store);
     const onBeforeUnload = (event) => {
-      if (!store.hasDirtyTemplates) return;
+      if (!store.hasDirtyTemplates && !store.hasDirtySubscription) return;
       event.preventDefault();
       event.returnValue = '';
     };
@@ -40,7 +40,11 @@
         syncHash({ tab });
       }
     } else if (tab === 'profiles') {
-      syncHash({ tab, id: profId });
+      syncHash({
+        tab,
+        id: store.creatingProfile ? null : profId,
+        subtab: store.creatingProfile ? 'new' : null,
+      });
     } else {
       syncHash({ tab });
     }

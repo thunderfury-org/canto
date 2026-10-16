@@ -24,7 +24,7 @@
   >
     <div class="space-y-1.5">
       <h1 class="text-base font-semibold tracking-tight text-slate-100">Canto</h1>
-      <p class="text-xs text-slate-400">进入后管理配置模板、节点源和分发配置</p>
+      <p class="text-xs text-slate-400">进入后管理配置模板、节点源和订阅</p>
     </div>
 
     <label for="studio-password" class="block space-y-1.5">

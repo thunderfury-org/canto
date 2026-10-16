@@ -111,7 +111,7 @@
     <div class="min-w-0">
       <h1 class="text-base font-semibold text-slate-100">节点源</h1>
       <p class="text-xs text-slate-400 mt-1">
-        汇聚外部机场订阅链接与自建私有 VPS 节点，供 Profile 策略组按正则匹配引用
+        汇聚外部机场节点和自建节点，供订阅里的节点分组按正则匹配
       </p>
     </div>
 
@@ -152,7 +152,7 @@
               id="src-name"
               type="text"
               bind:value={newName}
-              placeholder="例如：备用专线订阅 或 阿里云日本自建"
+              placeholder="例如：备用专线 或 阿里云日本自建"
               class="field w-full px-3 py-1.5 text-xs"
             />
           </div>
@@ -168,7 +168,7 @@
                   ? 'bg-slate-800 border-slate-600 text-slate-100 font-medium'
                   : 'bg-slate-950 border-slate-800 text-slate-400'}"
               >
-                外部 HTTP(S) 订阅 URL
+                外部节点源地址
               </button>
               <button
                 type="button"
@@ -185,9 +185,7 @@
 
           {#if newType === 'subscription'}
             <div>
-              <label for="src-url" class="block text-slate-300 font-medium mb-1"
-                >订阅链接 (URL)</label
-              >
+              <label for="src-url" class="block text-slate-300 font-medium mb-1">节点源地址</label>
               <input
                 id="src-url"
                 type="text"
@@ -196,7 +194,7 @@
                 class="field w-full px-3 py-1.5 text-xs font-mono"
               />
               <span class="text-[11px] text-slate-500 mt-1 block"
-                >支持标准 Base64 订阅（SS/VMess/VLESS/Trojan/Hysteria2）及 sing-box 原生 JSON</span
+                >支持标准 Base64 节点列表（SS/VMess/VLESS/Trojan/Hysteria2）及 sing-box 原生 JSON</span
               >
             </div>
           {:else}
@@ -261,7 +259,7 @@
       <div
         class="bg-slate-900/80 border border-dashed border-slate-800 rounded-lg p-8 text-center text-xs text-slate-500"
       >
-        还没有节点源。添加外部订阅 URL 或手动录入自建节点。
+        还没有节点源。添加外部节点源地址或手动录入自建节点。
       </div>
     {/if}
     {#each store.sources as src}
@@ -286,7 +284,7 @@
                   ? 'bg-slate-800 text-slate-200 border border-slate-600'
                   : 'bg-slate-900 text-slate-300 border border-slate-700'}"
               >
-                {src.type === 'subscription' ? 'HTTP 订阅源' : '自建/手动源'}
+                {src.type === 'subscription' ? '外部节点源' : '自建/手动源'}
               </span>
               <span class="text-xs text-slate-500">
                 (包含 {src.nodes?.length || 0} 个节点)

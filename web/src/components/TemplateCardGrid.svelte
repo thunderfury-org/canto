@@ -55,8 +55,7 @@
         <span>配置模板</span>
       </h1>
       <p class="text-xs text-slate-400 mt-1">
-        管理与组装 sing-box 基础配置模板，包含分流规则、策略组、DNS 与端点，供分发配置 (Profile)
-        绑定引用
+        管理配置模板，包含分流规则、出站策略组、DNS 与端点，供订阅绑定
       </p>
     </div>
 
@@ -199,7 +198,7 @@
               {:else}
                 <div class="text-slate-600 flex items-center gap-1.5">
                   <Boxes size={13} class="text-slate-700 shrink-0" />
-                  <span>暂无分发配置引用</span>
+                  <span>暂无订阅引用</span>
                 </div>
               {/if}
             </div>
