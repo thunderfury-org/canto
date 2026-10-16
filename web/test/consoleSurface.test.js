@@ -56,3 +56,8 @@ test('navbar includes exit buttons for both mobile and desktop viewports', () =>
   assert.match(navbar, /btn-icon\s+md:hidden/);
   assert.match(navbar, /btn-icon\s+hidden\s+md:inline-flex/);
 });
+
+test('component classes are defined in @layer components so utilities can override display', () => {
+  const css = read('app.css');
+  assert.match(css, /@layer\s+components\s*\{[\s\S]*\.btn\s*\{/);
+});
