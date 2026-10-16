@@ -295,3 +295,93 @@ export function migrateLegacyRuleSets(content) {
   delete next.route.rule_set;
   return next;
 }
+
+export function findProfilesUsingTemplate(templateId, profiles) {
+  if (!templateId || !Array.isArray(profiles)) return [];
+  return profiles.filter((p) => p && p.templateId === templateId);
+}
+
+export function findPolicyGroupsUsingNodeGroup(nodeGroupTag, content) {
+  const tag = typeof nodeGroupTag === 'string' ? nodeGroupTag.trim() : '';
+  if (!tag || !content || typeof content !== 'object') return [];
+  const groups = Array.isArray(content.policy_groups) ? content.policy_groups : [];
+  return groups
+    .filter((g) => g && Array.isArray(g.outbounds) && g.outbounds.includes(tag))
+    .map((g) => g.tag || '未命名策略组');
+}
+
+export function findRulesUsingPolicyGroup(policyGroupTag, content) {
+  const tag = typeof policyGroupTag === 'string' ? policyGroupTag.trim() : '';
+  if (!tag || !content || typeof content !== 'object') return [];
+  const refs = [];
+
+  const routeRules = Array.isArray(content.route?.rules) ? content.route.rules : [];
+  routeRules.forEach((rule, idx) => {
+    if (rule?.outbound === tag) {
+      refs.push(`第 ${idx + 1} 条分流规则`);
+    }
+  });
+
+  const dnsRules = Array.isArray(content.dns?.rules) ? content.dns.rules : [];
+  dnsRules.forEach((rule, idx) => {
+    if (rule?.server === tag) {
+      refs.push(`第 ${idx + 1} 条 DNS 规则`);
+    }
+  });
+
+  const dnsServers = Array.isArray(content.dns?.servers) ? content.dns.servers : [];
+  dnsServers.forEach((server) => {
+    if (server?.detour === tag) {
+      refs.push(`DNS 服务器「${server.tag || '未命名'}」的出站链路`);
+    }
+  });
+
+  return refs;
+}
+
+export function findRulesUsingInbound(inboundTag, content) {
+  const tag = typeof inboundTag === 'string' ? inboundTag.trim() : '';
+  if (!tag || !content || typeof content !== 'object') return [];
+  const refs = [];
+
+  const routeRules = Array.isArray(content.route?.rules) ? content.route.rules : [];
+  routeRules.forEach((rule, idx) => {
+    const inbounds = Array.isArray(rule?.inbound)
+      ? rule.inbound
+      : typeof rule?.inbound === 'string'
+        ? [rule.inbound]
+        : [];
+    if (inbounds.includes(tag)) {
+      refs.push(`第 ${idx + 1} 条分流规则`);
+    }
+  });
+
+  return refs;
+}
+
+export function findRulesUsingDnsServer(serverTag, content) {
+  const tag = typeof serverTag === 'string' ? serverTag.trim() : '';
+  if (!tag || !content || typeof content !== 'object') return [];
+  const refs = [];
+
+  const dnsRules = Array.isArray(content.dns?.rules) ? content.dns.rules : [];
+  dnsRules.forEach((rule, idx) => {
+    if (rule?.server === tag) {
+      refs.push(`第 ${idx + 1} 条 DNS 规则`);
+    }
+  });
+
+  const dnsServers = Array.isArray(content.dns?.servers) ? content.dns.servers : [];
+  dnsServers.forEach((server) => {
+    if (server?.tag !== tag) {
+      if (server?.detour === tag) {
+        refs.push(`DNS 服务器「${server.tag || '未命名'}」的出站连接`);
+      }
+      if (server?.resolver === tag) {
+        refs.push(`DNS 服务器「${server.tag || '未命名'}」的上游解析器`);
+      }
+    }
+  });
+
+  return refs;
+}

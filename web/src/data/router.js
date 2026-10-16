@@ -46,12 +46,14 @@ export function parseRoute(
   const id = searchParams.get('id') || null;
   const creating = tab === 'profiles' && searchParams.get('new') === '1';
   const rawSubtab = searchParams.get('subtab') || null;
-  const subtab =
-    tab === 'templates' && id
-      ? VALID_SUBTABS.includes(rawSubtab)
-        ? rawSubtab
-        : 'node_groups'
-      : null;
+  const action = searchParams.get('action') || null;
+  let subtab = null;
+  if (tab === 'templates' && id) {
+    subtab = VALID_SUBTABS.includes(rawSubtab) ? rawSubtab : 'node_groups';
+  } else if (tab === 'sources' && id) {
+    const candidate = action || rawSubtab;
+    subtab = candidate === 'inspect' || candidate === 'edit' ? candidate : 'inspect';
+  }
 
   return { tab, id, subtab, creating };
 }
@@ -70,6 +72,13 @@ export function buildHash({ tab, id, subtab }) {
   } else if (targetTab === 'profiles') {
     if (id) params.set('id', id);
     else if (subtab === 'new') params.set('new', '1');
+  } else if (targetTab === 'sources') {
+    if (id) {
+      params.set('id', id);
+      if (subtab === 'inspect' || subtab === 'edit') {
+        params.set('action', subtab);
+      }
+    }
   }
 
   const qs = params.toString();
@@ -124,6 +133,7 @@ export function initRouter(store) {
     if (route.tab === 'templates') return { id: route.id, subtab: route.subtab };
     if (route.tab === 'profiles' && route.creating) return { subtab: 'new' };
     if (route.tab === 'profiles') return { id: route.id };
+    if (route.tab === 'sources') return { id: route.id, subtab: route.subtab };
     return {};
   }
 
@@ -136,6 +146,9 @@ export function initRouter(store) {
     }
     if (store.currentTab === 'profiles') {
       return { tab: 'profiles', id: store.selectedProfileId };
+    }
+    if (store.currentTab === 'sources') {
+      return { tab: 'sources', id: store.selectedSourceId, subtab: store.sourceSubTab };
     }
     return { tab: store.currentTab };
   }

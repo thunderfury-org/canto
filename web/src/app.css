@@ -119,9 +119,15 @@ summary:focus-visible {
     padding: 0;
   }
 
+  .btn-danger {
+    color: #fb7185;
+    border-color: #4c1d24;
+  }
+
   .btn-danger:hover:not(:disabled) {
     background: rgb(76 5 25 / 0.55);
-    color: #fb7185;
+    border-color: #881337;
+    color: #fecdd3;
   }
 
   .btn-warning {

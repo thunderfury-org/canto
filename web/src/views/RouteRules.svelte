@@ -51,6 +51,7 @@
   let dragFrom = $state(-1);
   let dragOver = $state(-1);
   let conditionPicker = $state('');
+  let initialDraftJson = '';
 
   const TONE_CLASS = {
     direct: 'text-slate-400 bg-slate-900/80 border-slate-800',
@@ -120,6 +121,7 @@
       draft: createDraft(source ? cloneData(source) : {}),
     };
     conditionPicker = '';
+    initialDraftJson = JSON.stringify(drawer.draft);
   }
 
   function openCreate() {
@@ -130,11 +132,22 @@
       draft: createNewDraft(preferred),
     };
     conditionPicker = '';
+    initialDraftJson = JSON.stringify(drawer.draft);
+  }
+
+  function forceCancelDrawer() {
+    drawer = null;
+    conditionPicker = '';
   }
 
   function cancelDrawer() {
-    drawer = null;
-    conditionPicker = '';
+    if (drawer) {
+      const isDirty = initialDraftJson !== JSON.stringify(drawer.draft);
+      if (isDirty && !confirm('当前抽屉有未保存的修改，确定放弃吗？')) {
+        return;
+      }
+    }
+    forceCancelDrawer();
   }
 
   function finishDrawer() {
@@ -166,8 +179,9 @@
   }
 
   function removeAt(index) {
+    if (!confirm(`确定删除第 ${index + 1} 条路由分流规则吗？`)) return;
     commitRules(removeRule([...rules], index));
-    if (drawer?.mode === 'edit') cancelDrawer();
+    if (drawer?.mode === 'edit') forceCancelDrawer();
   }
 
   function onDragStart(event, index) {
@@ -717,7 +731,7 @@
             type="button"
             disabled={!!drawerProblem}
             onclick={finishDrawer}
-            class="btn {drawerProblem ? 'btn-ghost' : 'btn-primary'}"
+            class="btn btn-primary"
           >
             完成
           </button>

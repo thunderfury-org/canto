@@ -7,6 +7,7 @@
     createSourceDraft,
     emptySourceDraft,
     sourceSaveBlocker,
+    isSourceDirty,
   } from '../data/sourceDraft.js';
   import Network from 'lucide-svelte/icons/network';
   import Plus from 'lucide-svelte/icons/plus';
@@ -31,6 +32,8 @@
 
   let blocker = $derived(sourceSaveBlocker(draft));
   let savable = $derived(canSaveSource(draft));
+  let originalSource = $derived(editingId ? store.sources.find((s) => s.id === editingId) : null);
+  let dirty = $derived(isSourceDirty(draft, originalSource));
 
   onMount(() => {
     if (store.isAuthenticated) {
@@ -49,6 +52,7 @@
     formError = '';
     editDrawerOpen = true;
     inspectingSource = null;
+    store.navigate('sources', {});
   }
 
   function openEdit(src) {
@@ -57,25 +61,34 @@
     formError = '';
     editDrawerOpen = true;
     inspectingSource = null;
+    store.navigate('sources', { id: src.id, subtab: 'edit' });
   }
 
-  function closeEditDrawer() {
-    if (saving) return;
+  function forceCloseEditDrawer() {
     editDrawerOpen = false;
     editingId = null;
     draft = emptySourceDraft();
     formError = '';
+    if (store.selectedSourceId) store.navigate('sources', {});
+  }
+
+  function closeEditDrawer() {
+    if (saving) return;
+    if (dirty && !confirm('当前有未保存的修改，确定放弃编辑吗？')) return;
+    forceCloseEditDrawer();
   }
 
   function openInspect(src) {
     inspectingSource = src;
     inspectSearch = '';
     editDrawerOpen = false;
+    store.navigate('sources', { id: src.id, subtab: 'inspect' });
   }
 
   function closeInspectDrawer() {
     inspectingSource = null;
     inspectSearch = '';
+    if (store.selectedSourceId) store.navigate('sources', {});
   }
 
   async function handleSaveSource() {
@@ -89,7 +102,7 @@
       } else {
         await store.createSource(payload);
       }
-      closeEditDrawer();
+      forceCloseEditDrawer();
     } catch (err) {
       formError = err.message || String(err);
     } finally {
@@ -138,6 +151,38 @@
       else if (inspectingSource) closeInspectDrawer();
     }
   }
+
+  $effect(() => {
+    if (store.currentTab !== 'sources') return;
+    const targetId = store.selectedSourceId;
+    const subtab = store.sourceSubTab;
+    if (!targetId) {
+      if (editDrawerOpen && !saving && !dirty) {
+        editDrawerOpen = false;
+        editingId = null;
+        draft = emptySourceDraft();
+      }
+      if (inspectingSource) {
+        inspectingSource = null;
+      }
+      return;
+    }
+    const targetSource = store.sources.find((s) => s.id === targetId);
+    if (!targetSource) return;
+    if (subtab === 'edit') {
+      if (editingId !== targetId) {
+        editingId = targetId;
+        draft = createSourceDraft(targetSource);
+        editDrawerOpen = true;
+        inspectingSource = null;
+      }
+    } else {
+      if (inspectingSource?.id !== targetId) {
+        inspectingSource = targetSource;
+        editDrawerOpen = false;
+      }
+    }
+  });
 
   let filteredSources = $derived.by(() => {
     const q = searchKeyword.trim().toLowerCase();
@@ -302,7 +347,7 @@
             <button
               type="button"
               onclick={() => openInspect(src)}
-              class="btn btn-secondary text-xs px-2.5 py-1"
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
               title="查看此源解析出来的所有节点"
             >
               <Eye size={13} />
@@ -312,29 +357,32 @@
               type="button"
               onclick={() => handleRefreshSource(src.id)}
               disabled={refreshingId === src.id}
-              class="btn btn-ghost btn-icon"
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
               title="重新拉取并解析"
               aria-label="重新拉取并解析"
             >
               <RefreshCw size={13} class={refreshingId === src.id ? 'animate-spin' : ''} />
+              <span>刷新</span>
             </button>
             <button
               type="button"
               onclick={() => openEdit(src)}
-              class="btn btn-ghost btn-icon"
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
               title="编辑节点源"
               aria-label="编辑节点源"
             >
               <Pencil size={13} />
+              <span>编辑</span>
             </button>
             <button
               type="button"
               onclick={() => handleDeleteSource(src)}
-              class="btn btn-ghost btn-icon btn-danger"
+              class="btn btn-secondary btn-danger text-xs px-2.5 py-1 flex items-center gap-1.5"
               title="删除此节点源"
               aria-label="删除此节点源"
             >
               <Trash2 size={13} />
+              <span>删除</span>
             </button>
           </div>
         </div>

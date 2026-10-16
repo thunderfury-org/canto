@@ -52,6 +52,12 @@ class StudioStore {
   templateSubTab = $state(
     initialRoute.tab === 'templates' && initialRoute.subtab ? initialRoute.subtab : 'node_groups',
   );
+  selectedSourceId = $state(
+    initialRoute.tab === 'sources' && initialRoute.id ? initialRoute.id : null,
+  );
+  sourceSubTab = $state(
+    initialRoute.tab === 'sources' && initialRoute.subtab ? initialRoute.subtab : null,
+  );
   authPhase = $state(AUTH_CHECKING);
   isAuthenticated = $state(false);
   authStatusMessage = $state('');
@@ -105,6 +111,12 @@ class StudioStore {
     if (tab === 'profiles') {
       const creating = params.subtab === 'new' && !params.id;
       return creating !== this.creatingProfile || (params.id || null) !== this.selectedProfileId;
+    }
+    if (tab === 'sources') {
+      return (
+        (params.id || null) !== this.selectedSourceId ||
+        (params.subtab || null) !== this.sourceSubTab
+      );
     }
     return false;
   }
@@ -171,6 +183,9 @@ class StudioStore {
       } else if (!params.id) {
         this.templateSubTab = 'node_groups';
       }
+    } else if (tab === 'sources') {
+      this.selectedSourceId = params.id || null;
+      this.sourceSubTab = params.subtab || null;
     } else if (tab === 'profiles') {
       const creating = params.subtab === 'new' && !params.id;
       const nextId = params.id || null;

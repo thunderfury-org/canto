@@ -2,6 +2,7 @@
   import { store } from '../data/store.svelte.js';
   import { canSave, isDirty, saveBlocker, viewOf } from '../data/subscriptionDraft.js';
   import Plus from 'lucide-svelte/icons/plus';
+  import RefreshCw from 'lucide-svelte/icons/refresh-cw';
   import Pencil from 'lucide-svelte/icons/pencil';
   import Trash2 from 'lucide-svelte/icons/trash-2';
   import Copy from 'lucide-svelte/icons/copy';
@@ -20,6 +21,11 @@
   let savable = $derived(canSave(draft, store.creatingProfile ? null : published));
   let ready = $derived(store.templates.length > 0 && store.sources.length > 0);
   let missing = $derived(!!store.selectedProfileId && !published && !store.creatingProfile);
+
+  function formatTime(value) {
+    if (!value) return '-';
+    return String(value).replace('T', ' ').replace('Z', '').substring(0, 19);
+  }
 
   function templateName(id) {
     return store.templates.find((item) => item.id === id)?.name || '未找到配置模板';
@@ -96,15 +102,17 @@
     }
   }
 
-  async function remove() {
-    if (!published) return;
-    const name = published.name || '这条订阅';
-    const extra = dirty ? '未保存的修改也会丢掉。' : '';
-    if (!confirm(`删除订阅「${name}」？这条链接会失效。${extra}`)) return;
+  async function handleDeleteProfile(target) {
+    const p = target || published;
+    if (!p) return;
+    const name = p.name || '这条订阅';
+    if (!confirm(`确定删除订阅「${name}」吗？这条链接会立刻失效。\n此操作不可撤销。`)) return;
     store.profileSaveError = '';
     try {
-      await store.removeProfile(published.id);
-      store.navigate('profiles', {}, { force: true });
+      await store.removeProfile(p.id);
+      if (store.selectedProfileId === p.id) {
+        store.navigate('profiles', {}, { force: true });
+      }
     } catch (err) {
       store.profileSaveError = err.message || String(err);
     }
@@ -155,21 +163,52 @@
     >
       {#each store.profiles as item (item.id)}
         <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div class="min-w-0 space-y-1">
+          <div class="min-w-0 space-y-1.5 flex-1">
             <h2 class="truncate text-sm font-semibold text-slate-100">
               {item.name || '未命名订阅'}
             </h2>
+
             {#if item.description}
               <p class="truncate text-xs text-slate-400">{item.description}</p>
             {/if}
-            <p class="truncate text-xs text-slate-300">
-              {templateName(item.templateId)} · {item.sourceIds.map(sourceName).join('、') ||
-                '未选择节点源'}
-            </p>
-            <p class="truncate font-mono text-xs text-slate-500">{item.publicUrl}</p>
+
+            <div class="flex flex-wrap items-center gap-2 pt-0.5 text-xs">
+              <div class="flex items-center gap-1.5 text-slate-400">
+                <span>模板:</span>
+                <span
+                  class="px-2 py-0.5 rounded bg-slate-950 text-slate-200 border border-slate-800 font-medium text-[11px]"
+                >
+                  {templateName(item.templateId)}
+                </span>
+              </div>
+              <div class="flex items-center gap-1.5 text-slate-400">
+                <span>节点源:</span>
+                {#if item.sourceIds && item.sourceIds.length > 0}
+                  <div class="flex flex-wrap items-center gap-1">
+                    {#each item.sourceIds as sId}
+                      <span
+                        class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800 text-[11px]"
+                      >
+                        {sourceName(sId)}
+                      </span>
+                    {/each}
+                  </div>
+                {:else}
+                  <span class="text-slate-500 text-[11px]">未选择节点源</span>
+                {/if}
+              </div>
+            </div>
+
+            {#if item.publicUrl}
+              <p class="truncate font-mono text-xs text-slate-500 pt-0.5">{item.publicUrl}</p>
+            {/if}
           </div>
-          <div class="flex shrink-0 gap-2">
-            <button type="button" onclick={() => copyPublished(item)} class="btn btn-secondary">
+          <div class="flex shrink-0 gap-2 items-center">
+            <button
+              type="button"
+              onclick={() => copyPublished(item)}
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
+            >
               {#if copiedId === item.id}
                 <Check size={13} />
                 <span>已复制链接</span>
@@ -178,9 +217,23 @@
                 <span>复制链接</span>
               {/if}
             </button>
-            <button type="button" onclick={() => openEditor(item.id)} class="btn btn-ghost">
+            <button
+              type="button"
+              onclick={() => openEditor(item.id)}
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
+            >
               <Pencil size={13} />
               <span>编辑</span>
+            </button>
+            <button
+              type="button"
+              onclick={() => handleDeleteProfile(item)}
+              class="btn btn-secondary btn-danger text-xs px-2.5 py-1 flex items-center gap-1.5"
+              title="删除订阅"
+              aria-label="删除订阅 {item.name}"
+            >
+              <Trash2 size={13} />
+              <span>删除</span>
             </button>
           </div>
         </div>
@@ -260,20 +313,22 @@
             <p class="text-xs text-slate-400">配置模板</p>
             {#each store.templates as item (item.id)}
               <label
-                class="flex items-start gap-2.5 rounded-lg border p-3 {draft.templateId === item.id
+                class="flex items-center gap-2.5 rounded-lg border p-3 cursor-pointer transition-colors {draft.templateId ===
+                item.id
                   ? 'border-slate-600 bg-slate-800'
-                  : 'border-slate-800'}"
+                  : 'border-slate-800 hover:border-slate-700/80 hover:bg-slate-900/40'}"
               >
                 <input
                   type="radio"
                   name="subscription-template"
                   checked={draft.templateId === item.id}
                   onchange={() => setTemplate(item.id)}
+                  class="cursor-pointer shrink-0"
                 />
-                <span class="min-w-0">
+                <span class="min-w-0 flex-1">
                   <span class="block text-sm text-slate-100">{item.name}</span>
                   {#if item.description}
-                    <span class="block text-xs text-slate-400">{item.description}</span>
+                    <span class="block text-xs text-slate-400 mt-0.5">{item.description}</span>
                   {/if}
                 </span>
               </label>
@@ -283,26 +338,27 @@
             <p class="text-xs text-slate-400">节点源</p>
             {#each store.sources as item (item.id)}
               <label
-                class="flex items-center justify-between gap-3 rounded-lg border p-3 {draft.sourceIds.includes(
+                class="flex items-center justify-between gap-3 rounded-lg border p-3 cursor-pointer transition-colors {draft.sourceIds.includes(
                   item.id,
                 )
                   ? 'border-slate-600 bg-slate-800'
-                  : 'border-slate-800'}"
+                  : 'border-slate-800 hover:border-slate-700/80 hover:bg-slate-900/40'}"
               >
-                <span class="flex items-center gap-2.5">
+                <span class="flex items-center gap-2.5 min-w-0">
                   <input
                     type="checkbox"
                     checked={draft.sourceIds.includes(item.id)}
                     onchange={() => toggleSource(item.id)}
+                    class="cursor-pointer shrink-0"
                   />
-                  <span>
+                  <span class="min-w-0">
                     <span class="block text-sm text-slate-100">{item.name}</span>
-                    <span class="block text-xs text-slate-400"
+                    <span class="block text-xs text-slate-400 mt-0.5"
                       >{item.nodes?.length || 0} 个节点</span
                     >
                   </span>
                 </span>
-                <span class="text-xs text-slate-400">
+                <span class="text-xs text-slate-400 shrink-0">
                   {item.type === 'subscription' ? '外部节点源' : '自建节点'}
                 </span>
               </label>
@@ -320,18 +376,11 @@
               type="button"
               onclick={resetLink}
               disabled={dirty}
-              class="btn btn-ghost"
-              title={dirty ? '先保存或放弃修改' : '旧链接会失效'}
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
+              title={dirty ? '先保存或放弃修改' : '重新生成 Token，旧链接立刻失效'}
             >
-              重置链接
-            </button>
-            <button
-              type="button"
-              onclick={remove}
-              class="btn btn-ghost btn-icon btn-danger"
-              aria-label="删除订阅"
-            >
-              <Trash2 size={14} />
+              <RefreshCw size={13} />
+              <span>重置链接</span>
             </button>
           {/if}
         </div>
