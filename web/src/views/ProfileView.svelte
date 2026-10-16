@@ -21,6 +21,11 @@
   let ready = $derived(store.templates.length > 0 && store.sources.length > 0);
   let missing = $derived(!!store.selectedProfileId && !published && !store.creatingProfile);
 
+  function formatTime(value) {
+    if (!value) return '-';
+    return String(value).replace('T', ' ').replace('Z', '').substring(0, 19);
+  }
+
   function templateName(id) {
     return store.templates.find((item) => item.id === id)?.name || '未找到配置模板';
   }
@@ -155,20 +160,54 @@
     >
       {#each store.profiles as item (item.id)}
         <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div class="min-w-0 space-y-1">
-            <h2 class="truncate text-sm font-semibold text-slate-100">
-              {item.name || '未命名订阅'}
-            </h2>
+          <div class="min-w-0 space-y-1.5 flex-1">
+            <div class="flex items-center gap-2 flex-wrap">
+              <h2 class="truncate text-sm font-semibold text-slate-100">
+                {item.name || '未命名订阅'}
+              </h2>
+              {#if item.updatedAt}
+                <span class="text-xs text-slate-500 font-normal">
+                  更新于 {formatTime(item.updatedAt)}
+                </span>
+              {/if}
+            </div>
+
             {#if item.description}
               <p class="truncate text-xs text-slate-400">{item.description}</p>
             {/if}
-            <p class="truncate text-xs text-slate-300">
-              {templateName(item.templateId)} · {item.sourceIds.map(sourceName).join('、') ||
-                '未选择节点源'}
-            </p>
-            <p class="truncate font-mono text-xs text-slate-500">{item.publicUrl}</p>
+
+            <div class="flex flex-wrap items-center gap-2 pt-0.5 text-xs">
+              <div class="flex items-center gap-1.5 text-slate-400">
+                <span>模板:</span>
+                <span
+                  class="px-2 py-0.5 rounded bg-slate-950 text-slate-200 border border-slate-800 font-medium text-[11px]"
+                >
+                  {templateName(item.templateId)}
+                </span>
+              </div>
+              <div class="flex items-center gap-1.5 text-slate-400">
+                <span>节点源:</span>
+                {#if item.sourceIds && item.sourceIds.length > 0}
+                  <div class="flex flex-wrap items-center gap-1">
+                    {#each item.sourceIds as sId}
+                      <span
+                        class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800 text-[11px]"
+                      >
+                        {sourceName(sId)}
+                      </span>
+                    {/each}
+                  </div>
+                {:else}
+                  <span class="text-slate-500 text-[11px]">未选择节点源</span>
+                {/if}
+              </div>
+            </div>
+
+            {#if item.publicUrl}
+              <p class="truncate font-mono text-xs text-slate-500 pt-0.5">{item.publicUrl}</p>
+            {/if}
           </div>
-          <div class="flex shrink-0 gap-2">
+          <div class="flex shrink-0 gap-2 items-center">
             <button type="button" onclick={() => copyPublished(item)} class="btn btn-secondary">
               {#if copiedId === item.id}
                 <Check size={13} />
