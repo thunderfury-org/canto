@@ -47,7 +47,7 @@
 <div class="space-y-4">
   <!-- Top Bar -->
   <div
-    class="bg-slate-900/90 border border-slate-800 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+    class="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
   >
     <div class="min-w-0">
       <h1 class="text-base font-semibold text-slate-100 flex items-center gap-2">
@@ -70,7 +70,7 @@
     </button>
   </div>
 
-  <!-- Cards Grid -->
+  <!-- Single-Column Master-Row List -->
   {#if templates.length === 0}
     <div
       class="bg-slate-900/80 border border-dashed border-slate-800 rounded-lg p-12 text-center space-y-3"
@@ -91,7 +91,7 @@
       </button>
     </div>
   {:else}
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
+    <div class="space-y-3">
       {#each templates as tpl (tpl.id)}
         {@const dirty = isDirty(tpl.id)}
         {@const stale = isStale(tpl.id)}
@@ -103,139 +103,132 @@
         {@const dnsN = dnsServersCount(tpl)}
 
         <div
-          class="bg-slate-900/80 border border-slate-800 hover:border-slate-700/90 rounded-lg p-4 flex flex-col justify-between transition-all hover:bg-slate-900/95 group shadow-xs"
+          class="bg-slate-900/80 border border-slate-800 hover:border-slate-700/80 rounded-lg p-3.5 sm:p-4 transition-all shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 group"
         >
-          <!-- Card Body -->
+          <!-- Left: Summary, Metadata & Metrics -->
           <button
             type="button"
             onclick={() => onSelectTemplate(tpl.id)}
-            class="space-y-3 text-left w-full cursor-pointer bg-transparent border-0 p-0"
+            class="space-y-1.5 min-w-0 flex-1 text-left cursor-pointer bg-transparent border-0 p-0"
           >
-            <!-- Title & Status Pill -->
-            <div class="flex items-start justify-between gap-2 w-full">
-              <h2
-                class="text-sm font-semibold text-slate-100 truncate group-hover:text-slate-100 transition-colors min-w-0 flex-1"
+            <!-- Title & Status Badges -->
+            <div class="flex items-center gap-2 flex-wrap">
+              <span
+                class="font-semibold text-slate-100 text-sm group-hover:text-slate-100 transition-colors"
               >
                 {tpl.name || '未命名模板'}
-              </h2>
+              </span>
 
-              <div class="flex items-center gap-1.5 shrink-0 select-none">
-                {#if dirty}
-                  <span
-                    class="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-800/60 text-amber-300"
-                  >
-                    ● 未保存
-                  </span>
-                {/if}
-                {#if stale}
-                  <span
-                    class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-800/60 text-amber-200"
-                  >
-                    基准已旧
-                  </span>
-                {/if}
-                {#if missing}
-                  <span
-                    class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-950/60 border border-rose-800/60 text-rose-300"
-                  >
-                    已丢失
-                  </span>
-                {/if}
-              </div>
+              {#if dirty}
+                <span
+                  class="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-800/60 text-amber-300"
+                >
+                  ● 未保存
+                </span>
+              {/if}
+              {#if stale}
+                <span
+                  class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-800/60 text-amber-200"
+                >
+                  基准已旧
+                </span>
+              {/if}
+              {#if missing}
+                <span
+                  class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-950/60 border border-rose-800/60 text-rose-300"
+                >
+                  已丢失
+                </span>
+              {/if}
             </div>
 
             <!-- Description -->
-            <p class="text-xs text-slate-400 line-clamp-2 min-h-[2rem]">
-              {tpl.description || '暂无说明'}
-            </p>
+            {#if tpl.description}
+              <p class="text-xs text-slate-400">
+                {tpl.description}
+              </p>
+            {/if}
 
-            <!-- Stats Chips -->
-            <div class="flex flex-wrap gap-1.5 text-[11px] font-mono text-slate-400">
-              <span
-                class="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 flex items-center gap-1"
-                title="路由分流规则"
-              >
-                <Layers size={11} class="text-slate-500" />
-                <span class="text-slate-200 font-semibold">{rulesN}</span>
-                <span class="text-slate-500">规则</span>
-              </span>
-              <span
-                class="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 flex items-center gap-1"
-                title="出站策略组"
-              >
-                <Sparkles size={11} class="text-slate-500" />
-                <span class="text-slate-200 font-semibold">{pgN}</span>
-                <span class="text-slate-500">策略</span>
-              </span>
-              <span
-                class="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 flex items-center gap-1"
-                title="节点分组"
-              >
-                <span class="text-slate-200 font-semibold">{ngN}</span>
-                <span class="text-slate-500">节点组</span>
-              </span>
-              <span
-                class="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 flex items-center gap-1"
-                title="DNS 服务器"
-              >
-                <Radio size={11} class="text-slate-500" />
-                <span class="text-slate-200 font-semibold">{dnsN}</span>
-                <span class="text-slate-500">DNS</span>
-              </span>
-            </div>
+            <!-- Metrics Capsules & Bound Profiles -->
+            <div class="flex flex-wrap items-center gap-2 pt-1 text-xs">
+              <div class="flex flex-wrap items-center gap-1.5 text-[11px] font-mono text-slate-400">
+                <span
+                  class="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 flex items-center gap-1"
+                  title="路由分流规则"
+                >
+                  <Layers size={11} class="text-slate-500" />
+                  <span class="text-slate-200 font-semibold">{rulesN}</span>
+                  <span class="text-slate-500">规则</span>
+                </span>
+                <span
+                  class="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 flex items-center gap-1"
+                  title="出站策略组"
+                >
+                  <Sparkles size={11} class="text-slate-500" />
+                  <span class="text-slate-200 font-semibold">{pgN}</span>
+                  <span class="text-slate-500">策略</span>
+                </span>
+                <span
+                  class="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 flex items-center gap-1"
+                  title="节点分组"
+                >
+                  <span class="text-slate-200 font-semibold">{ngN}</span>
+                  <span class="text-slate-500">节点组</span>
+                </span>
+                <span
+                  class="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 flex items-center gap-1"
+                  title="DNS 服务器"
+                >
+                  <Radio size={11} class="text-slate-500" />
+                  <span class="text-slate-200 font-semibold">{dnsN}</span>
+                  <span class="text-slate-500">DNS</span>
+                </span>
+              </div>
 
-            <!-- Profile Association -->
-            <div class="pt-1 text-xs w-full">
               {#if prows.length > 0}
-                <div class="text-slate-400 flex items-center gap-1.5 truncate">
-                  <Boxes size={13} class="text-slate-300 shrink-0" />
-                  <span class="truncate">
-                    用于: <span class="text-slate-300 font-medium"
-                      >{prows.map((p) => p.name).join('、')}</span
-                    >
+                <div
+                  class="text-slate-500 flex items-center gap-1.5 text-xs pl-1 sm:border-l sm:border-slate-800"
+                >
+                  <Boxes size={12} class="text-slate-500 shrink-0" />
+                  <span>
+                    已关联订阅:
+                    <span class="text-slate-300 font-medium">
+                      {prows.map((p) => p.name).join('、')}
+                    </span>
                   </span>
-                </div>
-              {:else}
-                <div class="text-slate-600 flex items-center gap-1.5">
-                  <Boxes size={13} class="text-slate-700 shrink-0" />
-                  <span>暂无订阅引用</span>
                 </div>
               {/if}
             </div>
           </button>
 
-          <!-- Card Footer Actions -->
-          <div
-            class="pt-3.5 mt-3 border-t border-slate-800/80 flex items-center justify-between gap-2"
-          >
-            <div class="flex items-center gap-1">
-              <button
-                type="button"
-                onclick={() => onCloneTemplate(tpl)}
-                class="btn btn-ghost text-xs px-2 py-1 text-slate-400 hover:text-slate-200"
-                title="克隆为副本"
-              >
-                <Copy size={13} />
-                <span>克隆</span>
-              </button>
-              <button
-                type="button"
-                onclick={() => onDeleteTemplate(tpl.id, tpl.name)}
-                class="btn btn-ghost btn-icon btn-danger text-xs p-1"
-                title="删除模板"
-                aria-label="删除模板 {tpl.name}"
-              >
-                <Trash2 size={13} />
-              </button>
-            </div>
-
+          <!-- Right: Actions -->
+          <div class="flex items-center gap-2 shrink-0 self-end md:self-center">
+            <button
+              type="button"
+              onclick={() => onCloneTemplate(tpl)}
+              class="btn btn-secondary text-xs px-2.5 py-1"
+              title="克隆为副本"
+            >
+              <Copy size={13} />
+              <span>克隆</span>
+            </button>
             <button
               type="button"
               onclick={() => onSelectTemplate(tpl.id)}
-              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1 group-hover:bg-slate-800 group-hover:text-slate-100 transition-colors"
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1"
+              title="进入全宽详情编辑"
             >
               <span>编辑配置</span>
               <ArrowRight size={13} />
+            </button>
+            <button
+              type="button"
+              onclick={() => onDeleteTemplate(tpl.id, tpl.name)}
+              class="btn btn-ghost btn-icon btn-danger"
+              title="删除模板"
+              aria-label="删除模板 {tpl.name}"
+            >
+              <Trash2 size={13} />
             </button>
           </div>
         </div>
