@@ -61,3 +61,19 @@ test('component classes are defined in @layer components so utilities can overri
   const css = read('app.css');
   assert.match(css, /@layer\s+components\s*\{[\s\S]*\.btn\s*\{/);
 });
+
+test('top-level navigation and creation buttons use secondary style, reserving primary for persistence', () => {
+  const dashboard = read('views/DashboardView.svelte');
+  const sources = read('views/SourceManager.svelte');
+  const tplGrid = read('components/TemplateCardGrid.svelte');
+
+  // Dashboard banner link and empty state
+  assert.doesNotMatch(
+    dashboard,
+    /onclick=\{\(\)\s*=>\s*store\.navigate\('profiles'\)\}[^>]*class="[^"]*btn-primary/,
+  );
+  // SourceManager top action
+  assert.doesNotMatch(sources, /onclick=\{openCreate\}[^>]*class="[^"]*btn-primary/);
+  // TemplateCardGrid top action
+  assert.doesNotMatch(tplGrid, /onclick=\{onCreateTemplate\}[^>]*class="[^"]*btn-primary/);
+});

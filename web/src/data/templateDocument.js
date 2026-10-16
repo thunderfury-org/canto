@@ -47,6 +47,52 @@ export const NODE_GROUP_REGEX_PRESETS = [
   },
 ];
 
+export function moveUserPolicyGroup(content, fromIndex, toIndex) {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return content;
+  const next = cloneJson(content);
+  const groups = next.policy_groups;
+  if (!Array.isArray(groups)) return next;
+
+  const userIndices = [];
+  groups.forEach((g, idx) => {
+    if (g && g.type !== 'direct') {
+      userIndices.push(idx);
+    }
+  });
+
+  if (
+    fromIndex < 0 ||
+    fromIndex >= userIndices.length ||
+    toIndex < 0 ||
+    toIndex >= userIndices.length ||
+    fromIndex === toIndex
+  ) {
+    return next;
+  }
+
+  const realFrom = userIndices[fromIndex];
+  const [moved] = groups.splice(realFrom, 1);
+
+  const nextUserIndices = [];
+  groups.forEach((g, idx) => {
+    if (g && g.type !== 'direct') {
+      nextUserIndices.push(idx);
+    }
+  });
+
+  let realTo;
+  if (nextUserIndices.length === 0) {
+    realTo = 0;
+  } else if (toIndex < nextUserIndices.length) {
+    realTo = nextUserIndices[toIndex];
+  } else {
+    realTo = nextUserIndices[nextUserIndices.length - 1] + 1;
+  }
+
+  groups.splice(realTo, 0, moved);
+  return next;
+}
+
 export function moveNodeGroup(content, fromIndex, toIndex) {
   if (!content || typeof content !== 'object' || Array.isArray(content)) return content;
   const next = cloneJson(content);

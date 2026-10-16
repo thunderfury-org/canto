@@ -115,71 +115,95 @@
       </div>
     </div>
 
-    <div
-      class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between"
+    <button
+      type="button"
+      onclick={() => store.navigate('profiles')}
+      class="bg-slate-900/80 border border-slate-800 hover:border-slate-700/90 hover:bg-slate-900/95 rounded-lg p-4 flex items-center justify-between text-left transition-all cursor-pointer group shadow-xs w-full"
     >
       <div>
-        <div class="text-xs font-medium text-slate-400">订阅</div>
+        <div
+          class="text-xs font-medium text-slate-400 group-hover:text-slate-300 transition-colors"
+        >
+          订阅
+        </div>
         <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">
           {store.profiles.length}
         </div>
         <div class="text-xs text-slate-400 mt-1">已发布的链接</div>
       </div>
       <div
-        class="w-10 h-10 rounded-md bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400"
+        class="w-10 h-10 rounded-md bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400 group-hover:text-slate-200 group-hover:border-slate-700 transition-colors"
       >
         <Boxes size={20} />
       </div>
-    </div>
+    </button>
 
-    <div
-      class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between"
+    <button
+      type="button"
+      onclick={() => store.navigate('templates')}
+      class="bg-slate-900/80 border border-slate-800 hover:border-slate-700/90 hover:bg-slate-900/95 rounded-lg p-4 flex items-center justify-between text-left transition-all cursor-pointer group shadow-xs w-full"
     >
       <div>
-        <div class="text-xs font-medium text-slate-400">配置模板库</div>
+        <div
+          class="text-xs font-medium text-slate-400 group-hover:text-slate-300 transition-colors"
+        >
+          配置模板库
+        </div>
         <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">
           {store.templates.length}
         </div>
         <div class="text-xs text-slate-400 mt-1">DNS / 策略组 / 路由</div>
       </div>
       <div
-        class="w-10 h-10 rounded-md bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400"
+        class="w-10 h-10 rounded-md bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400 group-hover:text-slate-200 group-hover:border-slate-700 transition-colors"
       >
         <FileCode2 size={20} />
       </div>
-    </div>
+    </button>
 
-    <div
-      class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between"
+    <button
+      type="button"
+      onclick={() => store.navigate('sources')}
+      class="bg-slate-900/80 border border-slate-800 hover:border-slate-700/90 hover:bg-slate-900/95 rounded-lg p-4 flex items-center justify-between text-left transition-all cursor-pointer group shadow-xs w-full"
     >
       <div>
-        <div class="text-xs font-medium text-slate-400">接入节点源</div>
+        <div
+          class="text-xs font-medium text-slate-400 group-hover:text-slate-300 transition-colors"
+        >
+          接入节点源
+        </div>
         <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">{store.sources.length}</div>
         <div class="text-xs text-slate-400 mt-1">{formatFreshness(latestSourceRefresh)}</div>
       </div>
       <div
-        class="w-10 h-10 rounded-md bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400"
+        class="w-10 h-10 rounded-md bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400 group-hover:text-slate-200 group-hover:border-slate-700 transition-colors"
       >
         <Network size={20} />
       </div>
-    </div>
+    </button>
 
-    <div
-      class="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex items-center justify-between"
+    <button
+      type="button"
+      onclick={() => store.navigate('sources')}
+      class="bg-slate-900/80 border border-slate-800 hover:border-slate-700/90 hover:bg-slate-900/95 rounded-lg p-4 flex items-center justify-between text-left transition-all cursor-pointer group shadow-xs w-full"
     >
       <div>
-        <div class="text-xs font-medium text-slate-400">汇聚代理节点</div>
+        <div
+          class="text-xs font-medium text-slate-400 group-hover:text-slate-300 transition-colors"
+        >
+          汇聚代理节点
+        </div>
         <div class="text-2xl font-bold text-slate-100 mt-1 font-mono">
           {store.totalNodesCount}
         </div>
         <div class="text-xs text-slate-400 mt-1">正则动态分流展开</div>
       </div>
       <div
-        class="w-10 h-10 rounded-md bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400"
+        class="w-10 h-10 rounded-md bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400 group-hover:text-slate-200 group-hover:border-slate-700 transition-colors"
       >
         <Server size={20} />
       </div>
-    </div>
+    </button>
   </div>
 
   <!-- Mental Model Banner -->
@@ -206,7 +230,7 @@
         <span>编辑模板</span>
         <ArrowRight size={12} />
       </button>
-      <button type="button" onclick={() => store.navigate('profiles')} class="btn btn-primary">
+      <button type="button" onclick={() => store.navigate('profiles')} class="btn btn-secondary">
         <span>查看订阅</span>
         <ArrowRight size={12} />
       </button>
@@ -293,8 +317,8 @@
         </p>
         <button
           type="button"
-          onclick={() => store.navigate('profiles')}
-          class="btn btn-primary mt-2"
+          onclick={() => store.navigate('profiles', { subtab: 'new' })}
+          class="btn btn-secondary mt-2"
         >
           <Plus size={12} />
           <span>新建订阅</span>
