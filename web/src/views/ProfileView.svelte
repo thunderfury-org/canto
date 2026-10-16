@@ -260,20 +260,22 @@
             <p class="text-xs text-slate-400">配置模板</p>
             {#each store.templates as item (item.id)}
               <label
-                class="flex items-start gap-2.5 rounded-lg border p-3 {draft.templateId === item.id
+                class="flex items-center gap-2.5 rounded-lg border p-3 cursor-pointer transition-colors {draft.templateId ===
+                item.id
                   ? 'border-slate-600 bg-slate-800'
-                  : 'border-slate-800'}"
+                  : 'border-slate-800 hover:border-slate-700/80 hover:bg-slate-900/40'}"
               >
                 <input
                   type="radio"
                   name="subscription-template"
                   checked={draft.templateId === item.id}
                   onchange={() => setTemplate(item.id)}
+                  class="cursor-pointer shrink-0"
                 />
-                <span class="min-w-0">
+                <span class="min-w-0 flex-1">
                   <span class="block text-sm text-slate-100">{item.name}</span>
                   {#if item.description}
-                    <span class="block text-xs text-slate-400">{item.description}</span>
+                    <span class="block text-xs text-slate-400 mt-0.5">{item.description}</span>
                   {/if}
                 </span>
               </label>
@@ -283,26 +285,27 @@
             <p class="text-xs text-slate-400">节点源</p>
             {#each store.sources as item (item.id)}
               <label
-                class="flex items-center justify-between gap-3 rounded-lg border p-3 {draft.sourceIds.includes(
+                class="flex items-center justify-between gap-3 rounded-lg border p-3 cursor-pointer transition-colors {draft.sourceIds.includes(
                   item.id,
                 )
                   ? 'border-slate-600 bg-slate-800'
-                  : 'border-slate-800'}"
+                  : 'border-slate-800 hover:border-slate-700/80 hover:bg-slate-900/40'}"
               >
-                <span class="flex items-center gap-2.5">
+                <span class="flex items-center gap-2.5 min-w-0">
                   <input
                     type="checkbox"
                     checked={draft.sourceIds.includes(item.id)}
                     onchange={() => toggleSource(item.id)}
+                    class="cursor-pointer shrink-0"
                   />
-                  <span>
+                  <span class="min-w-0">
                     <span class="block text-sm text-slate-100">{item.name}</span>
-                    <span class="block text-xs text-slate-400"
+                    <span class="block text-xs text-slate-400 mt-0.5"
                       >{item.nodes?.length || 0} 个节点</span
                     >
                   </span>
                 </span>
-                <span class="text-xs text-slate-400">
+                <span class="text-xs text-slate-400 shrink-0">
                   {item.type === 'subscription' ? '外部节点源' : '自建节点'}
                 </span>
               </label>
