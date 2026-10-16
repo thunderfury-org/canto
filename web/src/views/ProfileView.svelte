@@ -201,7 +201,11 @@
             {/if}
           </div>
           <div class="flex shrink-0 gap-2 items-center">
-            <button type="button" onclick={() => copyPublished(item)} class="btn btn-secondary">
+            <button
+              type="button"
+              onclick={() => copyPublished(item)}
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
+            >
               {#if copiedId === item.id}
                 <Check size={13} />
                 <span>已复制链接</span>
@@ -210,7 +214,11 @@
                 <span>复制链接</span>
               {/if}
             </button>
-            <button type="button" onclick={() => openEditor(item.id)} class="btn btn-ghost">
+            <button
+              type="button"
+              onclick={() => openEditor(item.id)}
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
+            >
               <Pencil size={13} />
               <span>编辑</span>
             </button>

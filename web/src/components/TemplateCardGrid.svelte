@@ -197,34 +197,37 @@
             </div>
           </div>
 
-          <!-- Right: Action Icons -->
-          <div class="flex items-center gap-1.5 shrink-0 self-end md:self-center">
+          <!-- Right: Actions -->
+          <div class="flex items-center gap-2 shrink-0 self-end md:self-center">
             <button
               type="button"
               onclick={() => onCloneTemplate(tpl)}
-              class="btn btn-ghost btn-icon text-slate-400 hover:text-slate-100"
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
               title="克隆为副本"
               aria-label="克隆模板 {tpl.name}"
             >
-              <Copy size={14} />
+              <Copy size={13} />
+              <span class="hidden sm:inline">克隆</span>
             </button>
             <button
               type="button"
               onclick={() => onSelectTemplate(tpl.id)}
-              class="btn btn-ghost btn-icon text-slate-400 hover:text-slate-100"
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
               title="编辑配置"
               aria-label="编辑模板配置 {tpl.name}"
             >
-              <Pencil size={14} />
+              <Pencil size={13} />
+              <span class="hidden sm:inline">编辑配置</span>
             </button>
             <button
               type="button"
               onclick={() => onDeleteTemplate(tpl.id, tpl.name)}
-              class="btn btn-ghost btn-icon btn-danger"
+              class="btn btn-ghost btn-danger text-xs px-2 py-1 flex items-center gap-1"
               title="删除模板"
               aria-label="删除模板 {tpl.name}"
             >
-              <Trash2 size={14} />
+              <Trash2 size={13} />
+              <span class="hidden sm:inline">删除</span>
             </button>
           </div>
         </div>

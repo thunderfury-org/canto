@@ -347,7 +347,7 @@
             <button
               type="button"
               onclick={() => openInspect(src)}
-              class="btn btn-secondary text-xs px-2.5 py-1"
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
               title="查看此源解析出来的所有节点"
             >
               <Eye size={13} />
@@ -357,29 +357,32 @@
               type="button"
               onclick={() => handleRefreshSource(src.id)}
               disabled={refreshingId === src.id}
-              class="btn btn-ghost btn-icon"
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
               title="重新拉取并解析"
               aria-label="重新拉取并解析"
             >
               <RefreshCw size={13} class={refreshingId === src.id ? 'animate-spin' : ''} />
+              <span class="hidden sm:inline">刷新</span>
             </button>
             <button
               type="button"
               onclick={() => openEdit(src)}
-              class="btn btn-ghost btn-icon"
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
               title="编辑节点源"
               aria-label="编辑节点源"
             >
               <Pencil size={13} />
+              <span class="hidden sm:inline">编辑</span>
             </button>
             <button
               type="button"
               onclick={() => handleDeleteSource(src)}
-              class="btn btn-ghost btn-icon btn-danger"
+              class="btn btn-ghost btn-danger text-xs px-2 py-1 flex items-center gap-1"
               title="删除此节点源"
               aria-label="删除此节点源"
             >
               <Trash2 size={13} />
+              <span class="hidden sm:inline">删除</span>
             </button>
           </div>
         </div>
