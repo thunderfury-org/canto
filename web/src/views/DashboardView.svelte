@@ -235,9 +235,8 @@
               class="p-3.5 sm:p-4 hover:bg-slate-850/40 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
             >
               <div class="space-y-1 min-w-0 flex-1">
-                <div class="flex items-center gap-2 flex-wrap">
+                <div class="flex items-center gap-2">
                   <span class="font-medium text-slate-100 text-sm truncate">{prof.name}</span>
-                  <span class="text-xs text-slate-500">{formatFreshness(prof.updatedAt)}</span>
                 </div>
                 {#if prof.description}
                   <p class="text-xs text-slate-400 truncate">{prof.description}</p>
