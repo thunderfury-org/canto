@@ -213,11 +213,11 @@
               type="button"
               onclick={() => onSelectTemplate(tpl.id)}
               class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
-              title="编辑配置"
+              title="编辑模板配置"
               aria-label="编辑模板配置 {tpl.name}"
             >
               <Pencil size={13} />
-              <span>编辑配置</span>
+              <span>编辑</span>
             </button>
             <button
               type="button"

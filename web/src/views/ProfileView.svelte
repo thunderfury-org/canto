@@ -101,15 +101,17 @@
     }
   }
 
-  async function remove() {
-    if (!published) return;
-    const name = published.name || '这条订阅';
-    const extra = dirty ? '未保存的修改也会丢掉。' : '';
-    if (!confirm(`删除订阅「${name}」？这条链接会失效。${extra}`)) return;
+  async function handleDeleteProfile(target) {
+    const p = target || published;
+    if (!p) return;
+    const name = p.name || '这条订阅';
+    if (!confirm(`确定删除订阅「${name}」吗？这条链接会立刻失效。\n此操作不可撤销。`)) return;
     store.profileSaveError = '';
     try {
-      await store.removeProfile(published.id);
-      store.navigate('profiles', {}, { force: true });
+      await store.removeProfile(p.id);
+      if (store.selectedProfileId === p.id) {
+        store.navigate('profiles', {}, { force: true });
+      }
     } catch (err) {
       store.profileSaveError = err.message || String(err);
     }
@@ -221,6 +223,16 @@
             >
               <Pencil size={13} />
               <span>编辑</span>
+            </button>
+            <button
+              type="button"
+              onclick={() => handleDeleteProfile(item)}
+              class="btn btn-secondary btn-danger text-xs px-2.5 py-1 flex items-center gap-1.5"
+              title="删除订阅"
+              aria-label="删除订阅 {item.name}"
+            >
+              <Trash2 size={13} />
+              <span>删除</span>
             </button>
           </div>
         </div>
@@ -367,14 +379,6 @@
               title={dirty ? '先保存或放弃修改' : '旧链接会失效'}
             >
               重置链接
-            </button>
-            <button
-              type="button"
-              onclick={remove}
-              class="btn btn-ghost btn-icon btn-danger"
-              aria-label="删除订阅"
-            >
-              <Trash2 size={14} />
             </button>
           {/if}
         </div>
