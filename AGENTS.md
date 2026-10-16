@@ -76,7 +76,7 @@ canto 是基于 Rust (Edition 2024) 构建的 sing-box 透明代理与配置编�
   - 全屏视口或抽屉内仅允许一个实心主操作按钮（`btn-primary`），引导核心保存行为。
   - 次要操作（新建、克隆、展开、取消等）使用幽灵按钮（`btn-ghost` / `btn-secondary`）。
   - 危险操作（删除）默认使用低调幽灵态，悬停/聚焦时呈柔和红（muted red）。
-  - 行内操作统一遵循“图标 + 简明中文”规范（如 `[克隆]`、`[编辑]`、`[刷新]`、`[删除]`），严禁混用无提示纯图标；超窄屏使用 `hidden sm:inline` 优雅折叠。
+  - 行内操作统一遵循“图标 + 简明中文”规范，全部采用带边框的 `btn-secondary` 变体（危险操作用 `btn-secondary btn-danger`），全端保持完整图文自解释，严禁混用无边框幽灵态或割裂折叠。
 - **控制台表面**：实心主按钮和焦点环用铜，其余界面用炭灰与骨色。改 Web Studio 颜色、徽章或圆角时读 [ADR 0017](docs/adr/0017-console-surface-charcoal-and-copper.md)。
 
 ### 编码与提交规范

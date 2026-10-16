@@ -207,7 +207,7 @@
               aria-label="克隆模板 {tpl.name}"
             >
               <Copy size={13} />
-              <span class="hidden sm:inline">克隆</span>
+              <span>克隆</span>
             </button>
             <button
               type="button"
@@ -217,17 +217,17 @@
               aria-label="编辑模板配置 {tpl.name}"
             >
               <Pencil size={13} />
-              <span class="hidden sm:inline">编辑配置</span>
+              <span>编辑配置</span>
             </button>
             <button
               type="button"
               onclick={() => onDeleteTemplate(tpl.id, tpl.name)}
-              class="btn btn-ghost btn-danger text-xs px-2 py-1 flex items-center gap-1"
+              class="btn btn-secondary btn-danger text-xs px-2.5 py-1 flex items-center gap-1.5"
               title="删除模板"
               aria-label="删除模板 {tpl.name}"
             >
               <Trash2 size={13} />
-              <span class="hidden sm:inline">删除</span>
+              <span>删除</span>
             </button>
           </div>
         </div>

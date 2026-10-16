@@ -362,7 +362,7 @@
               aria-label="重新拉取并解析"
             >
               <RefreshCw size={13} class={refreshingId === src.id ? 'animate-spin' : ''} />
-              <span class="hidden sm:inline">刷新</span>
+              <span>刷新</span>
             </button>
             <button
               type="button"
@@ -372,17 +372,17 @@
               aria-label="编辑节点源"
             >
               <Pencil size={13} />
-              <span class="hidden sm:inline">编辑</span>
+              <span>编辑</span>
             </button>
             <button
               type="button"
               onclick={() => handleDeleteSource(src)}
-              class="btn btn-ghost btn-danger text-xs px-2 py-1 flex items-center gap-1"
+              class="btn btn-secondary btn-danger text-xs px-2.5 py-1 flex items-center gap-1.5"
               title="删除此节点源"
               aria-label="删除此节点源"
             >
               <Trash2 size={13} />
-              <span class="hidden sm:inline">删除</span>
+              <span>删除</span>
             </button>
           </div>
         </div>
