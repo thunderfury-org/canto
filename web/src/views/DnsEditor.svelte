@@ -41,6 +41,7 @@
     reorderRule,
     replaceRule,
   } from '../data/routeRules.js';
+  import { findRulesUsingDnsServer } from '../data/templateDocument.js';
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
   import MultiSelect from '../components/MultiSelect.svelte';
@@ -58,6 +59,7 @@
   let dragFrom = $state(-1);
   let dragOver = $state(-1);
   let conditionPicker = $state('');
+  let initialDraftJson = '';
 
   const TONE_CLASS = {
     server: 'text-slate-200 font-medium bg-slate-800 border-slate-600',
@@ -155,6 +157,7 @@
       draft: createServerDraft(source ? cloneData(source) : {}),
     };
     conditionPicker = '';
+    initialDraftJson = JSON.stringify(drawer.draft);
   }
 
   function openServerCreate() {
@@ -165,6 +168,7 @@
       draft: createNewServerDraft(serverTags),
     };
     conditionPicker = '';
+    initialDraftJson = JSON.stringify(drawer.draft);
   }
 
   function openRuleEdit(index) {
@@ -176,6 +180,7 @@
       draft: createDnsRuleDraft(source ? cloneData(source) : {}),
     };
     conditionPicker = '';
+    initialDraftJson = JSON.stringify(drawer.draft);
   }
 
   function openRuleCreate() {
@@ -186,11 +191,22 @@
       draft: createNewDnsRuleDraft(preferredDnsServer(baseDns())),
     };
     conditionPicker = '';
+    initialDraftJson = JSON.stringify(drawer.draft);
+  }
+
+  function forceCancelDrawer() {
+    drawer = null;
+    conditionPicker = '';
   }
 
   function cancelDrawer() {
-    drawer = null;
-    conditionPicker = '';
+    if (drawer) {
+      const isDirty = initialDraftJson !== JSON.stringify(drawer.draft);
+      if (isDirty && !confirm('当前抽屉有未保存的修改，确定放弃吗？')) {
+        return;
+      }
+    }
+    forceCancelDrawer();
   }
 
   function finishDrawer() {
@@ -225,8 +241,16 @@
   }
 
   function removeServer(index) {
+    const server = servers[index];
+    const serverTag = server?.tag || '';
+    const refs = findRulesUsingDnsServer(serverTag, baseDns());
+    const warning =
+      refs.length > 0
+        ? `\n\n⚠️ 警告：该服务器正被以下 DNS 项引用：\n${refs.map((r) => `· ${r}`).join('\n')}\n删除后可能导致 DNS 查询失败！`
+        : '';
+    if (!confirm(`确定删除 DNS 服务器「${serverTag || '此服务器'}」吗？${warning}`)) return;
     onCommit(withDnsServers(baseDns(), removeRule(servers, index)));
-    if (drawer?.kind === 'server' && drawer.mode === 'edit') cancelDrawer();
+    if (drawer?.kind === 'server' && drawer.mode === 'edit') forceCancelDrawer();
   }
 
   function commitRules(nextRules) {
@@ -238,8 +262,9 @@
   }
 
   function removeAt(index) {
+    if (!confirm(`确定删除第 ${index + 1} 条 DNS 分流规则吗？`)) return;
     commitRules(removeRule([...rules], index));
-    if (drawer?.kind === 'rule' && drawer.mode === 'edit') cancelDrawer();
+    if (drawer?.kind === 'rule' && drawer.mode === 'edit') forceCancelDrawer();
   }
 
   function onDragStart(event, index) {
@@ -898,7 +923,7 @@
             type="button"
             disabled={!!drawerProblem}
             onclick={finishDrawer}
-            class="btn {drawerProblem ? 'btn-ghost' : 'btn-primary'}"
+            class="btn btn-primary"
           >
             完成
           </button>
