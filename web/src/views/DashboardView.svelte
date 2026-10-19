@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { store } from '../data/store.svelte.js';
+  import { copyTextToClipboard } from '../data/clipboard.js';
   import Boxes from 'lucide-svelte/icons/boxes';
   import FileCode2 from 'lucide-svelte/icons/file-code-2';
   import Network from 'lucide-svelte/icons/network';
@@ -26,11 +27,13 @@
     return () => clearInterval(timer);
   });
 
-  function copyText(text, key) {
+  async function copyText(text, key) {
     if (!text) return;
-    navigator.clipboard.writeText(text);
-    copiedToken = key;
-    setTimeout(() => (copiedToken = null), 2000);
+    const ok = await copyTextToClipboard(text);
+    if (ok) {
+      copiedToken = key;
+      setTimeout(() => (copiedToken = null), 2000);
+    }
   }
 
   function getTemplateName(tplId) {
