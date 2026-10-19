@@ -1,6 +1,7 @@
 <script>
   import { store } from '../data/store.svelte.js';
   import { canSave, isDirty, saveBlocker, viewOf } from '../data/subscriptionDraft.js';
+  import { copyTextToClipboard } from '../data/clipboard.js';
   import Plus from 'lucide-svelte/icons/plus';
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
   import Pencil from 'lucide-svelte/icons/pencil';
@@ -82,11 +83,13 @@
 
   async function copyPublished(item) {
     if (!item?.publicUrl) return;
-    await navigator.clipboard.writeText(item.publicUrl);
-    copiedId = item.id;
-    setTimeout(() => {
-      if (copiedId === item.id) copiedId = '';
-    }, 2000);
+    const ok = await copyTextToClipboard(item.publicUrl);
+    if (ok) {
+      copiedId = item.id;
+      setTimeout(() => {
+        if (copiedId === item.id) copiedId = '';
+      }, 2000);
+    }
   }
 
   async function resetLink() {
