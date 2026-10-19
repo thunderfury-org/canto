@@ -1,38 +1,38 @@
 export const MATCH_FIELDS = [
-  { field: 'rule_set', label: '规则集', kind: 'tokens', emptyShape: 'array' },
-  { field: 'domain', label: '域名', kind: 'tokens', emptyShape: 'array' },
-  { field: 'domain_suffix', label: '域名后缀', kind: 'tokens', emptyShape: 'array' },
-  { field: 'domain_keyword', label: '域名关键词', kind: 'tokens', emptyShape: 'array' },
-  { field: 'domain_regex', label: '域名正则', kind: 'tokens', emptyShape: 'array' },
-  { field: 'ip_cidr', label: 'IP', kind: 'tokens', emptyShape: 'array' },
-  { field: 'source_ip_cidr', label: '来源 IP', kind: 'tokens', emptyShape: 'array' },
-  { field: 'ip_is_private', label: '私有 IP', kind: 'boolean' },
-  { field: 'network', label: '网络', kind: 'tokens', emptyShape: 'string' },
-  { field: 'port', label: '端口', kind: 'ports' },
-  { field: 'port_range', label: '端口范围', kind: 'tokens', emptyShape: 'array' },
-  { field: 'source_port', label: '来源端口', kind: 'ports' },
-  { field: 'source_port_range', label: '来源端口范围', kind: 'tokens', emptyShape: 'array' },
-  { field: 'protocol', label: '协议', kind: 'tokens', emptyShape: 'string' },
-  { field: 'clash_mode', label: 'Clash 模式', kind: 'tokens', emptyShape: 'string' },
-  { field: 'wifi_ssid', label: 'Wi-Fi', kind: 'tokens', emptyShape: 'array' },
-  { field: 'inbound', label: '入站', kind: 'tokens', emptyShape: 'array' },
-  { field: 'process_name', label: '进程', kind: 'tokens', emptyShape: 'array' },
-  { field: 'invert', label: '取反', kind: 'boolean' },
+  { field: 'rule_set', label: 'rule_set', kind: 'tokens', emptyShape: 'array' },
+  { field: 'domain', label: 'domain', kind: 'tokens', emptyShape: 'array' },
+  { field: 'domain_suffix', label: 'domain_suffix', kind: 'tokens', emptyShape: 'array' },
+  { field: 'domain_keyword', label: 'domain_keyword', kind: 'tokens', emptyShape: 'array' },
+  { field: 'domain_regex', label: 'domain_regex', kind: 'tokens', emptyShape: 'array' },
+  { field: 'ip_cidr', label: 'ip_cidr', kind: 'tokens', emptyShape: 'array' },
+  { field: 'source_ip_cidr', label: 'source_ip_cidr', kind: 'tokens', emptyShape: 'array' },
+  { field: 'ip_is_private', label: 'ip_is_private', kind: 'boolean' },
+  { field: 'network', label: 'network', kind: 'tokens', emptyShape: 'string' },
+  { field: 'port', label: 'port', kind: 'ports' },
+  { field: 'port_range', label: 'port_range', kind: 'tokens', emptyShape: 'array' },
+  { field: 'source_port', label: 'source_port', kind: 'ports' },
+  { field: 'source_port_range', label: 'source_port_range', kind: 'tokens', emptyShape: 'array' },
+  { field: 'protocol', label: 'protocol', kind: 'tokens', emptyShape: 'string' },
+  { field: 'clash_mode', label: 'clash_mode', kind: 'tokens', emptyShape: 'string' },
+  { field: 'wifi_ssid', label: 'wifi_ssid', kind: 'tokens', emptyShape: 'array' },
+  { field: 'inbound', label: 'inbound', kind: 'tokens', emptyShape: 'array' },
+  { field: 'process_name', label: 'process_name', kind: 'tokens', emptyShape: 'array' },
+  { field: 'invert', label: 'invert', kind: 'boolean' },
 ];
 
 export const RESULT_MODES = [
-  { id: 'outbound', label: '出站' },
-  { id: 'reject', label: '拒绝' },
-  { id: 'hijack-dns', label: '劫持 DNS' },
-  { id: 'sniff', label: '嗅探' },
+  { id: 'outbound', label: 'route' },
+  { id: 'reject', label: 'reject' },
+  { id: 'hijack-dns', label: 'hijack-dns' },
+  { id: 'sniff', label: 'sniff' },
 ];
 
 const FIELD_BY_NAME = new Map(MATCH_FIELDS.map((field) => [field.field, field]));
 const DEDICATED_ACTIONS = new Set(['sniff', 'hijack-dns', 'reject']);
 const ACTION_LABEL = {
-  sniff: '嗅探',
-  'hijack-dns': '劫持 DNS',
-  reject: '拒绝',
+  sniff: 'sniff',
+  'hijack-dns': 'hijack-dns',
+  reject: 'reject',
 };
 
 function cloneJson(value) {
@@ -54,7 +54,7 @@ export function isLogicalRule(rule) {
 }
 
 function displayValue(value) {
-  if (Array.isArray(value)) return value.map((item) => String(item)).join('、');
+  if (Array.isArray(value)) return value.map((item) => String(item)).join(', ');
   if (value == null) return '';
   return String(value);
 }
@@ -63,17 +63,17 @@ function conditionPhrase(field, value) {
   const meta = FIELD_BY_NAME.get(field);
   if (!meta) return '';
   if (field === 'ip_is_private') {
-    return value === false ? '私有 IP = false' : '私有 IP';
+    return value === false ? '!ip_is_private' : 'ip_is_private';
   }
   const rendered = displayValue(value);
-  return rendered ? `${meta.label} ${rendered}` : meta.label;
+  return rendered ? `${field} ${rendered}` : field;
 }
 
 export function summarizeRouteRule(rule) {
   if (isLogicalRule(rule)) {
-    let sentence = '逻辑规则';
-    if (rule.mode === 'or') sentence = '逻辑规则（或）';
-    else if (rule.mode === 'and') sentence = '逻辑规则（且）';
+    let sentence = 'logical';
+    if (rule.mode === 'or') sentence = 'logical (or)';
+    else if (rule.mode === 'and') sentence = 'logical (and)';
     return {
       logical: true,
       sentence,
@@ -110,11 +110,17 @@ export function summarizeRouteRule(rule) {
     if (phrase) parts.push(phrase);
   }
 
-  let conditionsText = parts.join(' 且 ');
+  let conditionsText = parts.join(' && ');
   if (rule.invert === true) {
-    conditionsText = conditionsText ? `非 ${conditionsText}` : '非';
+    if (parts.length > 1) {
+      conditionsText = `!(${conditionsText})`;
+    } else if (conditionsText) {
+      conditionsText = `!${conditionsText}`;
+    } else {
+      conditionsText = '!';
+    }
   } else if (rule.invert === false) {
-    conditionsText = conditionsText ? `${conditionsText} 且 取反 false` : '取反 false';
+    conditionsText = conditionsText ? `${conditionsText} && invert false` : 'invert false';
   }
 
   const action = typeof rule.action === 'string' ? rule.action : '';

@@ -44,14 +44,14 @@ const TEMPLATE_RULES = [
 ];
 
 const TEMPLATE_SUMMARIES = [
-  ['域名关键词 _dns-sd._udp', '预定义 NXDOMAIN'],
-  ['Clash 模式 direct', 'dns_direct'],
-  ['Wi-Fi sanzhixiaoxiong', 'dns_direct'],
-  ['域名关键词 stun.', 'dns_direct'],
-  ['域名后缀 sensorsdata.cn、courier.push.apple.com、opencode.ai', 'dns_direct'],
-  ['规则集 cn', 'dns_direct'],
-  ['规则集 ai', 'dns_ai'],
-  ['规则集 proxy', 'dns_proxy'],
+  ['domain_keyword _dns-sd._udp', 'predefined NXDOMAIN'],
+  ['clash_mode direct', 'dns_direct'],
+  ['wifi_ssid sanzhixiaoxiong', 'dns_direct'],
+  ['domain_keyword stun.', 'dns_direct'],
+  ['domain_suffix sensorsdata.cn, courier.push.apple.com, opencode.ai', 'dns_direct'],
+  ['rule_set cn', 'dns_direct'],
+  ['rule_set ai', 'dns_ai'],
+  ['rule_set proxy', 'dns_proxy'],
 ];
 
 function roundtrip(rule) {

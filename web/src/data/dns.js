@@ -25,9 +25,9 @@ export const DNS_FLAGS = [
 ];
 
 export const DNS_RESULT_MODES = [
-  { id: 'server', label: '指定服务器' },
-  { id: 'reject', label: '拒绝' },
-  { id: 'predefined', label: '预定义应答' },
+  { id: 'server', label: 'server' },
+  { id: 'reject', label: 'reject' },
+  { id: 'predefined', label: 'predefined' },
 ];
 
 const SERVER_KEYS = ['tag', 'type', 'server', 'detour', 'domain_resolver'];
@@ -180,9 +180,9 @@ export function nextServerTag(tags) {
 
 export function summarizeDnsRule(rule) {
   if (isLogicalRule(rule)) {
-    let conditionsText = '逻辑规则';
-    if (rule.mode === 'or') conditionsText = '逻辑规则（或）';
-    else if (rule.mode === 'and') conditionsText = '逻辑规则（且）';
+    let conditionsText = 'logical';
+    if (rule.mode === 'or') conditionsText = 'logical (or)';
+    else if (rule.mode === 'and') conditionsText = 'logical (and)';
     return {
       logical: true,
       conditionsText,
@@ -219,11 +219,17 @@ export function summarizeDnsRule(rule) {
     if (phrase) parts.push(phrase);
   }
 
-  let conditionsText = parts.join(' 且 ');
+  let conditionsText = parts.join(' && ');
   if (rule.invert === true) {
-    conditionsText = conditionsText ? `非 ${conditionsText}` : '非';
+    if (parts.length > 1) {
+      conditionsText = `!(${conditionsText})`;
+    } else if (conditionsText) {
+      conditionsText = `!${conditionsText}`;
+    } else {
+      conditionsText = '!';
+    }
   } else if (rule.invert === false) {
-    conditionsText = conditionsText ? `${conditionsText} 且 取反 false` : '取反 false';
+    conditionsText = conditionsText ? `${conditionsText} && invert false` : 'invert false';
   }
 
   const action = typeof rule.action === 'string' ? rule.action : '';
@@ -234,14 +240,14 @@ export function summarizeDnsRule(rule) {
 
   if (action === 'reject') {
     resultKind = 'reject';
-    resultText = '拒绝';
+    resultText = 'reject';
   } else if (action === 'predefined') {
     resultKind = 'predefined';
     rcode = nonEmpty(rule.rcode) ? String(rule.rcode) : '';
-    resultText = rcode ? `预定义 ${rcode}` : '预定义应答';
+    resultText = rcode ? `predefined ${rcode}` : 'predefined';
   } else if (action) {
     resultKind = 'other';
-    resultText = nonEmpty(rule.server) ? `动作 ${action} → ${rule.server}` : `动作 ${action}`;
+    resultText = nonEmpty(rule.server) ? `action: ${action} → ${rule.server}` : `action: ${action}`;
   } else if (nonEmpty(rule.server)) {
     server = String(rule.server);
     resultText = server;

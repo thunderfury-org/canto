@@ -33,7 +33,6 @@
     MATCH_FIELDS,
     addCondition,
     appendRule,
-    fieldMeta,
     findUndefinedRuleTags,
     moveRule,
     removeCondition,
@@ -742,14 +741,14 @@
             <div class="flex items-center justify-between gap-2">
               <h5 class="text-xs font-medium text-slate-300">条件</h5>
               <select
-                class="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-300"
+                class="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-300 font-mono"
                 bind:value={conditionPicker}
                 onchange={(event) => onAddCondition(event.target.value)}
               >
                 <option value="">添加条件</option>
                 {#each MATCH_FIELDS as field}
                   {#if !drawer.draft.conditions.some((cond) => cond.field === field.field)}
-                    <option value={field.field}>{field.label}</option>
+                    <option value={field.field}>{field.field}</option>
                   {/if}
                 {/each}
               </select>
@@ -758,11 +757,9 @@
               <p class="text-[11px] text-slate-500">没有匹配条件</p>
             {/if}
             {#each drawer.draft.conditions as cond (cond.field)}
-              {@const meta = fieldMeta(cond.field)}
               <div class="flex items-start gap-2">
-                <div class="w-24 shrink-0 pt-1">
-                  <div class="text-xs text-slate-200">{meta?.label || cond.field}</div>
-                  <div class="font-mono text-[10px] text-slate-500">{cond.field}</div>
+                <div class="w-28 shrink-0 pt-1">
+                  <span class="font-mono text-xs text-slate-200">{cond.field}</span>
                 </div>
                 <div class="flex-1 min-w-0 space-y-1">
                   {#if cond.kind === 'boolean'}
@@ -845,7 +842,8 @@
                 <button
                   type="button"
                   onclick={() => chooseResult(mode.id)}
-                  class="px-3 py-1.5 text-xs cursor-pointer {drawer.draft.resultMode === mode.id
+                  class="px-3 py-1.5 text-xs font-mono cursor-pointer {drawer.draft.resultMode ===
+                  mode.id
                     ? 'bg-slate-700 text-slate-100'
                     : 'text-slate-400 hover:bg-slate-800'}"
                 >
