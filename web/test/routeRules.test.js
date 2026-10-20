@@ -40,25 +40,25 @@ const TEMPLATE_RULES = [
 ];
 
 const TEMPLATE_SENTENCES = [
-  '规则集 proxy → 默认策略',
-  'IP 192.168.5.0/24 → ts-ep',
-  'Clash 模式 direct → 直连',
-  'Wi-Fi sanzhixiaoxiong → 直连',
-  'IP 104.223.57.43、154.217.255.166 → 直连',
-  '网络 udp 且 端口 123 → 直连',
-  '嗅探',
-  '协议 dns → 劫持 DNS',
-  '协议 stun → 直连',
-  '协议 bittorrent → 直连',
-  '协议 ntp → 直连',
-  '域名后缀 sensorsdata.cn、courier.push.apple.com、opencode.ai → 直连',
-  '规则集 private、privateip → 直连',
-  '规则集 cnip → 直连',
-  '规则集 cn → 直连',
-  '协议 quic → 拒绝',
-  '规则集 ai → AI',
-  '规则集 netflix、netflixip → Netflix',
-  '规则集 youtube → YouTube',
+  'rule_set proxy → 默认策略',
+  'ip_cidr 192.168.5.0/24 → ts-ep',
+  'clash_mode direct → 直连',
+  'wifi_ssid sanzhixiaoxiong → 直连',
+  'ip_cidr 104.223.57.43, 154.217.255.166 → 直连',
+  'network udp && port 123 → 直连',
+  'sniff',
+  'protocol dns → hijack-dns',
+  'protocol stun → 直连',
+  'protocol bittorrent → 直连',
+  'protocol ntp → 直连',
+  'domain_suffix sensorsdata.cn, courier.push.apple.com, opencode.ai → 直连',
+  'rule_set private, privateip → 直连',
+  'rule_set cnip → 直连',
+  'rule_set cn → 直连',
+  'protocol quic → reject',
+  'rule_set ai → AI',
+  'rule_set netflix, netflixip → Netflix',
+  'rule_set youtube → YouTube',
 ];
 
 test('template route rules summarize to the real chain', () => {
@@ -75,19 +75,19 @@ test('template route rules summarize to the real chain', () => {
 
 test('quic reject is not shown as direct', () => {
   const summary = summarizeRouteRule(TEMPLATE_RULES[15]);
-  assert.equal(summary.sentence, '协议 quic → 拒绝');
-  assert.equal(summary.resultText, '拒绝');
+  assert.equal(summary.sentence, 'protocol quic → reject');
+  assert.equal(summary.resultText, 'reject');
   assert.equal(summary.sentence.includes('直连'), false);
 });
 
 test('sniff and hijack-dns hide a leftover outbound', () => {
   const sniff = summarizeRouteRule(TEMPLATE_RULES[6]);
-  assert.equal(sniff.sentence, '嗅探');
+  assert.equal(sniff.sentence, 'sniff');
   assert.equal(sniff.resultKind, 'sniff');
   assert.equal(sniff.outbound, '');
 
   const hijack = summarizeRouteRule(TEMPLATE_RULES[7]);
-  assert.equal(hijack.sentence, '协议 dns → 劫持 DNS');
+  assert.equal(hijack.sentence, 'protocol dns → hijack-dns');
   assert.equal(hijack.resultKind, 'hijack-dns');
   assert.equal(hijack.sentence.includes('直连'), false);
 });
@@ -205,10 +205,10 @@ test('logical rules summarize and round-trip as JSON', () => {
   };
   const summary = summarizeRouteRule(rule);
   assert.equal(summary.logical, true);
-  assert.equal(summary.sentence, '逻辑规则（或）');
+  assert.equal(summary.sentence, 'logical (or)');
   const next = applyDraft(createDraft(rule));
   assert.deepEqual(next, rule);
-  assert.equal(summarizeRouteRule({ rules: [{ port: 1 }] }).sentence, '逻辑规则');
+  assert.equal(summarizeRouteRule({ rules: [{ port: 1 }] }).sentence, 'logical');
   assert.equal(draftError({ logical: true, rawText: '{' }), 'JSON 不合法');
 });
 
