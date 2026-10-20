@@ -455,10 +455,11 @@
             <button
               type="button"
               onclick={() => removeProvider(pIdx)}
-              class="btn btn-ghost btn-icon btn-danger"
+              class="btn btn-secondary btn-danger"
               aria-label="删除此规则源"
             >
               <Trash2 size={13} />
+              <span>删除</span>
             </button>
           </div>
         </div>

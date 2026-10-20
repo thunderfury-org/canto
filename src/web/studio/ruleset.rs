@@ -152,43 +152,36 @@ pub async fn inspect_release(
 async fn fetch_github_json(
     req: reqwest::RequestBuilder,
     context_label: &str,
-) -> std::result::Result<serde_json::Value, Box<Response>> {
-    let res = match req.send().await {
-        Ok(res) => res,
-        Err(err) => {
-            return Err(Box::new(json_error(
-                StatusCode::BAD_GATEWAY,
-                &format!("failed to fetch {context_label}: {err}"),
-            )));
-        }
-    };
+) -> std::result::Result<serde_json::Value, (StatusCode, String)> {
+    let res = req.send().await.map_err(|err| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("failed to fetch {context_label}: {err}"),
+        )
+    })?;
 
     if !res.status().is_success() {
         let status = res.status();
         let body = res.text().await.unwrap_or_default();
-        return Err(Box::new(json_error(
+        return Err((
             StatusCode::BAD_GATEWAY,
-            &format!("GitHub API returned {status}: {body}"),
-        )));
+            format!("GitHub API returned {status}: {body}"),
+        ));
     }
 
-    let bytes = match res.bytes().await {
-        Ok(b) => b,
-        Err(err) => {
-            return Err(Box::new(json_error(
-                StatusCode::BAD_GATEWAY,
-                &format!("failed to read GitHub response: {err}"),
-            )));
-        }
-    };
-
-    match serde_json::from_slice(&bytes) {
-        Ok(v) => Ok(v),
-        Err(err) => Err(Box::new(json_error(
+    let bytes = res.bytes().await.map_err(|err| {
+        (
             StatusCode::BAD_GATEWAY,
-            &format!("failed to parse GitHub JSON: {err}"),
-        ))),
-    }
+            format!("failed to read GitHub response: {err}"),
+        )
+    })?;
+
+    serde_json::from_slice(&bytes).map_err(|err| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("failed to parse GitHub JSON: {err}"),
+        )
+    })
 }
 
 async fn inspect_github_release(
@@ -210,7 +203,7 @@ async fn inspect_github_release(
 
     let release_json = match fetch_github_json(req, "github release").await {
         Ok(json) => json,
-        Err(resp) => return *resp,
+        Err((status, msg)) => return json_error(status, &msg),
     };
 
     let tag_name = release_json
@@ -333,7 +326,7 @@ async fn inspect_github_branch(
 
     let parsed_json = match fetch_github_json(trees_req, "github branch items").await {
         Ok(json) => json,
-        Err(trees_err_resp) => {
+        Err(trees_err) => {
             let fallback_contents_url = if clean_path.is_empty() {
                 format!("https://api.github.com/repos/{owner}/{repo}/contents?ref={branch}")
             } else {
@@ -348,7 +341,7 @@ async fn inspect_github_branch(
                 .header("Accept", "application/vnd.github.v3+json");
             match fetch_github_json(contents_req, "github branch items").await {
                 Ok(fallback_json) => fallback_json,
-                Err(_) => return *trees_err_resp,
+                Err(_) => return json_error(trees_err.0, &trees_err.1),
             }
         }
     };
