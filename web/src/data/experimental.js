@@ -1,3 +1,4 @@
+import { cloneJson, readOther } from './jsonUtils.js';
 export const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'panic'];
 
 export const CLASH_MODES = [
@@ -24,11 +25,6 @@ const CLASH_KEYS = [
   'default_mode',
 ];
 
-function cloneJson(value) {
-  if (value === undefined) return undefined;
-  return JSON.parse(JSON.stringify(value));
-}
-
 function asObject(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   return value;
@@ -42,21 +38,6 @@ function cloneObject(value) {
 function emptyToNull(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   return Object.keys(value).length > 0 ? value : null;
-}
-
-function readOther(text) {
-  const raw = String(text ?? '').trim();
-  if (!raw) return {};
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error('其他字段 JSON 不合法');
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('其他字段必须是 JSON 对象');
-  }
-  return parsed;
 }
 
 function otherText(source, known) {

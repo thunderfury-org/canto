@@ -149,6 +149,41 @@ pub async fn inspect_release(
     }
 }
 
+async fn fetch_github_json(
+    req: reqwest::RequestBuilder,
+    context_label: &str,
+) -> std::result::Result<serde_json::Value, (StatusCode, String)> {
+    let res = req.send().await.map_err(|err| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("failed to fetch {context_label}: {err}"),
+        )
+    })?;
+
+    if !res.status().is_success() {
+        let status = res.status();
+        let body = res.text().await.unwrap_or_default();
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("GitHub API returned {status}: {body}"),
+        ));
+    }
+
+    let bytes = res.bytes().await.map_err(|err| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("failed to read GitHub response: {err}"),
+        )
+    })?;
+
+    serde_json::from_slice(&bytes).map_err(|err| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("failed to parse GitHub JSON: {err}"),
+        )
+    })
+}
+
 async fn inspect_github_release(
     state: &WebState,
     owner: String,
@@ -160,50 +195,15 @@ async fn inspect_github_release(
         None => format!("https://api.github.com/repos/{owner}/{repo}/releases/latest"),
     };
 
-    let res = match state
+    let req = state
         .http
         .get(&gh_api_url)
         .header("User-Agent", "canto-web-studio")
-        .header("Accept", "application/vnd.github.v3+json")
-        .send()
-        .await
-    {
-        Ok(res) => res,
-        Err(err) => {
-            return json_error(
-                StatusCode::BAD_GATEWAY,
-                &format!("failed to fetch github release: {err}"),
-            );
-        }
-    };
+        .header("Accept", "application/vnd.github.v3+json");
 
-    if !res.status().is_success() {
-        let status = res.status();
-        let body = res.text().await.unwrap_or_default();
-        return json_error(
-            StatusCode::BAD_GATEWAY,
-            &format!("GitHub API returned {status}: {body}"),
-        );
-    }
-
-    let bytes = match res.bytes().await {
-        Ok(b) => b,
-        Err(err) => {
-            return json_error(
-                StatusCode::BAD_GATEWAY,
-                &format!("failed to read GitHub release response: {err}"),
-            );
-        }
-    };
-
-    let release_json: serde_json::Value = match serde_json::from_slice(&bytes) {
-        Ok(v) => v,
-        Err(err) => {
-            return json_error(
-                StatusCode::BAD_GATEWAY,
-                &format!("failed to parse GitHub release JSON: {err}"),
-            );
-        }
+    let release_json = match fetch_github_json(req, "github release").await {
+        Ok(json) => json,
+        Err((status, msg)) => return json_error(status, &msg),
     };
 
     let tag_name = release_json
@@ -318,77 +318,31 @@ async fn inspect_github_branch(
     };
     let git_trees_url = format!("https://api.github.com/repos/{owner}/{repo}/git/trees/{tree_ref}");
 
-    let mut res = state
+    let trees_req = state
         .http
         .get(&git_trees_url)
         .header("User-Agent", "canto-web-studio")
-        .header("Accept", "application/vnd.github.v3+json")
-        .send()
-        .await;
+        .header("Accept", "application/vnd.github.v3+json");
 
-    // Fallback to /contents API if git trees returns non-success
-    let is_trees_success = match &res {
-        Ok(r) => r.status().is_success(),
-        Err(_) => false,
-    };
-
-    if !is_trees_success {
-        let fallback_contents_url = if clean_path.is_empty() {
-            format!("https://api.github.com/repos/{owner}/{repo}/contents?ref={branch}")
-        } else {
-            format!(
-                "https://api.github.com/repos/{owner}/{repo}/contents/{clean_path}?ref={branch}"
-            )
-        };
-        if let Ok(fallback_res) = state
-            .http
-            .get(&fallback_contents_url)
-            .header("User-Agent", "canto-web-studio")
-            .header("Accept", "application/vnd.github.v3+json")
-            .send()
-            .await
-            && fallback_res.status().is_success()
-        {
-            res = Ok(fallback_res);
-        }
-    }
-
-    let response = match res {
-        Ok(r) => r,
-        Err(err) => {
-            return json_error(
-                StatusCode::BAD_GATEWAY,
-                &format!("failed to fetch github branch items: {err}"),
-            );
-        }
-    };
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return json_error(
-            StatusCode::BAD_GATEWAY,
-            &format!("GitHub API returned {status}: {body}"),
-        );
-    }
-
-    let bytes = match response.bytes().await {
-        Ok(b) => b,
-        Err(err) => {
-            return json_error(
-                StatusCode::BAD_GATEWAY,
-                &format!("failed to read GitHub response: {err}"),
-            );
-        }
-    };
-
-    let parsed_json: serde_json::Value = match serde_json::from_slice(&bytes) {
-        Ok(v) => v,
-        Err(err) => {
-            return json_error(
-                StatusCode::BAD_GATEWAY,
-                &format!("failed to parse GitHub JSON: {err}"),
-            );
+    let parsed_json = match fetch_github_json(trees_req, "github branch items").await {
+        Ok(json) => json,
+        Err(trees_err) => {
+            let fallback_contents_url = if clean_path.is_empty() {
+                format!("https://api.github.com/repos/{owner}/{repo}/contents?ref={branch}")
+            } else {
+                format!(
+                    "https://api.github.com/repos/{owner}/{repo}/contents/{clean_path}?ref={branch}"
+                )
+            };
+            let contents_req = state
+                .http
+                .get(&fallback_contents_url)
+                .header("User-Agent", "canto-web-studio")
+                .header("Accept", "application/vnd.github.v3+json");
+            match fetch_github_json(contents_req, "github branch items").await {
+                Ok(fallback_json) => fallback_json,
+                Err(_) => return json_error(trees_err.0, &trees_err.1),
+            }
         }
     };
 
@@ -685,8 +639,7 @@ pub fn parse_ruleset_source_target(input: &str) -> Result<RulesetSourceTarget, S
         let segments: Vec<&str> = repo_part.split('/').collect();
         if segments.len() == 2 && !segments[0].is_empty() && !segments[1].is_empty() {
             // Note: if tag_part contains '/', it might be a branch with subpath, e.g. sing/geo/geosite
-            if tag_part.contains('/') {
-                let (branch, subpath) = tag_part.split_once('/').unwrap();
+            if let Some((branch, subpath)) = tag_part.split_once('/') {
                 return Ok(RulesetSourceTarget::Branch {
                     owner: segments[0].to_string(),
                     repo: segments[1].to_string(),

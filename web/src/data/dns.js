@@ -30,32 +30,14 @@ export const DNS_RESULT_MODES = [
   { id: 'predefined', label: 'predefined' },
 ];
 
+import { cloneJson, readOther } from './jsonUtils.js';
+
 const SERVER_KEYS = ['tag', 'type', 'server', 'detour', 'domain_resolver'];
 const RESULT_KEYS = ['server', 'action', 'rcode'];
 const FLAG_KEYS = new Set(DNS_FLAGS.map((flag) => flag.key));
 
-function cloneJson(value) {
-  if (value === undefined) return undefined;
-  return JSON.parse(JSON.stringify(value));
-}
-
 function dnsBase(dns) {
   return dns && typeof dns === 'object' && !Array.isArray(dns) ? { ...dns } : {};
-}
-
-function readOther(draft) {
-  const text = (draft?.otherText || '').trim();
-  if (!text) return {};
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error('其他字段 JSON 不合法');
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('其他字段必须是 JSON 对象');
-  }
-  return parsed;
 }
 
 function otherError(draft) {

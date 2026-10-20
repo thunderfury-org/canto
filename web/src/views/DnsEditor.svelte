@@ -43,21 +43,20 @@
   import { findRulesUsingDnsServer } from '../data/templateDocument.js';
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
-  import MultiSelect from '../components/MultiSelect.svelte';
+  import RuleConditionsEditor from '../components/RuleConditionsEditor.svelte';
+  import Drawer from '../components/Drawer.svelte';
   import Radio from 'lucide-svelte/icons/radio';
   import Plus from 'lucide-svelte/icons/plus';
   import Trash2 from 'lucide-svelte/icons/trash-2';
   import ArrowUp from 'lucide-svelte/icons/arrow-up';
   import ArrowDown from 'lucide-svelte/icons/arrow-down';
   import GripVertical from 'lucide-svelte/icons/grip-vertical';
-  import X from 'lucide-svelte/icons/x';
 
   let { dns = null, outboundTags = [], ruleTags = [], onCommit = () => {} } = $props();
 
   let drawer = $state(null);
   let dragFrom = $state(-1);
   let dragOver = $state(-1);
-  let conditionPicker = $state('');
   let initialDraftJson = '';
 
   const TONE_CLASS = {
@@ -155,7 +154,6 @@
       index,
       draft: createServerDraft(source ? cloneData(source) : {}),
     };
-    conditionPicker = '';
     initialDraftJson = JSON.stringify(drawer.draft);
   }
 
@@ -166,7 +164,6 @@
       index: -1,
       draft: createNewServerDraft(serverTags),
     };
-    conditionPicker = '';
     initialDraftJson = JSON.stringify(drawer.draft);
   }
 
@@ -178,7 +175,6 @@
       index,
       draft: createDnsRuleDraft(source ? cloneData(source) : {}),
     };
-    conditionPicker = '';
     initialDraftJson = JSON.stringify(drawer.draft);
   }
 
@@ -189,13 +185,11 @@
       index: -1,
       draft: createNewDnsRuleDraft(preferredDnsServer(baseDns())),
     };
-    conditionPicker = '';
     initialDraftJson = JSON.stringify(drawer.draft);
   }
 
   function forceCancelDrawer() {
     drawer = null;
-    conditionPicker = '';
   }
 
   function cancelDrawer() {
@@ -305,20 +299,10 @@
   function onAddCondition(field) {
     if (!field) return;
     drawer.draft = addCondition(cloneData(drawer.draft), field);
-    conditionPicker = '';
   }
 
   function onRemoveCondition(field) {
     drawer.draft = removeCondition(cloneData(drawer.draft), field);
-  }
-
-  function pushTokens(cond, raw) {
-    const parts = String(raw)
-      .split(/[,，、\n]/)
-      .map((part) => part.trim())
-      .filter(Boolean);
-    if (parts.length === 0) return;
-    cond.tokens = [...(cond.tokens || []), ...parts];
   }
 
   function typeLabel(type) {
@@ -640,293 +624,163 @@
 </div>
 
 {#if drawer}
-  <div class="fixed inset-0 z-50">
-    <button
-      type="button"
-      class="absolute inset-0 bg-slate-950/70 cursor-default"
-      aria-label="取消"
-      onclick={cancelDrawer}
-    ></button>
-    <div
-      class="absolute inset-y-0 right-0 z-10 w-[28rem] max-w-[calc(100vw-1rem)] bg-slate-900 border-l border-slate-800 shadow-xl flex flex-col"
-      role="dialog"
-      tabindex="-1"
-      aria-modal="true"
-      aria-label={drawerTitle}
-    >
-      <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-        <h4 class="text-sm font-semibold text-slate-100">{drawerTitle}</h4>
-        <button
-          type="button"
-          title="取消"
-          aria-label="取消"
-          onclick={cancelDrawer}
-          class="btn btn-ghost btn-icon"
+  <Drawer
+    title={drawerTitle}
+    problem={drawerProblem}
+    hint={drawerHint}
+    confirmText="完成"
+    onclose={cancelDrawer}
+    onconfirm={finishDrawer}
+  >
+    {#if drawer.kind === 'server'}
+      <label class="block space-y-1">
+        <span class="text-xs text-slate-300">标签</span>
+        <input
+          type="text"
+          bind:value={drawer.draft.tag}
+          class="field w-full px-2 py-1.5 text-xs font-mono text-slate-100"
+        />
+      </label>
+      <label class="block space-y-1">
+        <span class="text-xs text-slate-300">协议</span>
+        <select
+          bind:value={drawer.draft.type}
+          class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
         >
-          <X size={16} />
-        </button>
-      </div>
+          {#each serverTypeOptions(drawer.draft.type) as option}
+            <option value={option.value}
+              >{option.known ? typeLabel(option.value) : `${option.value}（未识别）`}</option
+            >
+          {/each}
+        </select>
+      </label>
+      <label class="block space-y-1">
+        <span class="text-xs text-slate-300">地址</span>
+        <input
+          type="text"
+          bind:value={drawer.draft.server}
+          class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+        />
+      </label>
+      <label class="block space-y-1">
+        <span class="text-xs text-slate-300">Detour</span>
+        <select
+          bind:value={drawer.draft.detour}
+          class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+        >
+          <option value="">(无)</option>
+          {#each tagOptions(outboundTags, drawer.draft.detour) as option}
+            <option value={option.value}
+              >{option.defined ? option.value : `${option.value}（未定义）`}</option
+            >
+          {/each}
+        </select>
+      </label>
+      <label class="block space-y-1">
+        <span class="text-xs text-slate-300">域名解析</span>
+        <select
+          bind:value={drawer.draft.domainResolver}
+          class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+        >
+          <option value="">(无)</option>
+          {#each resolverOptions(namedServerTags, drawer.draft.tag, drawer.draft.domainResolver) as option}
+            <option value={option.value}>
+              {option.self
+                ? `${option.value}（指向自身）`
+                : option.defined
+                  ? option.value
+                  : `${option.value}（未定义）`}
+            </option>
+          {/each}
+        </select>
+      </label>
+    {:else if drawer.draft.logical}
+      <textarea
+        bind:value={drawer.draft.rawText}
+        spellcheck="false"
+        class="w-full h-[28rem] bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200"
+      ></textarea>
+    {:else}
+      <RuleConditionsEditor
+        bind:conditions={drawer.draft.conditions}
+        availableFields={MATCH_FIELDS}
+        {ruleTags}
+        {onAddCondition}
+        {onRemoveCondition}
+      />
 
-      <div class="flex-1 overflow-y-auto px-4 py-4 space-y-5">
-        {#if drawer.kind === 'server'}
-          <label class="block space-y-1">
-            <span class="text-xs text-slate-300">标签</span>
-            <input
-              type="text"
-              bind:value={drawer.draft.tag}
-              class="field w-full px-2 py-1.5 text-xs font-mono text-slate-100"
-            />
-          </label>
-          <label class="block space-y-1">
-            <span class="text-xs text-slate-300">协议</span>
-            <select
-              bind:value={drawer.draft.type}
-              class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-            >
-              {#each serverTypeOptions(drawer.draft.type) as option}
-                <option value={option.value}
-                  >{option.known ? typeLabel(option.value) : `${option.value}（未识别）`}</option
-                >
-              {/each}
-            </select>
-          </label>
-          <label class="block space-y-1">
-            <span class="text-xs text-slate-300">地址</span>
-            <input
-              type="text"
-              bind:value={drawer.draft.server}
-              class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-            />
-          </label>
-          <label class="block space-y-1">
-            <span class="text-xs text-slate-300">Detour</span>
-            <select
-              bind:value={drawer.draft.detour}
-              class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-            >
-              <option value="">(无)</option>
-              {#each tagOptions(outboundTags, drawer.draft.detour) as option}
-                <option value={option.value}
-                  >{option.defined ? option.value : `${option.value}（未定义）`}</option
-                >
-              {/each}
-            </select>
-          </label>
-          <label class="block space-y-1">
-            <span class="text-xs text-slate-300">域名解析</span>
-            <select
-              bind:value={drawer.draft.domainResolver}
-              class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-            >
-              <option value="">(无)</option>
-              {#each resolverOptions(namedServerTags, drawer.draft.tag, drawer.draft.domainResolver) as option}
-                <option value={option.value}>
-                  {option.self
-                    ? `${option.value}（指向自身）`
-                    : option.defined
-                      ? option.value
-                      : `${option.value}（未定义）`}
-                </option>
-              {/each}
-            </select>
-          </label>
-        {:else if drawer.draft.logical}
-          <textarea
-            bind:value={drawer.draft.rawText}
-            spellcheck="false"
-            class="w-full h-[28rem] bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200"
-          ></textarea>
-        {:else}
-          <section class="space-y-2">
-            <div class="flex items-center justify-between gap-2">
-              <h5 class="text-xs font-medium text-slate-300">条件</h5>
-              <select
-                class="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-300 font-mono"
-                bind:value={conditionPicker}
-                onchange={(event) => onAddCondition(event.target.value)}
-              >
-                <option value="">添加条件</option>
-                {#each MATCH_FIELDS as field}
-                  {#if !drawer.draft.conditions.some((cond) => cond.field === field.field)}
-                    <option value={field.field}>{field.field}</option>
-                  {/if}
-                {/each}
-              </select>
-            </div>
-            {#if drawer.draft.conditions.length === 0}
-              <p class="text-[11px] text-slate-500">没有匹配条件</p>
-            {/if}
-            {#each drawer.draft.conditions as cond (cond.field)}
-              <div class="flex items-start gap-2">
-                <div class="w-28 shrink-0 pt-1">
-                  <span class="font-mono text-xs text-slate-200">{cond.field}</span>
-                </div>
-                <div class="flex-1 min-w-0 space-y-1">
-                  {#if cond.kind === 'boolean'}
-                    <label class="flex items-center gap-2 text-xs text-slate-300 pt-1">
-                      <input
-                        type="checkbox"
-                        checked={cond.bool === true}
-                        onchange={(event) => {
-                          cond.bool = event.target.checked;
-                        }}
-                      />
-                      <span>{cond.bool ? '是' : '否'}</span>
-                    </label>
-                  {:else if cond.field === 'rule_set'}
-                    <MultiSelect
-                      options={ruleTags}
-                      bind:selected={cond.tokens}
-                      placeholder="选择规则集"
-                    />
-                    {@const missing = (cond.tokens || []).filter(
-                      (tag) => tag && !ruleTags.includes(tag),
-                    )}
-                    {#if missing.length > 0}
-                      <p class="text-[11px] text-amber-300">未定义规则集：{missing.join('、')}</p>
-                    {/if}
-                  {:else}
-                    <div
-                      class="flex flex-wrap items-center gap-1 rounded border border-slate-800 bg-slate-950 px-2 py-1.5"
-                    >
-                      {#each cond.tokens || [] as token, tokenIndex}
-                        <button
-                          type="button"
-                          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 font-mono text-[11px] text-slate-200 cursor-pointer"
-                          onclick={() => {
-                            cond.tokens = cond.tokens.filter((_, i) => i !== tokenIndex);
-                          }}
-                        >
-                          <span>{token}</span>
-                          <span class="text-slate-500">×</span>
-                        </button>
-                      {/each}
-                      <input
-                        type="text"
-                        class="flex-1 min-w-24 bg-transparent outline-none text-xs font-mono text-slate-200 py-0.5"
-                        onkeydown={(event) => {
-                          if (event.key === 'Enter' || event.key === ',' || event.key === '、') {
-                            event.preventDefault();
-                            pushTokens(cond, event.currentTarget.value);
-                            event.currentTarget.value = '';
-                          }
-                        }}
-                        onblur={(event) => {
-                          pushTokens(cond, event.currentTarget.value);
-                          event.currentTarget.value = '';
-                        }}
-                      />
-                    </div>
-                  {/if}
-                </div>
-                <button
-                  type="button"
-                  title="删除条件"
-                  aria-label="删除条件"
-                  onclick={() => onRemoveCondition(cond.field)}
-                  class="p-1 text-slate-500 hover:text-rose-400 cursor-pointer"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            {/each}
-          </section>
-
-          <section class="space-y-2">
-            <h5 class="text-xs font-medium text-slate-300">结果</h5>
-            {#if drawer.draft.resultMode === 'other'}
-              <p class="text-[11px] text-amber-300">当前是自定义动作，选择下面的结果会替换它。</p>
-            {/if}
-            <div class="flex flex-wrap rounded border border-slate-800 overflow-hidden">
-              {#each DNS_RESULT_MODES as mode}
-                <button
-                  type="button"
-                  onclick={() => chooseResult(mode.id)}
-                  class="px-3 py-1.5 text-xs font-mono cursor-pointer {drawer.draft.resultMode ===
-                  mode.id
-                    ? 'bg-slate-700 text-slate-100'
-                    : 'text-slate-400 hover:bg-slate-800'}"
-                >
-                  {mode.label}
-                </button>
-              {/each}
-            </div>
-            {#if drawer.draft.resultMode === 'server'}
-              <select
-                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-                value={drawer.draft.server}
-                onchange={(event) => {
-                  drawer.draft.server = event.target.value;
-                }}
-              >
-                <option value="">未指定</option>
-                {#each tagOptions(namedServerTags, drawer.draft.server) as option}
-                  <option value={option.value}
-                    >{option.defined ? option.value : `${option.value}（未定义）`}</option
-                  >
-                {/each}
-              </select>
-            {:else if drawer.draft.resultMode === 'predefined'}
-              <select
-                class="field w-full px-2 py-1.5 text-xs font-mono text-amber-200"
-                value={drawer.draft.rcode}
-                onchange={(event) => {
-                  drawer.draft.rcode = event.target.value;
-                }}
-              >
-                <option value="">选择 rcode</option>
-                {#each rcodeOptions(drawer.draft.rcode) as option}
-                  <option value={option.value}
-                    >{option.known ? option.value : `${option.value}（未识别）`}</option
-                  >
-                {/each}
-              </select>
-            {/if}
-          </section>
+      <section class="space-y-2">
+        <h5 class="text-xs font-medium text-slate-300">结果</h5>
+        {#if drawer.draft.resultMode === 'other'}
+          <p class="text-[11px] text-amber-300">当前是自定义动作，选择下面的结果会替换它。</p>
         {/if}
-
-        {#if drawer.kind === 'server' || !drawer.draft.logical}
-          <section class="space-y-2">
+        <div class="flex flex-wrap rounded border border-slate-800 overflow-hidden">
+          {#each DNS_RESULT_MODES as mode}
             <button
               type="button"
-              class="text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
-              onclick={() => {
-                drawer.draft.otherExpanded = !drawer.draft.otherExpanded;
-              }}
+              onclick={() => chooseResult(mode.id)}
+              class="px-3 py-1.5 text-xs font-mono cursor-pointer {drawer.draft.resultMode ===
+              mode.id
+                ? 'bg-slate-700 text-slate-100'
+                : 'text-slate-400 hover:bg-slate-800'}"
             >
-              其他字段
+              {mode.label}
             </button>
-            {#if drawer.draft.otherExpanded}
-              <textarea
-                bind:value={drawer.draft.otherText}
-                spellcheck="false"
-                class="field w-full h-36 px-3 py-2 text-xs font-mono"
-              ></textarea>
-            {/if}
-          </section>
-        {/if}
-      </div>
-
-      <div class="px-4 py-3 border-t border-slate-800 flex items-center justify-between gap-3">
-        <div class="text-[11px] min-w-0">
-          {#if drawerProblem}
-            <span class="text-rose-300">{drawerProblem}</span>
-          {:else if drawerHint}
-            <span class="text-amber-300">{drawerHint}</span>
-          {/if}
+          {/each}
         </div>
-        <div class="flex items-center gap-2 shrink-0">
-          <button type="button" onclick={cancelDrawer} class="btn btn-secondary"> 取消 </button>
-          <button
-            type="button"
-            disabled={!!drawerProblem}
-            onclick={finishDrawer}
-            class="btn btn-primary"
+        {#if drawer.draft.resultMode === 'server'}
+          <select
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+            value={drawer.draft.server}
+            onchange={(event) => {
+              drawer.draft.server = event.target.value;
+            }}
           >
-            完成
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+            <option value="">未指定</option>
+            {#each tagOptions(namedServerTags, drawer.draft.server) as option}
+              <option value={option.value}
+                >{option.defined ? option.value : `${option.value}（未定义）`}</option
+              >
+            {/each}
+          </select>
+        {:else if drawer.draft.resultMode === 'predefined'}
+          <select
+            class="field w-full px-2 py-1.5 text-xs font-mono text-amber-200"
+            value={drawer.draft.rcode}
+            onchange={(event) => {
+              drawer.draft.rcode = event.target.value;
+            }}
+          >
+            <option value="">选择 rcode</option>
+            {#each rcodeOptions(drawer.draft.rcode) as option}
+              <option value={option.value}
+                >{option.known ? option.value : `${option.value}（未识别）`}</option
+              >
+            {/each}
+          </select>
+        {/if}
+      </section>
+    {/if}
+
+    {#if drawer.kind === 'server' || !drawer.draft.logical}
+      <section class="space-y-2">
+        <button
+          type="button"
+          class="text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+          onclick={() => {
+            drawer.draft.otherExpanded = !drawer.draft.otherExpanded;
+          }}
+        >
+          其他字段
+        </button>
+        {#if drawer.draft.otherExpanded}
+          <textarea
+            bind:value={drawer.draft.otherText}
+            spellcheck="false"
+            class="field w-full h-36 px-3 py-2 text-xs font-mono"
+          ></textarea>
+        {/if}
+      </section>
+    {/if}
+  </Drawer>
 {/if}

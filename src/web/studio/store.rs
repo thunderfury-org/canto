@@ -91,28 +91,11 @@ impl SourceStore {
 }
 
 fn load_sources(path: &Path) -> Result<Vec<NodeSource>> {
-    if !path.exists() {
-        return Ok(Vec::new());
+    let mut sources = load_json_with_backup(path, parse_sources_file)?;
+    for source in &mut sources {
+        source.sync_counts();
     }
-    let text = fs::read_to_string(path)?;
-    match parse_sources_file(&text) {
-        Ok(mut sources) => {
-            for source in &mut sources {
-                source.sync_counts();
-            }
-            Ok(sources)
-        }
-        Err(err) => {
-            let bak = path.with_extension("json.bak");
-            warn!(
-                "Failed to parse {}; backing up to {} ({err})",
-                path.display(),
-                bak.display()
-            );
-            let _ = fs::rename(path, &bak);
-            Ok(Vec::new())
-        }
-    }
+    Ok(sources)
 }
 
 fn parse_sources_file(text: &str) -> std::result::Result<Vec<NodeSource>, serde_json::Error> {
@@ -123,19 +106,10 @@ fn parse_sources_file(text: &str) -> std::result::Result<Vec<NodeSource>, serde_
 }
 
 fn persist(path: &Path, sources: &[NodeSource]) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
     let file = SourcesFile {
         sources: sources.to_vec(),
     };
-    let mut formatted = serde_json::to_string_pretty(&file)?;
-    if !formatted.ends_with('\n') {
-        formatted.push('\n');
-    }
-    atomic_write(path, formatted.as_bytes())?;
-    info!("Wrote node sources to {}", path.display());
-    Ok(())
+    persist_json_pretty(path, &file, "node sources")
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -273,23 +247,7 @@ impl ProfileStore {
 }
 
 fn load_profiles(path: &Path) -> Result<Vec<Profile>> {
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let text = fs::read_to_string(path)?;
-    match parse_profiles_file(&text) {
-        Ok(profiles) => Ok(profiles),
-        Err(err) => {
-            let bak = path.with_extension("json.bak");
-            warn!(
-                "Failed to parse {}; backing up to {} ({err})",
-                path.display(),
-                bak.display()
-            );
-            let _ = fs::rename(path, &bak);
-            Ok(Vec::new())
-        }
-    }
+    load_json_with_backup(path, parse_profiles_file)
 }
 
 fn parse_profiles_file(text: &str) -> std::result::Result<Vec<Profile>, serde_json::Error> {
@@ -300,9 +258,6 @@ fn parse_profiles_file(text: &str) -> std::result::Result<Vec<Profile>, serde_js
 }
 
 fn persist_profiles(path: &Path, profiles: &[Profile]) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
     let file = ProfilesFile {
         profiles: profiles
             .iter()
@@ -313,13 +268,7 @@ fn persist_profiles(path: &Path, profiles: &[Profile]) -> Result<()> {
             })
             .collect(),
     };
-    let mut formatted = serde_json::to_string_pretty(&file)?;
-    if !formatted.ends_with('\n') {
-        formatted.push('\n');
-    }
-    atomic_write(path, formatted.as_bytes())?;
-    info!("Wrote profiles to {}", path.display());
-    Ok(())
+    persist_json_pretty(path, &file, "profiles")
 }
 
 #[derive(Debug)]
@@ -646,11 +595,50 @@ fn persist_template(dir: &Path, template: &Template) -> Result<()> {
     Ok(())
 }
 
-fn write_pretty_json<T: Serialize>(path: &Path, val: &T) -> Result<()> {
+fn load_json_with_backup<T, F, E>(path: &Path, parse: F) -> Result<Vec<T>>
+where
+    F: FnOnce(&str) -> std::result::Result<Vec<T>, E>,
+    E: std::fmt::Display,
+{
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let text = fs::read_to_string(path)?;
+    match parse(&text) {
+        Ok(items) => Ok(items),
+        Err(err) => {
+            let bak = path.with_extension("json.bak");
+            warn!(
+                "Failed to parse {}; backing up to {} ({err})",
+                path.display(),
+                bak.display()
+            );
+            let _ = fs::rename(path, &bak);
+            Ok(Vec::new())
+        }
+    }
+}
+
+fn persist_json_pretty<T: Serialize>(path: &Path, val: &T, item_name: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let formatted = format_pretty_json(val)?;
+    atomic_write(path, formatted.as_bytes())?;
+    info!("Wrote {item_name} to {}", path.display());
+    Ok(())
+}
+
+fn format_pretty_json<T: Serialize>(val: &T) -> Result<String> {
     let mut formatted = serde_json::to_string_pretty(val)?;
     if !formatted.ends_with('\n') {
         formatted.push('\n');
     }
+    Ok(formatted)
+}
+
+fn write_pretty_json<T: Serialize>(path: &Path, val: &T) -> Result<()> {
+    let formatted = format_pretty_json(val)?;
     let mut file = File::create(path)?;
     file.write_all(formatted.as_bytes())?;
     file.sync_all()?;
@@ -813,6 +801,19 @@ mod tests {
             updated_at: Some("2026-01-01T00:00:00Z".to_string()),
             public_url: Some("http://example/sub/tok_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string()),
         }
+    }
+
+    #[tokio::test]
+    async fn test_corrupt_profile_file_is_backed_up() {
+        let dir = temp_dir("corrupt_profile");
+        let path = dir.join("studio");
+        fs::create_dir_all(&path).unwrap();
+        let file = path.join("profiles.json");
+        fs::write(&file, "not-json").unwrap();
+        let store = ProfileStore::load(&dir).unwrap();
+        assert!(store.list().await.is_empty());
+        assert!(path.join("profiles.json.bak").exists());
+        fs::remove_dir_all(&dir).ok();
     }
 
     #[tokio::test]
