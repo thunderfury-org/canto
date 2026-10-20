@@ -1,3 +1,4 @@
+import { cloneJson, readOther } from './jsonUtils.js';
 export const MATCH_FIELDS = [
   { field: 'rule_set', label: 'rule_set', kind: 'tokens', emptyShape: 'array' },
   { field: 'domain', label: 'domain', kind: 'tokens', emptyShape: 'array' },
@@ -34,11 +35,6 @@ const ACTION_LABEL = {
   'hijack-dns': 'hijack-dns',
   reject: 'reject',
 };
-
-function cloneJson(value) {
-  if (value === undefined) return undefined;
-  return JSON.parse(JSON.stringify(value));
-}
 
 export function fieldMeta(field) {
   return FIELD_BY_NAME.get(field) || null;
@@ -342,16 +338,6 @@ export function writeMatchCondition(cond) {
 
 export function matchPhrase(field, value) {
   return conditionPhrase(field, value);
-}
-
-function readOther(draft) {
-  const text = (draft.otherText || '').trim();
-  if (!text) return {};
-  const parsed = JSON.parse(text);
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('其他字段必须是 JSON 对象');
-  }
-  return parsed;
 }
 
 export function applyDraft(draft) {

@@ -43,7 +43,7 @@
   import { findRulesUsingDnsServer } from '../data/templateDocument.js';
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
-  import MultiSelect from '../components/MultiSelect.svelte';
+  import RuleConditionsEditor from '../components/RuleConditionsEditor.svelte';
   import Radio from 'lucide-svelte/icons/radio';
   import Plus from 'lucide-svelte/icons/plus';
   import Trash2 from 'lucide-svelte/icons/trash-2';
@@ -57,7 +57,6 @@
   let drawer = $state(null);
   let dragFrom = $state(-1);
   let dragOver = $state(-1);
-  let conditionPicker = $state('');
   let initialDraftJson = '';
 
   const TONE_CLASS = {
@@ -155,7 +154,6 @@
       index,
       draft: createServerDraft(source ? cloneData(source) : {}),
     };
-    conditionPicker = '';
     initialDraftJson = JSON.stringify(drawer.draft);
   }
 
@@ -166,7 +164,6 @@
       index: -1,
       draft: createNewServerDraft(serverTags),
     };
-    conditionPicker = '';
     initialDraftJson = JSON.stringify(drawer.draft);
   }
 
@@ -178,7 +175,6 @@
       index,
       draft: createDnsRuleDraft(source ? cloneData(source) : {}),
     };
-    conditionPicker = '';
     initialDraftJson = JSON.stringify(drawer.draft);
   }
 
@@ -189,13 +185,11 @@
       index: -1,
       draft: createNewDnsRuleDraft(preferredDnsServer(baseDns())),
     };
-    conditionPicker = '';
     initialDraftJson = JSON.stringify(drawer.draft);
   }
 
   function forceCancelDrawer() {
     drawer = null;
-    conditionPicker = '';
   }
 
   function cancelDrawer() {
@@ -305,20 +299,10 @@
   function onAddCondition(field) {
     if (!field) return;
     drawer.draft = addCondition(cloneData(drawer.draft), field);
-    conditionPicker = '';
   }
 
   function onRemoveCondition(field) {
     drawer.draft = removeCondition(cloneData(drawer.draft), field);
-  }
-
-  function pushTokens(cond, raw) {
-    const parts = String(raw)
-      .split(/[,，、\n]/)
-      .map((part) => part.trim())
-      .filter(Boolean);
-    if (parts.length === 0) return;
-    cond.tokens = [...(cond.tokens || []), ...parts];
   }
 
   function typeLabel(type) {
@@ -737,100 +721,13 @@
             class="w-full h-[28rem] bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200"
           ></textarea>
         {:else}
-          <section class="space-y-2">
-            <div class="flex items-center justify-between gap-2">
-              <h5 class="text-xs font-medium text-slate-300">条件</h5>
-              <select
-                class="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-300 font-mono"
-                bind:value={conditionPicker}
-                onchange={(event) => onAddCondition(event.target.value)}
-              >
-                <option value="">添加条件</option>
-                {#each MATCH_FIELDS as field}
-                  {#if !drawer.draft.conditions.some((cond) => cond.field === field.field)}
-                    <option value={field.field}>{field.field}</option>
-                  {/if}
-                {/each}
-              </select>
-            </div>
-            {#if drawer.draft.conditions.length === 0}
-              <p class="text-[11px] text-slate-500">没有匹配条件</p>
-            {/if}
-            {#each drawer.draft.conditions as cond (cond.field)}
-              <div class="flex items-start gap-2">
-                <div class="w-28 shrink-0 pt-1">
-                  <span class="font-mono text-xs text-slate-200">{cond.field}</span>
-                </div>
-                <div class="flex-1 min-w-0 space-y-1">
-                  {#if cond.kind === 'boolean'}
-                    <label class="flex items-center gap-2 text-xs text-slate-300 pt-1">
-                      <input
-                        type="checkbox"
-                        checked={cond.bool === true}
-                        onchange={(event) => {
-                          cond.bool = event.target.checked;
-                        }}
-                      />
-                      <span>{cond.bool ? '是' : '否'}</span>
-                    </label>
-                  {:else if cond.field === 'rule_set'}
-                    <MultiSelect
-                      options={ruleTags}
-                      bind:selected={cond.tokens}
-                      placeholder="选择规则集"
-                    />
-                    {@const missing = (cond.tokens || []).filter(
-                      (tag) => tag && !ruleTags.includes(tag),
-                    )}
-                    {#if missing.length > 0}
-                      <p class="text-[11px] text-amber-300">未定义规则集：{missing.join('、')}</p>
-                    {/if}
-                  {:else}
-                    <div
-                      class="flex flex-wrap items-center gap-1 rounded border border-slate-800 bg-slate-950 px-2 py-1.5"
-                    >
-                      {#each cond.tokens || [] as token, tokenIndex}
-                        <button
-                          type="button"
-                          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 font-mono text-[11px] text-slate-200 cursor-pointer"
-                          onclick={() => {
-                            cond.tokens = cond.tokens.filter((_, i) => i !== tokenIndex);
-                          }}
-                        >
-                          <span>{token}</span>
-                          <span class="text-slate-500">×</span>
-                        </button>
-                      {/each}
-                      <input
-                        type="text"
-                        class="flex-1 min-w-24 bg-transparent outline-none text-xs font-mono text-slate-200 py-0.5"
-                        onkeydown={(event) => {
-                          if (event.key === 'Enter' || event.key === ',' || event.key === '、') {
-                            event.preventDefault();
-                            pushTokens(cond, event.currentTarget.value);
-                            event.currentTarget.value = '';
-                          }
-                        }}
-                        onblur={(event) => {
-                          pushTokens(cond, event.currentTarget.value);
-                          event.currentTarget.value = '';
-                        }}
-                      />
-                    </div>
-                  {/if}
-                </div>
-                <button
-                  type="button"
-                  title="删除条件"
-                  aria-label="删除条件"
-                  onclick={() => onRemoveCondition(cond.field)}
-                  class="p-1 text-slate-500 hover:text-rose-400 cursor-pointer"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            {/each}
-          </section>
+          <RuleConditionsEditor
+            bind:conditions={drawer.draft.conditions}
+            availableFields={MATCH_FIELDS}
+            {ruleTags}
+            {onAddCondition}
+            {onRemoveCondition}
+          />
 
           <section class="space-y-2">
             <h5 class="text-xs font-medium text-slate-300">结果</h5>

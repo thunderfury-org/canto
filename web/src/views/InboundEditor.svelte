@@ -25,7 +25,7 @@
   import Waypoints from 'lucide-svelte/icons/waypoints';
   import Plus from 'lucide-svelte/icons/plus';
   import Trash2 from 'lucide-svelte/icons/trash-2';
-  import X from 'lucide-svelte/icons/x';
+  import Drawer from '../components/Drawer.svelte';
 
   let {
     inbounds = [],
@@ -190,18 +190,6 @@
       event.currentTarget.value = drawer.draft.type;
     }
   }
-
-  $effect(() => {
-    if (!drawer) return;
-    const onKey = (event) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        cancelDrawer();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
 </script>
 
 <div class="space-y-4">
@@ -341,277 +329,234 @@
 </div>
 
 {#if drawer}
-  <div class="fixed inset-0 z-50">
-    <button
-      type="button"
-      class="absolute inset-0 bg-slate-950/70 cursor-default"
-      aria-label="取消"
-      onclick={cancelDrawer}
-    ></button>
-    <div
-      class="absolute inset-y-0 right-0 z-10 w-[28rem] max-w-[calc(100vw-1rem)] bg-slate-900 border-l border-slate-800 shadow-xl flex flex-col"
-      role="dialog"
-      tabindex="-1"
-      aria-modal="true"
-      aria-label={drawerTitle}
-    >
-      <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-        <h4 class="text-sm font-semibold text-slate-100">{drawerTitle}</h4>
-        <button
-          type="button"
-          title="取消"
-          aria-label="取消"
-          onclick={cancelDrawer}
-          class="btn btn-ghost btn-icon"
-        >
-          <X size={16} />
-        </button>
-      </div>
+  <Drawer
+    title={drawerTitle}
+    problem={drawerProblem}
+    hint={drawerHint}
+    onclose={cancelDrawer}
+    onconfirm={finishDrawer}
+    bodyClass="space-y-4"
+  >
+    <label class="block space-y-1">
+      <span class="text-xs text-slate-300">标签</span>
+      <input
+        type="text"
+        bind:value={drawer.draft.tag}
+        class="field w-full px-2 py-1.5 text-xs font-mono text-slate-100"
+      />
+    </label>
 
-      <div class="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+    {#if drawer.kind === 'inbound'}
+      <label class="block space-y-1">
+        <span class="text-xs text-slate-300">类型</span>
+        <select
+          class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+          value={drawer.draft.type}
+          onchange={onInboundType}
+        >
+          {#each inboundTypeChoices as option}
+            <option value={option.value}
+              >{option.known ? option.value : `${option.value}（未识别）`}</option
+            >
+          {/each}
+        </select>
+      </label>
+      {#if inboundFamily(drawer.draft.type) === 'tun'}
         <label class="block space-y-1">
-          <span class="text-xs text-slate-300">标签</span>
+          <span class="text-xs text-slate-300">接口名</span>
           <input
             type="text"
-            bind:value={drawer.draft.tag}
-            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-100"
+            bind:value={drawer.draft.interfaceName}
+            oninput={() => {
+              drawer.draft.interfaceOwned = true;
+            }}
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
           />
         </label>
-
-        {#if drawer.kind === 'inbound'}
-          <label class="block space-y-1">
-            <span class="text-xs text-slate-300">类型</span>
-            <select
-              class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-              value={drawer.draft.type}
-              onchange={onInboundType}
-            >
-              {#each inboundTypeChoices as option}
-                <option value={option.value}
-                  >{option.known ? option.value : `${option.value}（未识别）`}</option
-                >
-              {/each}
-            </select>
-          </label>
-          {#if inboundFamily(drawer.draft.type) === 'tun'}
-            <label class="block space-y-1">
-              <span class="text-xs text-slate-300">接口名</span>
-              <input
-                type="text"
-                bind:value={drawer.draft.interfaceName}
-                oninput={() => {
-                  drawer.draft.interfaceOwned = true;
-                }}
-                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-              />
-            </label>
-            <label class="block space-y-1">
-              <span class="text-xs text-slate-300">地址</span>
-              <input
-                type="text"
-                bind:value={drawer.draft.addressText}
-                oninput={() => {
-                  drawer.draft.addressOwned = true;
-                }}
-                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-              />
-            </label>
-            <label class="block space-y-1">
-              <span class="text-xs text-slate-300">MTU</span>
-              <input
-                type="text"
-                inputmode="numeric"
-                bind:value={drawer.draft.mtu}
-                oninput={() => {
-                  drawer.draft.mtuOwned = true;
-                }}
-                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-              />
-            </label>
-            <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-              <input
-                type="checkbox"
-                class="rounded border-slate-700 bg-slate-900 text-slate-300 focus:ring-0 focus:ring-offset-0 cursor-pointer"
-                checked={drawer.draft.autoRoute === true}
-                onchange={(event) => {
-                  drawer.draft.autoRoute = event.currentTarget.checked;
-                  drawer.draft.autoRouteOwned = true;
-                }}
-              />
-              <span>自动路由</span>
-            </label>
-            <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-              <input
-                type="checkbox"
-                class="rounded border-slate-700 bg-slate-900 text-slate-300 focus:ring-0 focus:ring-offset-0 cursor-pointer"
-                checked={drawer.draft.strictRoute === true}
-                onchange={(event) => {
-                  drawer.draft.strictRoute = event.currentTarget.checked;
-                  drawer.draft.strictRouteOwned = true;
-                }}
-              />
-              <span>严格路由</span>
-            </label>
-          {:else if inboundFamily(drawer.draft.type) === 'listen'}
-            <label class="block space-y-1">
-              <span class="text-xs text-slate-300">监听地址</span>
-              <input
-                type="text"
-                bind:value={drawer.draft.listen}
-                oninput={() => {
-                  drawer.draft.listenOwned = true;
-                }}
-                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-              />
-            </label>
-            <label class="block space-y-1">
-              <span class="text-xs text-slate-300">监听端口</span>
-              <input
-                type="text"
-                inputmode="numeric"
-                bind:value={drawer.draft.listenPort}
-                oninput={() => {
-                  drawer.draft.portOwned = true;
-                }}
-                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-              />
-            </label>
-          {:else if drawer.draft.type}
-            <p class="text-[11px] text-slate-500">未识别类型，其余字段留在其他字段里。</p>
-          {/if}
-        {:else}
-          <label class="block space-y-1">
-            <span class="text-xs text-slate-300">类型</span>
-            <select
-              class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-              value={drawer.draft.type}
-              onchange={onEndpointType}
-            >
-              {#each endpointTypeChoices as option}
-                <option value={option.value}
-                  >{option.known ? option.value : `${option.value}（未识别）`}</option
-                >
-              {/each}
-            </select>
-          </label>
-          {#if endpointFamily(drawer.draft.type) === 'tailscale'}
-            <label class="block space-y-1">
-              <span class="text-xs text-slate-300">Auth Key</span>
-              <input
-                type="password"
-                autocomplete="off"
-                bind:value={drawer.draft.authKey}
-                oninput={() => {
-                  drawer.draft.authOwned = true;
-                }}
-                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-              />
-            </label>
-            <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-              <input
-                type="checkbox"
-                class="rounded border-slate-700 bg-slate-900 text-slate-300 focus:ring-0 focus:ring-offset-0 cursor-pointer"
-                checked={drawer.draft.acceptRoutes === true}
-                onchange={(event) => {
-                  drawer.draft.acceptRoutes = event.currentTarget.checked;
-                  drawer.draft.acceptOwned = true;
-                }}
-              />
-              <span>接受路由</span>
-            </label>
-          {:else if endpointFamily(drawer.draft.type) === 'wireguard'}
-            <label class="block space-y-1">
-              <span class="text-xs text-slate-300">私钥</span>
-              <input
-                type="password"
-                autocomplete="off"
-                bind:value={drawer.draft.privateKey}
-                oninput={() => {
-                  drawer.draft.privateOwned = true;
-                }}
-                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-              />
-            </label>
-            <label class="block space-y-1">
-              <span class="text-xs text-slate-300">地址</span>
-              <input
-                type="text"
-                bind:value={drawer.draft.addressText}
-                oninput={() => {
-                  drawer.draft.addressOwned = true;
-                }}
-                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-              />
-            </label>
-            <label class="block space-y-1">
-              <span class="text-xs text-slate-300">监听端口</span>
-              <input
-                type="text"
-                inputmode="numeric"
-                bind:value={drawer.draft.listenPort}
-                oninput={() => {
-                  drawer.draft.portOwned = true;
-                }}
-                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-              />
-            </label>
-            <label class="block space-y-1">
-              <span class="text-xs text-slate-300">MTU</span>
-              <input
-                type="text"
-                inputmode="numeric"
-                bind:value={drawer.draft.mtu}
-                oninput={() => {
-                  drawer.draft.mtuOwned = true;
-                }}
-                class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
-              />
-            </label>
-          {:else if drawer.draft.type}
-            <p class="text-[11px] text-slate-500">未识别类型，其余字段留在其他字段里。</p>
-          {/if}
-        {/if}
-
-        <section class="space-y-2">
-          <button
-            type="button"
-            class="text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
-            onclick={() => {
-              drawer.draft.otherExpanded = !drawer.draft.otherExpanded;
+        <label class="block space-y-1">
+          <span class="text-xs text-slate-300">地址</span>
+          <input
+            type="text"
+            bind:value={drawer.draft.addressText}
+            oninput={() => {
+              drawer.draft.addressOwned = true;
             }}
-          >
-            其他字段
-          </button>
-          {#if drawer.draft.otherExpanded}
-            <textarea
-              bind:value={drawer.draft.otherText}
-              spellcheck="false"
-              class="field w-full h-36 px-3 py-2 text-xs font-mono"
-            ></textarea>
-          {/if}
-        </section>
-      </div>
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+          />
+        </label>
+        <label class="block space-y-1">
+          <span class="text-xs text-slate-300">MTU</span>
+          <input
+            type="text"
+            inputmode="numeric"
+            bind:value={drawer.draft.mtu}
+            oninput={() => {
+              drawer.draft.mtuOwned = true;
+            }}
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+          />
+        </label>
+        <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+          <input
+            type="checkbox"
+            class="rounded border-slate-700 bg-slate-900 text-slate-300 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+            checked={drawer.draft.autoRoute === true}
+            onchange={(event) => {
+              drawer.draft.autoRoute = event.currentTarget.checked;
+              drawer.draft.autoRouteOwned = true;
+            }}
+          />
+          <span>自动路由</span>
+        </label>
+        <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+          <input
+            type="checkbox"
+            class="rounded border-slate-700 bg-slate-900 text-slate-300 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+            checked={drawer.draft.strictRoute === true}
+            onchange={(event) => {
+              drawer.draft.strictRoute = event.currentTarget.checked;
+              drawer.draft.strictRouteOwned = true;
+            }}
+          />
+          <span>严格路由</span>
+        </label>
+      {:else if inboundFamily(drawer.draft.type) === 'listen'}
+        <label class="block space-y-1">
+          <span class="text-xs text-slate-300">监听地址</span>
+          <input
+            type="text"
+            bind:value={drawer.draft.listen}
+            oninput={() => {
+              drawer.draft.listenOwned = true;
+            }}
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+          />
+        </label>
+        <label class="block space-y-1">
+          <span class="text-xs text-slate-300">监听端口</span>
+          <input
+            type="text"
+            inputmode="numeric"
+            bind:value={drawer.draft.listenPort}
+            oninput={() => {
+              drawer.draft.portOwned = true;
+            }}
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+          />
+        </label>
+      {:else if drawer.draft.type}
+        <p class="text-[11px] text-slate-500">未识别类型，其余字段留在其他字段里。</p>
+      {/if}
+    {:else}
+      <label class="block space-y-1">
+        <span class="text-xs text-slate-300">类型</span>
+        <select
+          class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+          value={drawer.draft.type}
+          onchange={onEndpointType}
+        >
+          {#each endpointTypeChoices as option}
+            <option value={option.value}
+              >{option.known ? option.value : `${option.value}（未识别）`}</option
+            >
+          {/each}
+        </select>
+      </label>
+      {#if endpointFamily(drawer.draft.type) === 'tailscale'}
+        <label class="block space-y-1">
+          <span class="text-xs text-slate-300">Auth Key</span>
+          <input
+            type="password"
+            autocomplete="off"
+            bind:value={drawer.draft.authKey}
+            oninput={() => {
+              drawer.draft.authOwned = true;
+            }}
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+          />
+        </label>
+        <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+          <input
+            type="checkbox"
+            class="rounded border-slate-700 bg-slate-900 text-slate-300 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+            checked={drawer.draft.acceptRoutes === true}
+            onchange={(event) => {
+              drawer.draft.acceptRoutes = event.currentTarget.checked;
+              drawer.draft.acceptOwned = true;
+            }}
+          />
+          <span>接受路由</span>
+        </label>
+      {:else if endpointFamily(drawer.draft.type) === 'wireguard'}
+        <label class="block space-y-1">
+          <span class="text-xs text-slate-300">私钥</span>
+          <input
+            type="password"
+            autocomplete="off"
+            bind:value={drawer.draft.privateKey}
+            oninput={() => {
+              drawer.draft.privateOwned = true;
+            }}
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+          />
+        </label>
+        <label class="block space-y-1">
+          <span class="text-xs text-slate-300">地址</span>
+          <input
+            type="text"
+            bind:value={drawer.draft.addressText}
+            oninput={() => {
+              drawer.draft.addressOwned = true;
+            }}
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+          />
+        </label>
+        <label class="block space-y-1">
+          <span class="text-xs text-slate-300">监听端口</span>
+          <input
+            type="text"
+            inputmode="numeric"
+            bind:value={drawer.draft.listenPort}
+            oninput={() => {
+              drawer.draft.portOwned = true;
+            }}
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+          />
+        </label>
+        <label class="block space-y-1">
+          <span class="text-xs text-slate-300">MTU</span>
+          <input
+            type="text"
+            inputmode="numeric"
+            bind:value={drawer.draft.mtu}
+            oninput={() => {
+              drawer.draft.mtuOwned = true;
+            }}
+            class="field w-full px-2 py-1.5 text-xs font-mono text-slate-200"
+          />
+        </label>
+      {:else if drawer.draft.type}
+        <p class="text-[11px] text-slate-500">未识别类型，其余字段留在其他字段里。</p>
+      {/if}
+    {/if}
 
-      <div class="px-4 py-3 border-t border-slate-800 flex items-center justify-between gap-3">
-        <div class="text-[11px] min-w-0">
-          {#if drawerProblem}
-            <span class="text-rose-300">{drawerProblem}</span>
-          {:else if drawerHint}
-            <span class="text-amber-300">{drawerHint}</span>
-          {/if}
-        </div>
-        <div class="flex items-center gap-2 shrink-0">
-          <button type="button" onclick={cancelDrawer} class="btn btn-secondary"> 取消 </button>
-          <button
-            type="button"
-            disabled={!!drawerProblem}
-            onclick={finishDrawer}
-            class="btn btn-primary"
-          >
-            完成
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+    <section class="space-y-2">
+      <button
+        type="button"
+        class="text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+        onclick={() => {
+          drawer.draft.otherExpanded = !drawer.draft.otherExpanded;
+        }}
+      >
+        其他字段
+      </button>
+      {#if drawer.draft.otherExpanded}
+        <textarea
+          bind:value={drawer.draft.otherText}
+          spellcheck="false"
+          class="field w-full h-36 px-3 py-2 text-xs font-mono"
+        ></textarea>
+      {/if}
+    </section>
+  </Drawer>
 {/if}

@@ -8,29 +8,11 @@ const TAILSCALE_KEYS = ['auth_key', 'accept_routes'];
 const WIREGUARD_KEYS = ['private_key', 'address', 'listen_port', 'mtu'];
 const ENDPOINT_KNOWN = ['tag', 'type', ...TAILSCALE_KEYS, ...WIREGUARD_KEYS];
 
-function cloneJson(value) {
-  if (value === undefined) return undefined;
-  return JSON.parse(JSON.stringify(value));
-}
+import { cloneJson, readOther } from './jsonUtils.js';
 
 function asObject(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return value;
-}
-
-function readOther(draft) {
-  const text = (draft?.otherText || '').trim();
-  if (!text) return {};
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error('其他字段 JSON 不合法');
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('其他字段必须是 JSON 对象');
-  }
-  return parsed;
 }
 
 function stripKeys(target, keys) {

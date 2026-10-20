@@ -1,7 +1,6 @@
+import { cloneJson } from './jsonUtils.js';
+
 // Leading (?i) is not stored. Preview and expand.rs both match case-insensitively.
-function cloneJson(value) {
-  return JSON.parse(JSON.stringify(value));
-}
 
 function canonicalPattern(raw) {
   let text = typeof raw === 'string' ? raw.trim() : '';
