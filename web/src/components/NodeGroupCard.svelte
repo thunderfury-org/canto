@@ -90,10 +90,10 @@
       >
         {#if group.type === 'urltest'}
           <Zap size={11} class="text-slate-300" />
-          <span>URLTest</span>
+          <span>自动测速</span>
         {:else}
           <MousePointerClick size={11} class="text-slate-300" />
-          <span>Selector</span>
+          <span>手动选择</span>
         {/if}
       </span>
 
@@ -210,8 +210,8 @@
             onchange={onUpdate}
             class="field w-full px-2.5 py-1.5 text-xs font-mono font-semibold cursor-pointer"
           >
-            <option value="urltest">URLTest (自动测速)</option>
-            <option value="selector">Selector (手动选择)</option>
+            <option value="urltest">自动测速</option>
+            <option value="selector">手动选择</option>
           </select>
         </div>
       </div>
