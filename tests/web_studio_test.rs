@@ -2618,3 +2618,256 @@ async fn test_subscription_compilation_consumes_only_effective_nodes_and_falls_b
     let hk_group = outbounds2.iter().find(|o| o["tag"] == "香港节点").unwrap();
     assert_eq!(hk_group["outbounds"], json!(["直连"]));
 }
+
+#[tokio::test]
+async fn test_source_rename_rules_and_prefix_pipeline_crud_and_compilation() {
+    let raw_nodes_feed = json!([
+        { "type": "vmess", "tag": "HK-01 [官网]", "server": "1.1.1.1", "server_port": 443, "uuid": "u1" }, // filtered by protocol
+        { "type": "vless", "tag": "HK-01", "server": "2.2.2.2", "server_port": 443, "uuid": "u2" },        // effective -> [主力] 香港 01
+        { "type": "vless", "tag": "HK-02", "server": "3.3.3.3", "server_port": 443, "uuid": "u3" },        // effective -> [主力] 香港 01-2
+        { "type": "vless", "tag": "HK-03", "server": "4.4.4.4", "server_port": 443, "uuid": "u4" },        // effective -> [主力] 香港 01-3
+        { "type": "vless", "tag": "JP-01", "server": "5.5.5.5", "server_port": 443, "uuid": "u5" },        // filtered by include pattern
+    ])
+    .to_string();
+    let (url, feed) = spawn_feed_server(&raw_nodes_feed).await;
+    let (state, dir) = test_state(test_settings());
+    let app = create_app(state);
+
+    // 1. Create subscription source
+    let create_body = json!({
+        "name": "主力机场",
+        "type": "subscription",
+        "url": url,
+    });
+    let (status, created) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/sources",
+                Body::from(create_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(feed.hit_count(), 1);
+    let src_id = created["id"].as_str().unwrap().to_string();
+    assert_eq!(created["nodes"].as_array().unwrap().len(), 5);
+
+    // 2. Update with filtering, rename rules (sequence, $1, fallback), and prefix with trailing spaces
+    let update_body = json!({
+        "name": "主力机场",
+        "type": "subscription",
+        "url": url,
+        "excludeProtocols": ["vmess"],
+        "includePattern": "(?i)hk",
+        "renameRules": [
+            // Rule 1: capture group $1
+            { "pattern": r"(?i)hk-(\d+)", "replacement": "香港 $1" },
+            // Rule 2: rename 02 and 03 to 01 to induce duplicate collision
+            { "pattern": "0[23]", "replacement": "01" },
+            // Rule 3: blank replacement fallback check
+            { "pattern": ".*", "replacement": "   " }
+        ],
+        "prefix": "[主力] ",
+    });
+    let (status, updated) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/sources/{src_id}"),
+                Body::from(update_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{updated}");
+    assert_eq!(
+        feed.hit_count(),
+        1,
+        "saving rename rules and prefix must not refetch remote URL"
+    );
+    assert_eq!(
+        updated["nodes"].as_array().unwrap().len(),
+        5,
+        "raw nodes must remain intact"
+    );
+    assert_eq!(updated["prefix"], "[主力] ");
+    assert_eq!(updated["renameRules"].as_array().unwrap().len(), 3);
+
+    // Verify GET persistence
+    let (status, fetched) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "GET",
+                &format!("/api/sources/{src_id}"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(fetched["prefix"], "[主力] ");
+    assert_eq!(fetched["renameRules"][0]["pattern"], r"hk-(\d+)");
+
+    // 3. Test invalid regex syntax handling (400 Bad Request)
+    for bad_pat in ["(?i)(hk", "^(?!.*(官网)).*", r"(a)\1", "", "   "] {
+        let bad_req = json!({
+            "renameRules": [{ "pattern": bad_pat, "replacement": "x" }]
+        });
+        let (status, err) = json_body(
+            app.clone()
+                .oneshot(auth_req(
+                    "PUT",
+                    &format!("/api/sources/{src_id}"),
+                    Body::from(bad_req.to_string()),
+                ))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "pattern {bad_pat} should be rejected with 400: {err}"
+        );
+    }
+
+    // 4. Create Template & Profile to verify compilation uses final disambiguated tags
+    let template_body = json!({
+        "name": "清洗测试模板",
+        "content": {
+            "policy_groups": [
+                { "type": "selector", "tag": "默认策略", "outbounds": ["香港分组", "直连"] }
+            ],
+            "node_groups": [
+                { "type": "urltest", "tag": "香港分组", "outbounds": ["{(?i)香港}"] }
+            ],
+            "outbounds": [
+                { "type": "direct", "tag": "直连" }
+            ]
+        }
+    });
+    let (status, tpl) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/templates",
+                Body::from(template_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let tpl_id = tpl["id"].as_str().unwrap().to_string();
+
+    let profile_body = json!({
+        "name": "测试订阅",
+        "templateId": tpl_id,
+        "sourceIds": [src_id.clone()],
+    });
+    let (status, prof) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/profiles",
+                Body::from(profile_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let token = prof["token"].as_str().unwrap().to_string();
+
+    // Compile subscription
+    let resp = app
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method("GET")
+                .uri(format!("/sub/{token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let compiled: Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let outbounds = compiled["outbounds"].as_array().unwrap();
+
+    // Outbound node group must contain the disambiguated final tags
+    let hk_group = outbounds.iter().find(|o| o["tag"] == "香港分组").unwrap();
+    assert_eq!(
+        hk_group["outbounds"],
+        json!(["[主力] 香港 01", "[主力] 香港 01-2", "[主力] 香港 01-3"])
+    );
+
+    // Concrete outbounds in compiled config must have the final disambiguated tags
+    assert!(outbounds.iter().any(|o| o["tag"] == "[主力] 香港 01"));
+    assert!(outbounds.iter().any(|o| o["tag"] == "[主力] 香港 01-2"));
+    assert!(outbounds.iter().any(|o| o["tag"] == "[主力] 香港 01-3"));
+    assert!(!outbounds.iter().any(|o| o["tag"] == "HK-01"));
+
+    // 5. Test refresh: newly fetched nodes still undergo pipeline rules
+    let refreshed_feed = json!([
+        { "type": "vless", "tag": "HK-10", "server": "10.0.0.1", "server_port": 443, "uuid": "u10" },
+        { "type": "vless", "tag": "HK-11", "server": "11.0.0.1", "server_port": 443, "uuid": "u11" },
+    ])
+    .to_string();
+    *feed.inner.lock().unwrap() = (StatusCode::OK, refreshed_feed);
+
+    let (status, refreshed) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                &format!("/api/sources/{src_id}/refresh"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(feed.hit_count(), 2);
+    assert_eq!(refreshed["nodes"][0]["tag"], "HK-10");
+
+    let resp_refreshed = app
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method("GET")
+                .uri(format!("/sub/{token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp_refreshed.status(), StatusCode::OK);
+    let compiled_refreshed: Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp_refreshed.into_body(), 1024 * 1024)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let outbounds_refreshed = compiled_refreshed["outbounds"].as_array().unwrap();
+    let hk_group_refreshed = outbounds_refreshed
+        .iter()
+        .find(|o| o["tag"] == "香港分组")
+        .unwrap();
+    assert_eq!(
+        hk_group_refreshed["outbounds"],
+        json!(["[主力] 香港 10", "[主力] 香港 11"])
+    );
+
+    let _ = std::fs::remove_dir_all(dir);
+}

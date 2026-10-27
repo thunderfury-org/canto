@@ -32,6 +32,9 @@ import {
   getEffectiveNodes,
   normalizeRegexPattern,
   validateFilterRegex,
+  validateRenameRegex,
+  moveRenameRule,
+  deriveSourceNodes,
 } from '../src/data/sourceDraft.js';
 
 test('emptySourceDraft returns default structure', () => {
@@ -44,6 +47,8 @@ test('emptySourceDraft returns default structure', () => {
     excludeProtocols: [],
     includePattern: '',
     excludePattern: '',
+    renameRules: [],
+    prefix: '',
   });
 });
 
@@ -127,6 +132,8 @@ test('cleanSourcePayload trims and isolates payload according to type', () => {
     excludeProtocols: [],
     includePattern: '',
     excludePattern: '',
+    renameRules: [],
+    prefix: '',
   });
 
   const manDraft = {
@@ -143,6 +150,8 @@ test('cleanSourcePayload trims and isolates payload according to type', () => {
     excludeProtocols: [],
     includePattern: '',
     excludePattern: '',
+    renameRules: [],
+    prefix: '',
   });
 });
 
@@ -250,6 +259,8 @@ test('commitSourceSave sends click-time payload, updates saved source, and keeps
     excludeProtocols: [],
     includePattern: '',
     excludePattern: '',
+    renameRules: [],
+    prefix: '',
   });
   assert.equal(saved.sources[0].name, '机场A-新名');
   assert.equal(isSourceDraftDirty(saved.session, 'src_1'), false);
@@ -571,4 +582,180 @@ test('source draft handles filter rules in dirty detection and save blocking', (
     excludePattern: '',
   };
   assert.equal(isSourceDirty(validDraft, original), true);
+});
+
+test('validateRenameRegex checks empty, syntax, lookaround, and backreferences', () => {
+  assert.equal(validateRenameRegex(''), '匹配正则不能为空');
+  assert.equal(validateRenameRegex('   '), '匹配正则不能为空');
+  assert.equal(validateRenameRegex('(?i)'), '匹配正则不能为空');
+  assert.equal(validateRenameRegex('(?i)(港|hk)'), '');
+  assert.equal(validateRenameRegex('(\\w+)\\s*(\\d+)'), '');
+
+  // Unclosed paren
+  assert.match(validateRenameRegex('(?i)(hk'), /正则表达式语法错误/);
+
+  // Lookaround
+  assert.equal(
+    validateRenameRegex('^(?!.*(官网|到期)).*'),
+    '不支持先行/后行断言语法（如 (?=...) 或 (?!...)）',
+  );
+  assert.equal(validateRenameRegex('(?=.*hk)'), '不支持先行/后行断言语法（如 (?=...) 或 (?!...)）');
+
+  // Backreference
+  assert.equal(validateRenameRegex('(a)\\1'), '不支持反向引用语法（如 \\1）');
+});
+
+test('moveRenameRule reorders rules immutably and safely', () => {
+  const rules = [
+    { pattern: 'a', replacement: '1' },
+    { pattern: 'b', replacement: '2' },
+    { pattern: 'c', replacement: '3' },
+  ];
+  const moved = moveRenameRule(rules, 0, 2);
+  assert.deepEqual(
+    moved.map((r) => r.pattern),
+    ['b', 'c', 'a'],
+  );
+  assert.equal(rules[0].pattern, 'a', 'original array not mutated');
+
+  // Out of bounds no-op
+  assert.deepEqual(moveRenameRule(rules, -1, 1), rules);
+  assert.deepEqual(moveRenameRule(rules, 0, 5), rules);
+  assert.deepEqual(moveRenameRule(rules, 1, 1), rules);
+});
+
+test('deriveSourceNodes executes filtering -> rename -> prefix -> disambiguate pipeline', () => {
+  const rawNodes = [
+    { tag: 'HK-01 [官网]', type: 'vmess', server: '1.1.1.1', server_port: 443 }, // filtered by protocol
+    { tag: 'JP-01', type: 'vless', server: '2.2.2.2', server_port: 443 }, // filtered by include pattern
+    { tag: 'HK-01', type: 'vless', server: '3.3.3.3', server_port: 443 }, // effective
+    { tag: 'HK-02', type: 'vless', server: '4.4.4.4', server_port: 443 }, // effective
+    { tag: 'HK-03', type: 'vless', server: '5.5.5.5', server_port: 443 }, // effective
+  ];
+
+  const rules = {
+    excludeProtocols: ['vmess'],
+    includePattern: '(?i)hk',
+    excludePattern: '',
+    renameRules: [
+      // 1. Rename with $1
+      { pattern: '(?i)hk-(\\d+)', replacement: '香港 $1' },
+      // 2. Induce duplicates by renaming 02 & 03 to 01
+      { pattern: '0[23]', replacement: '01' },
+      // 3. Blank replacement fallback check
+      { pattern: '.*', replacement: '   ' },
+    ],
+    prefix: '[主力] ', // trailing space preserved
+  };
+
+  const processed = deriveSourceNodes(rawNodes, rules);
+  assert.equal(processed.length, 5);
+
+  // 1. Filtered nodes
+  assert.equal(processed[0].effective, false);
+  assert.equal(processed[0].reason, FILTER_REASONS.PROTOCOL_BLACKLIST);
+  assert.equal(processed[0].originalTag, 'HK-01 [官网]');
+  assert.equal(processed[0].finalTag, 'HK-01 [官网]');
+
+  assert.equal(processed[1].effective, false);
+  assert.equal(processed[1].reason, FILTER_REASONS.UNMATCHED_INCLUDE);
+  assert.equal(processed[1].originalTag, 'JP-01');
+  assert.equal(processed[1].finalTag, 'JP-01');
+
+  // 2. Effective nodes: disambiguated in original order with -2, -3
+  assert.equal(processed[2].effective, true);
+  assert.equal(processed[2].originalTag, 'HK-01');
+  assert.equal(processed[2].finalTag, '[主力] 香港 01');
+  assert.equal(processed[2].node.tag, '[主力] 香港 01');
+
+  assert.equal(processed[3].effective, true);
+  assert.equal(processed[3].originalTag, 'HK-02');
+  assert.equal(processed[3].finalTag, '[主力] 香港 01-2');
+  assert.equal(processed[3].node.tag, '[主力] 香港 01-2');
+
+  assert.equal(processed[4].effective, true);
+  assert.equal(processed[4].originalTag, 'HK-03');
+  assert.equal(processed[4].finalTag, '[主力] 香港 01-3');
+  assert.equal(processed[4].node.tag, '[主力] 香港 01-3');
+
+  // Raw nodes remain unchanged
+  assert.equal(rawNodes[2].tag, 'HK-01');
+  assert.equal(rawNodes[3].tag, 'HK-02');
+  assert.equal(rawNodes[4].tag, 'HK-03');
+
+  // getEffectiveNodes returns only effective nodes with final tag
+  const effectiveOnly = getEffectiveNodes({ nodes: rawNodes, ...rules });
+  assert.deepEqual(
+    effectiveOnly.map((n) => n.tag),
+    ['[主力] 香港 01', '[主力] 香港 01-2', '[主力] 香港 01-3'],
+  );
+});
+
+test('deriveSourceNodes handles existing suffix collisions cleanly', () => {
+  const rawNodes = [
+    { tag: 'HK', type: 'vless' },
+    { tag: 'HK-2', type: 'vless' },
+    { tag: 'HK', type: 'vless' },
+  ];
+  const processed = deriveSourceNodes(rawNodes, {});
+  assert.deepEqual(
+    processed.map((p) => p.finalTag),
+    ['HK', 'HK-2', 'HK-3'],
+  );
+});
+
+test('filterSourceNodes matches both originalTag and finalTag', () => {
+  const items = [
+    {
+      originalTag: 'HK-Original-01',
+      finalTag: '[主力] 香港 01',
+      node: { tag: '[主力] 香港 01', type: 'vless', server: 'hk.com', server_port: 443 },
+    },
+    {
+      originalTag: 'JP-01',
+      finalTag: '[主力] 日本 01',
+      node: { tag: '[主力] 日本 01', type: 'vless', server: 'jp.com', server_port: 443 },
+    },
+  ];
+
+  // Matches originalTag
+  assert.equal(filterSourceNodes(items, 'Original').length, 1);
+  assert.equal(filterSourceNodes(items, 'Original')[0].finalTag, '[主力] 香港 01');
+
+  // Matches finalTag
+  assert.equal(filterSourceNodes(items, '香港').length, 1);
+  assert.equal(filterSourceNodes(items, '[主力]').length, 2);
+});
+
+test('sourceSaveBlocker and dirty detection validate renameRules and prefix', () => {
+  const draft = {
+    ...emptySourceDraft(),
+    name: '节点源',
+    url: 'https://example.com/sub',
+    renameRules: [{ pattern: '', replacement: 'bar' }],
+  };
+  assert.equal(sourceSaveBlocker(draft), '第 1 条重命名规则的匹配正则不能为空');
+  assert.equal(canSaveSource(draft), false);
+
+  draft.renameRules[0].pattern = '(?i)(bad';
+  assert.match(sourceSaveBlocker(draft), /第 1 条重命名正则非法/);
+  assert.equal(canSaveSource(draft), false);
+
+  draft.renameRules[0].pattern = '(?i)good';
+  draft.prefix = '[主力] ';
+  assert.equal(sourceSaveBlocker(draft), '');
+  assert.equal(canSaveSource(draft), true);
+
+  const original = {
+    name: '节点源',
+    type: 'subscription',
+    url: 'https://example.com/sub',
+    renameRules: [],
+    prefix: '',
+  };
+  assert.equal(isSourceDirty(draft, original), true);
+
+  const clean = cleanSourcePayload(draft);
+  assert.equal(clean.prefix, '[主力] ');
+  assert.equal(clean.renameRules[0].pattern, 'good');
 });

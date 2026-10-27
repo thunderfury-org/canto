@@ -59,6 +59,17 @@ pub struct NodeSource {
         alias = "exclude_pattern"
     )]
     pub exclude_pattern: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty", alias = "rename_rules")]
+    pub rename_rules: Vec<RenameRule>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "prefix")]
+    pub prefix: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameRule {
+    pub pattern: String,
+    pub replacement: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,6 +132,35 @@ pub fn normalize_protocols(protocols: Vec<String>) -> Vec<String> {
         }
     }
     out
+}
+
+pub fn validate_rename_regex(pattern: &str) -> std::result::Result<(), String> {
+    let p = strip_leading_case_flag(pattern);
+    if p.is_empty() {
+        return Err("pattern cannot be empty".to_string());
+    }
+    regex::RegexBuilder::new(p)
+        .case_insensitive(true)
+        .build()
+        .map(|_| ())
+        .map_err(|err| err.to_string())
+}
+
+pub fn normalize_prefix(val: Option<String>) -> Option<String> {
+    match val {
+        Some(s) if !s.is_empty() => Some(s),
+        _ => None,
+    }
+}
+
+pub fn normalize_rename_rules(rules: Vec<RenameRule>) -> Vec<RenameRule> {
+    rules
+        .into_iter()
+        .map(|rule| RenameRule {
+            pattern: strip_leading_case_flag(&rule.pattern).to_string(),
+            replacement: rule.replacement,
+        })
+        .collect()
 }
 
 impl NodeSource {
@@ -190,11 +230,86 @@ impl NodeSource {
     }
 
     pub fn effective_nodes(&self) -> Vec<Value> {
-        self.nodes
+        // Step 0: Filter determination on raw nodes
+        let filtered_nodes: Vec<&Value> = self
+            .nodes
             .iter()
             .filter(|node| self.classify_node(node).is_none())
-            .cloned()
-            .collect()
+            .collect();
+
+        // Precompile valid rename rules
+        let compiled_rules: Vec<(regex::Regex, &str)> = self
+            .rename_rules
+            .iter()
+            .filter_map(|rule| {
+                let p = strip_leading_case_flag(&rule.pattern);
+                if p.is_empty() {
+                    return None;
+                }
+                regex::RegexBuilder::new(p)
+                    .case_insensitive(true)
+                    .build()
+                    .ok()
+                    .map(|re| (re, rule.replacement.as_str()))
+            })
+            .collect();
+
+        // Step 1: Sequential batch regex replacement
+        // Step 2: Prefix prepending (preserving trailing spaces)
+        let mut staged_tags: Vec<String> = Vec::with_capacity(filtered_nodes.len());
+        for node in &filtered_nodes {
+            let mut tag = node
+                .get("tag")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            for (re, replacement) in &compiled_rules {
+                let replaced = re.replace_all(&tag, *replacement);
+                if !replaced.trim().is_empty() {
+                    tag = replaced.into_owned();
+                }
+            }
+            if let Some(prefix) = self.prefix.as_deref()
+                && !prefix.is_empty()
+            {
+                tag = format!("{prefix}{tag}");
+            }
+            staged_tags.push(tag);
+        }
+
+        // Step 3: Intra-source duplicate disambiguation in original node order
+        let mut seen_counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        let mut used_tags: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut out = Vec::with_capacity(filtered_nodes.len());
+
+        for (node, base_tag) in filtered_nodes.into_iter().zip(staged_tags) {
+            let count = seen_counts.entry(base_tag.clone()).or_insert(0);
+            *count += 1;
+
+            let final_tag = if *count == 1 && !used_tags.contains(&base_tag) {
+                used_tags.insert(base_tag.clone());
+                base_tag
+            } else {
+                let mut suffix_idx = if *count == 1 { 2 } else { *count };
+                loop {
+                    let candidate = format!("{base_tag}-{suffix_idx}");
+                    if !used_tags.contains(&candidate) {
+                        used_tags.insert(candidate.clone());
+                        break candidate;
+                    }
+                    suffix_idx += 1;
+                }
+            };
+
+            let mut node_clone = node.clone();
+            if let Some(obj) = node_clone.as_object_mut() {
+                obj.insert("tag".to_string(), Value::String(final_tag));
+            }
+            out.push(node_clone);
+        }
+
+        out
     }
 
     pub fn effective_node_count(&self) -> usize {
@@ -925,6 +1040,8 @@ mod tests {
         assert!(source.exclude_protocols.is_empty());
         assert!(source.include_pattern.is_none());
         assert!(source.exclude_pattern.is_none());
+        assert!(source.rename_rules.is_empty());
+        assert!(source.prefix.is_none());
         assert_eq!(source.effective_nodes().len(), 2);
     }
 
@@ -961,6 +1078,8 @@ mod tests {
             exclude_protocols: vec!["vmess".to_string()],
             include_pattern: Some("(?i)hk".to_string()),
             exclude_pattern: Some("(?i)官网".to_string()),
+            rename_rules: Vec::new(),
+            prefix: None,
         };
         // 1. HK-01 [官网] (vmess): matches exclude_pattern AND matches include, but vmess is blacklisted!
         assert_eq!(
@@ -984,5 +1103,136 @@ mod tests {
         assert_eq!(effective.len(), 1);
         assert_eq!(effective[0]["tag"], "HK-03 专线");
         assert_eq!(source.effective_node_count(), 1);
+    }
+
+    #[test]
+    fn test_validate_rename_regex() {
+        assert!(validate_rename_regex("(?i)hk").is_ok());
+        assert!(validate_rename_regex("(hk").is_err());
+        assert!(validate_rename_regex("").is_err());
+        assert!(validate_rename_regex("   ").is_err());
+        assert!(validate_rename_regex("(?i)").is_err());
+        // Lookaround rejected by regex crate
+        assert!(validate_rename_regex("^(?!.*(官网)).*").is_err());
+        // Backreference rejected
+        assert!(validate_rename_regex(r"(a)\1").is_err());
+    }
+
+    #[test]
+    fn test_pipeline_order_filter_rename_prefix_disambiguate() {
+        let source = NodeSource {
+            id: "src_pipeline".to_string(),
+            name: "Pipeline Test".to_string(),
+            kind: SourceKind::Manual,
+            url: None,
+            content: None,
+            status: Default::default(),
+            last_updated: None,
+            last_error: None,
+            node_count: 5,
+            nodes: vec![
+                serde_json::json!({ "tag": "HK-01 [官网]", "type": "vmess", "server": "1.1.1.1" }), // filtered by protocol
+                serde_json::json!({ "tag": "JP-01", "type": "vless", "server": "2.2.2.2" }), // filtered by include pattern
+                serde_json::json!({ "tag": "HK-01", "type": "vless", "server": "3.3.3.3" }), // passes filter
+                serde_json::json!({ "tag": "HK-02", "type": "vless", "server": "4.4.4.4" }), // passes filter
+                serde_json::json!({ "tag": "HK-03", "type": "vless", "server": "5.5.5.5" }), // passes filter
+            ],
+            exclude_protocols: vec!["vmess".to_string()],
+            include_pattern: Some("(?i)hk".to_string()),
+            exclude_pattern: None,
+            rename_rules: vec![
+                // 1. Rename all HK-\d+ to "香港"
+                RenameRule {
+                    pattern: r"(?i)hk-\d+".to_string(),
+                    replacement: "香港".to_string(),
+                },
+                // 2. Empty replacement check: this rule tries to blank out the string, must fall back!
+                RenameRule {
+                    pattern: ".*".to_string(),
+                    replacement: "   ".to_string(),
+                },
+            ],
+            // Prefix with trailing space
+            prefix: Some("[主力] ".to_string()),
+        };
+
+        let effective = source.effective_nodes();
+        assert_eq!(effective.len(), 3);
+
+        // Verification of Step 1 (rename to "香港"), Step 2 (prefix "[主力] "), and Step 3 (disambiguate -2, -3)
+        assert_eq!(effective[0]["tag"], "[主力] 香港");
+        assert_eq!(effective[1]["tag"], "[主力] 香港-2");
+        assert_eq!(effective[2]["tag"], "[主力] 香港-3");
+
+        // Raw nodes must remain untouched
+        assert_eq!(source.nodes[2]["tag"], "HK-01");
+        assert_eq!(source.nodes[3]["tag"], "HK-02");
+        assert_eq!(source.nodes[4]["tag"], "HK-03");
+    }
+
+    #[test]
+    fn test_pipeline_disambiguation_with_existing_suffix() {
+        let source = NodeSource {
+            id: "src_collision".to_string(),
+            name: "Collision Test".to_string(),
+            kind: SourceKind::Manual,
+            url: None,
+            content: None,
+            status: Default::default(),
+            last_updated: None,
+            last_error: None,
+            node_count: 3,
+            nodes: vec![
+                serde_json::json!({ "tag": "HK", "type": "vless" }),
+                serde_json::json!({ "tag": "HK-2", "type": "vless" }),
+                serde_json::json!({ "tag": "HK", "type": "vless" }),
+            ],
+            exclude_protocols: Vec::new(),
+            include_pattern: None,
+            exclude_pattern: None,
+            rename_rules: Vec::new(),
+            prefix: None,
+        };
+
+        let effective = source.effective_nodes();
+        assert_eq!(effective.len(), 3);
+        // Node 0 -> "HK"
+        // Node 1 -> "HK-2"
+        // Node 2 -> "HK" duplicate, attempts "HK-2" (already used), advances to "HK-3"
+        assert_eq!(effective[0]["tag"], "HK");
+        assert_eq!(effective[1]["tag"], "HK-2");
+        assert_eq!(effective[2]["tag"], "HK-3");
+    }
+
+    #[test]
+    fn test_capture_group_replacement() {
+        let source = NodeSource {
+            id: "src_cg".to_string(),
+            name: "Capture Group".to_string(),
+            kind: SourceKind::Manual,
+            url: None,
+            content: None,
+            status: Default::default(),
+            last_updated: None,
+            last_error: None,
+            node_count: 2,
+            nodes: vec![
+                serde_json::json!({ "tag": "HK 01", "type": "vless" }),
+                serde_json::json!({ "tag": "US - 05", "type": "vless" }),
+            ],
+            exclude_protocols: Vec::new(),
+            include_pattern: None,
+            exclude_pattern: None,
+            rename_rules: vec![RenameRule {
+                pattern: r"(?i)([a-z]+)\s*[-]?\s*(\d+)".to_string(),
+                replacement: "[$1] #$2".to_string(),
+            }],
+            prefix: Some("Node: ".to_string()),
+        };
+
+        let effective = source.effective_nodes();
+        assert_eq!(effective.len(), 2);
+        assert_eq!(effective[0]["tag"], "Node: [HK] #01");
+        assert_eq!(effective[1]["tag"], "Node: [US] #05");
     }
 }

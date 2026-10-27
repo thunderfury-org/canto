@@ -211,6 +211,8 @@ mod tests {
             exclude_protocols: Vec::new(),
             include_pattern: None,
             exclude_pattern: None,
+            rename_rules: Vec::new(),
+            prefix: None,
         };
         source.mark_active(vec![
             json!({ "type": "vless", "tag": "HK-Node", "server": "1.1.1.1" }),
@@ -294,6 +296,8 @@ mod tests {
             exclude_protocols: Vec::new(),
             include_pattern: None,
             exclude_pattern: None,
+            rename_rules: Vec::new(),
+            prefix: None,
         };
         sources.insert(source).await.unwrap();
 
@@ -380,6 +384,8 @@ mod tests {
             exclude_protocols: vec!["vmess".to_string()],
             include_pattern: Some("(?i)hk".to_string()),
             exclude_pattern: Some("(?i)官网".to_string()),
+            rename_rules: Vec::new(),
+            prefix: None,
         };
         source.mark_active(vec![
             json!({ "type": "vless", "tag": "HK-Node-01", "server": "1.1.1.1" }),
