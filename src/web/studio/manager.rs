@@ -184,6 +184,7 @@ mod tests {
             exclude_pattern: None,
             rename_rules: Vec::new(),
             prefix: None,
+            custom_tags: Default::default(),
         };
 
         manager.ingest(&mut source).await.unwrap();
@@ -216,6 +217,7 @@ mod tests {
             exclude_pattern: None,
             rename_rules: Vec::new(),
             prefix: None,
+            custom_tags: Default::default(),
         };
 
         let err = manager.ingest(&mut source).await.unwrap_err();
@@ -246,6 +248,7 @@ mod tests {
             exclude_pattern: None,
             rename_rules: Vec::new(),
             prefix: None,
+            custom_tags: Default::default(),
         };
 
         let err = manager.ingest(&mut source).await.unwrap_err();
@@ -276,6 +279,7 @@ mod tests {
             exclude_pattern: None,
             rename_rules: Vec::new(),
             prefix: None,
+            custom_tags: Default::default(),
         };
         store.insert(source).await.unwrap();
 

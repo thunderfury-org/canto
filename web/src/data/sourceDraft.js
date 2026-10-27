@@ -155,6 +155,7 @@ export function deriveSourceNodes(
     excludePattern = '',
     renameRules = [],
     prefix = '',
+    customTags = {},
   } = {},
 ) {
   const nodes = Array.isArray(rawNodes) ? rawNodes : [];
@@ -201,6 +202,10 @@ export function deriveSourceNodes(
       if (replaced.trim() !== '') {
         tag = replaced;
       }
+    }
+    const custom = customTags?.[item.originalTag];
+    if (typeof custom === 'string' && custom.trim() !== '') {
+      tag = custom.trim();
     }
     if (typeof prefix === 'string' && prefix !== '') {
       tag = prefix + tag;
@@ -253,6 +258,7 @@ export function getEffectiveNodes(source) {
     excludePattern: source.excludePattern ?? source.exclude_pattern ?? '',
     renameRules: source.renameRules ?? source.rename_rules ?? [],
     prefix: source.prefix ?? '',
+    customTags: source.customTags ?? source.custom_tags ?? {},
   };
   return deriveSourceNodes(source.nodes, rules)
     .filter((item) => item.effective)
@@ -276,6 +282,7 @@ export function emptySourceDraft() {
     excludePattern: '',
     renameRules: [],
     prefix: '',
+    customTags: {},
   };
 }
 
@@ -290,6 +297,12 @@ export function createSourceDraft(source) {
         replacement: typeof r?.replacement === 'string' ? r.replacement : '',
       }))
     : [];
+
+  const rawCustomTags = source?.customTags ?? source?.custom_tags ?? {};
+  const customTags =
+    rawCustomTags && typeof rawCustomTags === 'object' && !Array.isArray(rawCustomTags)
+      ? { ...rawCustomTags }
+      : {};
 
   return {
     name: typeof source.name === 'string' ? source.name : '',
@@ -315,6 +328,7 @@ export function createSourceDraft(source) {
           : '',
     renameRules,
     prefix: typeof source.prefix === 'string' ? source.prefix : '',
+    customTags,
   };
 }
 
@@ -393,6 +407,17 @@ export function cleanSourcePayload(draft) {
     : [];
   const prefix = typeof draft?.prefix === 'string' ? draft.prefix : '';
 
+  const rawCustom = draft?.customTags;
+  const customTags = {};
+  if (rawCustom && typeof rawCustom === 'object' && !Array.isArray(rawCustom)) {
+    for (const [k, v] of Object.entries(rawCustom)) {
+      const trimmedVal = typeof v === 'string' ? v.trim() : '';
+      if (k && trimmedVal) {
+        customTags[k] = trimmedVal;
+      }
+    }
+  }
+
   return {
     name,
     type,
@@ -403,6 +428,7 @@ export function cleanSourcePayload(draft) {
     excludePattern,
     renameRules,
     prefix,
+    customTags,
   };
 }
 
@@ -418,7 +444,8 @@ export function isSourceDirty(draft, original) {
       (draft.includePattern && draft.includePattern.trim()) ||
       (draft.excludePattern && draft.excludePattern.trim()) ||
       (draft.renameRules && draft.renameRules.length > 0) ||
-      (draft.prefix && draft.prefix.length > 0),
+      (draft.prefix && draft.prefix.length > 0) ||
+      (draft.customTags && Object.keys(draft.customTags).length > 0),
     );
   }
   const left = cleanSourcePayload(draft);
@@ -793,9 +820,25 @@ function samePayload(left, right) {
   const lr = left.renameRules || [];
   const rr = right.renameRules || [];
   if (lr.length !== rr.length) return false;
-  return lr.every(
-    (rule, idx) => rule.pattern === rr[idx].pattern && rule.replacement === rr[idx].replacement,
-  );
+  if (
+    !lr.every(
+      (rule, idx) => rule.pattern === rr[idx].pattern && rule.replacement === rr[idx].replacement,
+    )
+  ) {
+    return false;
+  }
+
+  const ltags = left.customTags || {};
+  const rtags = right.customTags || {};
+  const lkeys = Object.keys(ltags).sort();
+  const rkeys = Object.keys(rtags).sort();
+  if (lkeys.length !== rkeys.length) return false;
+  for (let i = 0; i < lkeys.length; i++) {
+    if (lkeys[i] !== rkeys[i] || ltags[lkeys[i]] !== rtags[rkeys[i]]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 async function readError(res) {
@@ -805,4 +848,34 @@ async function readError(res) {
   } catch {
     return `HTTP ${res.status}`;
   }
+}
+
+export function detectStaleCustomTags(rawNodes, customTags) {
+  const tags = customTags && typeof customTags === 'object' ? customTags : {};
+  const nodes = Array.isArray(rawNodes) ? rawNodes : [];
+  const presentSet = new Set(
+    nodes.map((n) => (typeof n?.tag === 'string' ? n.tag : '')).filter(Boolean),
+  );
+  const stale = [];
+  for (const [originalTag, customName] of Object.entries(tags)) {
+    if (!presentSet.has(originalTag)) {
+      stale.push({ originalTag, customName });
+    }
+  }
+  return stale;
+}
+
+export function pruneStaleCustomTags(rawNodes, customTags) {
+  const tags = customTags && typeof customTags === 'object' ? customTags : {};
+  const nodes = Array.isArray(rawNodes) ? rawNodes : [];
+  const presentSet = new Set(
+    nodes.map((n) => (typeof n?.tag === 'string' ? n.tag : '')).filter(Boolean),
+  );
+  const pruned = {};
+  for (const [originalTag, customName] of Object.entries(tags)) {
+    if (presentSet.has(originalTag)) {
+      pruned[originalTag] = customName;
+    }
+  }
+  return pruned;
 }

@@ -2871,3 +2871,184 @@ async fn test_source_rename_rules_and_prefix_pipeline_crud_and_compilation() {
 
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn test_source_single_node_custom_rename_crud_refresh_and_compilation() {
+    let raw_nodes_feed = json!([
+        { "type": "vless", "tag": "HK-01", "server": "1.1.1.1", "server_port": 443, "uuid": "u1" },
+        { "type": "vless", "tag": "HK-02", "server": "2.2.2.2", "server_port": 443, "uuid": "u2" },
+        { "type": "vless", "tag": "HK-03", "server": "3.3.3.3", "server_port": 443, "uuid": "u3" },
+    ])
+    .to_string();
+    let (url, feed) = spawn_feed_server(&raw_nodes_feed).await;
+    let (state, dir) = test_state(test_settings());
+    let app = create_app(state);
+
+    // 1. Create subscription source
+    let create_body = json!({
+        "name": "自定义改名测试源",
+        "type": "subscription",
+        "url": url,
+    });
+    let (status, created) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/sources",
+                Body::from(create_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(feed.hit_count(), 1);
+    let src_id = created["id"].as_str().unwrap().to_string();
+
+    // 2. Update with renameRules, prefix, and customTags (including override, blank fallback, and stale tag)
+    let update_body = json!({
+        "name": "自定义改名测试源",
+        "type": "subscription",
+        "url": url,
+        "renameRules": [
+            { "pattern": r"(?i)hk-(\d+)", "replacement": "香港 $1" }
+        ],
+        "prefix": "[专线] ",
+        "customTags": {
+            "HK-01": "香港VIP 01",
+            "HK-03": "   ", // blank -> should be pruned and fall back to batch regex
+            "HK-Old-Missing": "已下线节点" // stale tag -> preserved in storage
+        }
+    });
+    let (status, updated) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/sources/{src_id}"),
+                Body::from(update_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{updated}");
+    // Network was not hit during pure rule update
+    assert_eq!(feed.hit_count(), 1);
+
+    assert_eq!(updated["customTags"]["HK-01"], "香港VIP 01");
+    assert_eq!(updated["customTags"]["HK-Old-Missing"], "已下线节点");
+    assert!(updated["customTags"].get("HK-03").is_none());
+
+    // 3. GET /api/sources/{src_id} roundtrip persistence check
+    let (status, fetched) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "GET",
+                &format!("/api/sources/{src_id}"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{fetched}");
+    assert_eq!(fetched["customTags"]["HK-01"], "香港VIP 01");
+    assert_eq!(fetched["customTags"]["HK-Old-Missing"], "已下线节点");
+
+    // 4. Create template and profile to test compilation consuming the pipeline result
+    let template_body = json!({
+        "name": "Custom Tag Template",
+        "content": {
+            "policy_groups": [
+                { "type": "selector", "tag": "默认策略", "outbounds": ["香港分组", "直连"] }
+            ],
+            "node_groups": [
+                { "type": "urltest", "tag": "香港分组", "outbounds": ["{(?i)香港}"] }
+            ],
+            "outbounds": [
+                { "type": "direct", "tag": "直连" }
+            ]
+        }
+    });
+    let (status, template) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/templates",
+                Body::from(template_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{template}");
+    let tpl_id = template["id"].as_str().unwrap().to_string();
+
+    let profile_body = json!({
+        "name": "Custom Tag Profile",
+        "templateId": tpl_id,
+        "sourceIds": [src_id]
+    });
+    let (status, profile) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/profiles",
+                Body::from(profile_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{profile}");
+    let token = profile["token"].as_str().unwrap().to_string();
+
+    // 5. Compile profile and verify final tags
+    let resp = app
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method("GET")
+                .uri(format!("/sub/{token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let compiled: Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let outbounds = compiled["outbounds"].as_array().unwrap();
+    let group = outbounds.iter().find(|o| o["tag"] == "香港分组").unwrap();
+    assert_eq!(
+        group["outbounds"],
+        json!([
+            "[专线] 香港 02",    // batch regex + prefix
+            "[专线] 香港 03",    // blank custom fallback -> batch regex + prefix
+            "[专线] 香港VIP 01"  // custom override + prefix (sorted alphabetically in node group)
+        ])
+    );
+
+    // 6. Refresh source: verify customTags is preserved even with stale tag
+    let (status, refreshed) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                &format!("/api/sources/{src_id}/refresh"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{refreshed}");
+    assert_eq!(feed.hit_count(), 2);
+    assert_eq!(refreshed["customTags"]["HK-01"], "香港VIP 01");
+    assert_eq!(refreshed["customTags"]["HK-Old-Missing"], "已下线节点");
+
+    let _ = std::fs::remove_dir_all(dir);
+}

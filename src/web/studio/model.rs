@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::{CantoError, Result};
@@ -63,6 +64,12 @@ pub struct NodeSource {
     pub rename_rules: Vec<RenameRule>,
     #[serde(default, skip_serializing_if = "Option::is_none", alias = "prefix")]
     pub prefix: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        alias = "custom_tags"
+    )]
+    pub custom_tags: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,6 +170,19 @@ pub fn normalize_rename_rules(rules: Vec<RenameRule>) -> Vec<RenameRule> {
         .collect()
 }
 
+pub fn normalize_custom_tags(map: BTreeMap<String, String>) -> BTreeMap<String, String> {
+    map.into_iter()
+        .filter_map(|(k, v)| {
+            let trimmed_val = v.trim();
+            if k.is_empty() || trimmed_val.is_empty() {
+                None
+            } else {
+                Some((k, trimmed_val.to_string()))
+            }
+        })
+        .collect()
+}
+
 impl NodeSource {
     pub fn sync_counts(&mut self) {
         self.node_count = self.nodes.len();
@@ -255,18 +275,22 @@ impl NodeSource {
             .collect();
 
         // Step 1: Sequential batch regex replacement
+        // Step 1.5: Single-node custom rename override
         // Step 2: Prefix prepending (preserving trailing spaces)
         let mut staged_tags: Vec<String> = Vec::with_capacity(filtered_nodes.len());
         for node in &filtered_nodes {
-            let mut tag = node
-                .get("tag")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
+            let original_tag = node.get("tag").and_then(Value::as_str).unwrap_or("");
+            let mut tag = original_tag.to_string();
             for (re, replacement) in &compiled_rules {
                 let replaced = re.replace_all(&tag, *replacement);
                 if !replaced.trim().is_empty() {
                     tag = replaced.into_owned();
+                }
+            }
+            if let Some(custom) = self.custom_tags.get(original_tag) {
+                let trimmed = custom.trim();
+                if !trimmed.is_empty() {
+                    tag = trimmed.to_string();
                 }
             }
             if let Some(prefix) = self.prefix.as_deref()
@@ -1042,6 +1066,7 @@ mod tests {
         assert!(source.exclude_pattern.is_none());
         assert!(source.rename_rules.is_empty());
         assert!(source.prefix.is_none());
+        assert!(source.custom_tags.is_empty());
         assert_eq!(source.effective_nodes().len(), 2);
     }
 
@@ -1080,6 +1105,7 @@ mod tests {
             exclude_pattern: Some("(?i)官网".to_string()),
             rename_rules: Vec::new(),
             prefix: None,
+            custom_tags: Default::default(),
         };
         // 1. HK-01 [官网] (vmess): matches exclude_pattern AND matches include, but vmess is blacklisted!
         assert_eq!(
@@ -1154,6 +1180,7 @@ mod tests {
             ],
             // Prefix with trailing space
             prefix: Some("[主力] ".to_string()),
+            custom_tags: Default::default(),
         };
 
         let effective = source.effective_nodes();
@@ -1192,6 +1219,7 @@ mod tests {
             exclude_pattern: None,
             rename_rules: Vec::new(),
             prefix: None,
+            custom_tags: Default::default(),
         };
 
         let effective = source.effective_nodes();
@@ -1228,11 +1256,89 @@ mod tests {
                 replacement: "[$1] #$2".to_string(),
             }],
             prefix: Some("Node: ".to_string()),
+            custom_tags: Default::default(),
         };
 
         let effective = source.effective_nodes();
         assert_eq!(effective.len(), 2);
         assert_eq!(effective[0]["tag"], "Node: [HK] #01");
         assert_eq!(effective[1]["tag"], "Node: [US] #05");
+    }
+
+    #[test]
+    fn test_single_node_custom_rename_overrides_batch_regex() {
+        let mut custom_tags = std::collections::BTreeMap::new();
+        custom_tags.insert("HK-01".to_string(), "香港专线 A".to_string());
+        custom_tags.insert("HK-03".to_string(), "   ".to_string()); // blank, should fall back
+        custom_tags.insert("Unmatched-Tag".to_string(), "无效节点名".to_string()); // unmatched, retained without error
+
+        let source = NodeSource {
+            id: "src_custom_rename".to_string(),
+            name: "Custom Rename Test".to_string(),
+            kind: SourceKind::Manual,
+            url: None,
+            content: None,
+            status: Default::default(),
+            last_updated: None,
+            last_error: None,
+            node_count: 3,
+            nodes: vec![
+                serde_json::json!({ "tag": "HK-01", "type": "vless" }),
+                serde_json::json!({ "tag": "HK-02", "type": "vless" }),
+                serde_json::json!({ "tag": "HK-03", "type": "vless" }),
+            ],
+            exclude_protocols: Vec::new(),
+            include_pattern: None,
+            exclude_pattern: None,
+            rename_rules: vec![RenameRule {
+                pattern: r"(?i)hk-(\d+)".to_string(),
+                replacement: "香港 $1".to_string(),
+            }],
+            prefix: Some("[主力] ".to_string()),
+            custom_tags,
+        };
+
+        let effective = source.effective_nodes();
+        assert_eq!(effective.len(), 3);
+        // Node 1: custom override "香港专线 A" beats batch replace "香港 01", then prefix added
+        assert_eq!(effective[0]["tag"], "[主力] 香港专线 A");
+        // Node 2: no custom override, uses batch replace "香港 02", then prefix added
+        assert_eq!(effective[1]["tag"], "[主力] 香港 02");
+        // Node 3: blank custom override falls back to batch replace "香港 03", then prefix added
+        assert_eq!(effective[2]["tag"], "[主力] 香港 03");
+    }
+
+    #[test]
+    fn test_single_node_custom_rename_disambiguation() {
+        let mut custom_tags = std::collections::BTreeMap::new();
+        custom_tags.insert("HK-01".to_string(), "香港".to_string());
+        custom_tags.insert("HK-02".to_string(), "香港".to_string());
+
+        let source = NodeSource {
+            id: "src_custom_collision".to_string(),
+            name: "Custom Collision".to_string(),
+            kind: SourceKind::Manual,
+            url: None,
+            content: None,
+            status: Default::default(),
+            last_updated: None,
+            last_error: None,
+            node_count: 2,
+            nodes: vec![
+                serde_json::json!({ "tag": "HK-01", "type": "vless" }),
+                serde_json::json!({ "tag": "HK-02", "type": "vless" }),
+            ],
+            exclude_protocols: Vec::new(),
+            include_pattern: None,
+            exclude_pattern: None,
+            rename_rules: Vec::new(),
+            prefix: Some("Node: ".to_string()),
+            custom_tags,
+        };
+
+        let effective = source.effective_nodes();
+        assert_eq!(effective.len(), 2);
+        assert_eq!(effective[0]["tag"], "Node: 香港");
+        assert_eq!(effective[1]["tag"], "Node: 香港-2");
     }
 }

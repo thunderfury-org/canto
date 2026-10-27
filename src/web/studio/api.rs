@@ -3,9 +3,9 @@ use crate::web::studio::compiler::CompileError;
 use crate::web::studio::manager::is_http_url;
 use crate::web::studio::model::{
     NodeSource, Profile, RenameRule, SourceKind, Template, new_profile_id, new_source_id,
-    new_template_id, normalize_pattern, normalize_prefix, normalize_protocols,
-    normalize_rename_rules, now_rfc3339, validate_filter_regex, validate_rename_regex,
-    validate_template_content,
+    new_template_id, normalize_custom_tags, normalize_pattern, normalize_prefix,
+    normalize_protocols, normalize_rename_rules, now_rfc3339, validate_filter_regex,
+    validate_rename_regex, validate_template_content,
 };
 use crate::web::studio::store::TemplateWrite;
 use axum::Json;
@@ -15,6 +15,7 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +36,8 @@ pub struct CreateSourceRequest {
     pub rename_rules: Vec<RenameRule>,
     #[serde(default, alias = "prefix")]
     pub prefix: Option<String>,
+    #[serde(default, alias = "custom_tags")]
+    pub custom_tags: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -56,6 +59,8 @@ pub struct UpdateSourceRequest {
     pub rename_rules: Option<Vec<RenameRule>>,
     #[serde(default, alias = "prefix")]
     pub prefix: Option<String>,
+    #[serde(default, alias = "custom_tags")]
+    pub custom_tags: Option<BTreeMap<String, String>>,
 }
 
 pub async fn list_sources(State(state): State<WebState>) -> Response {
@@ -124,6 +129,7 @@ pub async fn create_source(
         exclude_pattern: normalize_pattern(req.exclude_pattern),
         rename_rules: normalize_rename_rules(req.rename_rules),
         prefix: normalize_prefix(req.prefix),
+        custom_tags: normalize_custom_tags(req.custom_tags),
     };
 
     if let Some(nodes) = req.nodes.filter(|nodes| !nodes.is_empty()) {
@@ -209,6 +215,9 @@ pub async fn update_source(
     }
     if let Some(prefix) = req.prefix {
         source.prefix = normalize_prefix(Some(prefix));
+    }
+    if let Some(tags) = req.custom_tags {
+        source.custom_tags = normalize_custom_tags(tags);
     }
     match source.kind {
         SourceKind::Subscription => source.content = None,
