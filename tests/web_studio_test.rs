@@ -337,11 +337,19 @@ async fn json_body(response: axum::http::Response<Body>) -> (StatusCode, Value) 
 #[derive(Clone)]
 struct MockFeed {
     inner: Arc<Mutex<(StatusCode, String)>>,
+    hits: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl MockFeed {
+    fn hit_count(&self) -> usize {
+        self.hits.load(std::sync::atomic::Ordering::SeqCst)
+    }
 }
 
 async fn spawn_feed_server(initial_body: &str) -> (String, MockFeed) {
     let feed = MockFeed {
         inner: Arc::new(Mutex::new((StatusCode::OK, initial_body.to_string()))),
+        hits: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
     };
     let app = Router::new()
         .route("/sub", get(mock_feed_handler))
@@ -357,6 +365,7 @@ async fn spawn_feed_server(initial_body: &str) -> (String, MockFeed) {
 async fn mock_feed_handler(
     axum::extract::State(feed): axum::extract::State<MockFeed>,
 ) -> axum::response::Response {
+    feed.hits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let (status, body) = feed.inner.lock().unwrap().clone();
     (status, body).into_response()
 }
@@ -2013,4 +2022,257 @@ async fn sing_box_startup_log(sing_box: &std::path::Path, config: &std::path::Pa
         .await
         .unwrap();
     String::from_utf8_lossy(&output).into_owned()
+}
+
+#[tokio::test]
+async fn test_update_source_subscription_only_refetches_when_url_changes() {
+    let initial_feed = json!([
+        { "type": "vless", "tag": "HK-Initial", "server": "hk.example.com", "server_port": 443, "uuid": "u1" }
+    ])
+    .to_string();
+    let (url, feed) = spawn_feed_server(&initial_feed).await;
+    let (state, _dir) = test_state(test_settings());
+    let app = create_app(state);
+
+    let create_body = json!({
+        "name": "主力机场",
+        "type": "subscription",
+        "url": url,
+    });
+    let (status, created) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/sources",
+                Body::from(create_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(feed.hit_count(), 1);
+    assert_eq!(created["nodes"][0]["tag"], "HK-Initial");
+    let id = created["id"].as_str().unwrap().to_string();
+
+    let next_feed = json!([
+        { "type": "vless", "tag": "HK-Upstream-Changed", "server": "hk2.example.com", "server_port": 443, "uuid": "u2" }
+    ])
+    .to_string();
+    *feed.inner.lock().unwrap() = (StatusCode::OK, next_feed);
+
+    // Updating metadata with the same normalized URL (padded with whitespace) must not refetch.
+    let rename_same_url = json!({
+        "name": "主力机场-改名",
+        "type": "subscription",
+        "url": format!("  {url}  "),
+        "content": "",
+    });
+    let (status, updated) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/sources/{id}"),
+                Body::from(rename_same_url.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{updated}");
+    assert_eq!(
+        feed.hit_count(),
+        1,
+        "unchanged normalized url must not refetch"
+    );
+    assert_eq!(updated["name"], "主力机场-改名");
+    assert_eq!(updated["url"], url);
+    assert_eq!(updated["nodes"][0]["tag"], "HK-Initial");
+
+    // Omitting url on metadata-only update must also skip refetch and keep raw nodes.
+    let rename_only = json!({ "name": "主力机场-二次改名" });
+    let (status, updated_again) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/sources/{id}"),
+                Body::from(rename_only.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{updated_again}");
+    assert_eq!(feed.hit_count(), 1);
+    assert_eq!(updated_again["name"], "主力机场-二次改名");
+    assert_eq!(updated_again["nodes"][0]["tag"], "HK-Initial");
+
+    // Changing the normalized URL must trigger a remote fetch and replace raw nodes.
+    let changed_url = format!("{url}?v=2");
+    let update_url_body = json!({
+        "name": "主力机场-新地址",
+        "type": "subscription",
+        "url": changed_url,
+    });
+    let (status, refetched) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/sources/{id}"),
+                Body::from(update_url_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{refetched}");
+    assert_eq!(feed.hit_count(), 2);
+    assert_eq!(refetched["url"], changed_url);
+    assert_eq!(refetched["nodes"][0]["tag"], "HK-Upstream-Changed");
+
+    // Explicit refresh endpoint always refetches even without URL changes.
+    let refreshed_feed = json!([
+        { "type": "trojan", "tag": "JP-Refreshed", "server": "jp.example.com", "server_port": 443, "password": "secret" }
+    ])
+    .to_string();
+    *feed.inner.lock().unwrap() = (StatusCode::OK, refreshed_feed);
+    let (status, explicit_refresh) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                &format!("/api/sources/{id}/refresh"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{explicit_refresh}");
+    assert_eq!(feed.hit_count(), 3);
+    assert_eq!(explicit_refresh["nodes"][0]["tag"], "JP-Refreshed");
+}
+
+#[tokio::test]
+async fn test_update_source_manual_only_reparses_when_content_changes() {
+    let (state, _dir) = test_state(test_settings());
+    let app = create_app(state);
+
+    let raw_uri = "vless://11111111-1111-1111-1111-111111111111@hk.example.com:443#HK-Parsed";
+    let create_body = json!({
+        "name": "自建专线",
+        "type": "manual",
+        "content": raw_uri,
+        "nodes": [
+            { "type": "vless", "tag": "HK-Seeded-Raw", "server": "hk.example.com", "server_port": 443 }
+        ],
+    });
+    let (status, created) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/sources",
+                Body::from(create_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["nodes"][0]["tag"], "HK-Seeded-Raw");
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // Updating name while sending unchanged normalized content must preserve existing raw nodes.
+    let rename_same_content = json!({
+        "name": "自建专线-改名",
+        "type": "manual",
+        "url": "",
+        "content": format!("  {raw_uri}  "),
+    });
+    let (status, updated) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/sources/{id}"),
+                Body::from(rename_same_content.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{updated}");
+    assert_eq!(updated["name"], "自建专线-改名");
+    assert_eq!(
+        updated["nodes"][0]["tag"], "HK-Seeded-Raw",
+        "unchanged manual content must not reparse and overwrite raw nodes"
+    );
+
+    // Explicit refresh endpoint reparses manual content into raw nodes.
+    let (status, refreshed) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                &format!("/api/sources/{id}/refresh"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{refreshed}");
+    assert_eq!(refreshed["nodes"][0]["tag"], "HK-Parsed");
+
+    // Changing manual content reparses and updates raw nodes.
+    let changed_content = json!({
+        "name": "自建专线-改内容",
+        "type": "manual",
+        "content": "trojan://secret@sg.example.com:443#SG-Trojan",
+    });
+    let (status, reparsed) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/sources/{id}"),
+                Body::from(changed_content.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{reparsed}");
+    assert_eq!(reparsed["nodes"][0]["tag"], "SG-Trojan");
+
+    // Clearing manual content or submitting invalid manual content returns 400 and preserves saved data.
+    for bad_content in ["   ", "not-a-valid-node-definition"] {
+        let bad_body = json!({
+            "name": "不应落盘",
+            "type": "manual",
+            "content": bad_content,
+        });
+        let (status, err) = json_body(
+            app.clone()
+                .oneshot(auth_req(
+                    "PUT",
+                    &format!("/api/sources/{id}"),
+                    Body::from(bad_body.to_string()),
+                ))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{err}");
+    }
+
+    let (status, fetched) = json_body(
+        app.oneshot(auth_req(
+            "GET",
+            &format!("/api/sources/{id}"),
+            Body::empty(),
+        ))
+        .await
+        .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{fetched}");
+    assert_eq!(fetched["name"], "自建专线-改内容");
+    assert_eq!(fetched["nodes"][0]["tag"], "SG-Trojan");
 }

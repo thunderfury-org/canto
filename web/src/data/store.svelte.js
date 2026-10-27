@@ -28,6 +28,22 @@ import {
   saveAllDrafts as commitAllDrafts,
 } from './templateDraft.js';
 import {
+  canSaveSourceDraft,
+  commitSourceSave,
+  createSourceRequest,
+  createSourceSession,
+  dirtySourceIds,
+  discardSourceLocal,
+  discardSourceRemote,
+  forgetSource,
+  getSourceDraft as readSourceDraft,
+  isSourceDraftDirty,
+  isSourceMissing as readSourceMissing,
+  mergeSourceList,
+  saveAllSourceDrafts as commitAllSourceDrafts,
+  updateSourceDraft,
+} from './sourceDraft.js';
+import {
   createDraft,
   emptyDraft,
   isDirty as subscriptionDirty,
@@ -55,19 +71,20 @@ class StudioStore {
   selectedSourceId = $state(
     initialRoute.tab === 'sources' && initialRoute.id ? initialRoute.id : null,
   );
-  sourceSubTab = $state(
-    initialRoute.tab === 'sources' && initialRoute.subtab ? initialRoute.subtab : null,
-  );
   authPhase = $state(AUTH_CHECKING);
   isAuthenticated = $state(false);
   authStatusMessage = $state('');
   templateSaveError = $state('');
   templateSession = $state(createTemplateSession());
+  sourceSaveError = $state('');
+  sourceSession = $state(createSourceSession());
   draftEpoch = $state(0);
   // True only after /api/templates replaces the in-memory demo.
   templatesLoaded = $state(false);
+  sourcesLoaded = $state(false);
   profileSaveError = $state('');
   leaveOpen = $state(false);
+  leaveScope = $state('logout');
   leaveAction = null;
   studioStatus = $state(null);
   statusError = $state('');
@@ -77,6 +94,10 @@ class StudioStore {
     this.selectedTemplateId
       ? this.templates.find((t) => t.id === this.selectedTemplateId) || null
       : null,
+  );
+
+  selectedSource = $derived(
+    this.selectedSourceId ? this.sources.find((s) => s.id === this.selectedSourceId) || null : null,
   );
 
   selectedProfile = $derived(
@@ -98,11 +119,31 @@ class StudioStore {
       dirtyIds(this.templateSession, this.templates).length > 0,
   );
 
+  hasDirtySources = $derived(
+    this.isAuthenticated &&
+      this.draftEpoch >= 0 &&
+      dirtySourceIds(this.sourceSession, this.sources).length > 0,
+  );
+
   pendingKind() {
+    if (this.leaveScope === 'navigation') {
+      return unsavedKind({ subscription: this.hasDirtySubscription });
+    }
     return unsavedKind({
       subscription: this.hasDirtySubscription,
       template: this.hasDirtyTemplates,
+      source: this.hasDirtySources,
     });
+  }
+
+  navigationPendingKind(tab, params = {}) {
+    if (this.currentTab !== 'profiles' || !this.hasDirtySubscription) {
+      return 'none';
+    }
+    if (!this.destinationChanges(tab, params)) {
+      return 'none';
+    }
+    return unsavedKind({ subscription: true });
   }
 
   destinationChanges(tab, params = {}) {
@@ -113,20 +154,21 @@ class StudioStore {
       return creating !== this.creatingProfile || (params.id || null) !== this.selectedProfileId;
     }
     if (tab === 'sources') {
-      return (
-        (params.id || null) !== this.selectedSourceId ||
-        (params.subtab || null) !== this.sourceSubTab
-      );
+      return (params.id || null) !== this.selectedSourceId;
     }
     return false;
   }
 
-  askLeave(action) {
+  askLeave(action, { scope = 'logout' } = {}) {
+    this.leaveScope = scope;
     if (this.pendingKind() === 'none') {
+      this.leaveScope = 'logout';
       action();
       return;
     }
     this.profileSaveError = '';
+    this.templateSaveError = '';
+    this.sourceSaveError = '';
     this.leaveAction = action;
     this.leaveOpen = true;
   }
@@ -134,12 +176,21 @@ class StudioStore {
   cancelLeave() {
     this.leaveOpen = false;
     this.leaveAction = null;
+    this.leaveScope = 'logout';
     this.profileSaveError = '';
+    this.templateSaveError = '';
+    this.sourceSaveError = '';
   }
 
   async confirmLeaveSave() {
     let ok = true;
-    if (this.hasDirtyTemplates) ok = await this.saveAllDrafts();
+    const includeSessionDrafts = this.leaveScope !== 'navigation';
+    if (includeSessionDrafts && this.hasDirtyTemplates) {
+      ok = await this.saveAllDrafts();
+    }
+    if (ok && includeSessionDrafts && this.hasDirtySources) {
+      ok = await this.saveAllSourceDrafts();
+    }
     if (ok && this.hasDirtySubscription) {
       const blocker = saveBlocker(this.profileDraft);
       if (blocker) {
@@ -161,7 +212,10 @@ class StudioStore {
   }
 
   confirmLeaveDiscard() {
-    this.discardAllDrafts();
+    if (this.leaveScope !== 'navigation') {
+      this.discardAllDrafts();
+      this.discardAllSourceDrafts();
+    }
     this.profileDraft = null;
     this.creatingProfile = false;
     const action = this.leaveAction;
@@ -170,8 +224,14 @@ class StudioStore {
   }
 
   navigate(tab, params = {}, options = {}) {
-    if (!options.force && this.destinationChanges(tab, params)) {
-      this.askLeave(() => this.navigate(tab, params, { ...options, force: true }));
+    if (
+      !options.force &&
+      this.destinationChanges(tab, params) &&
+      this.navigationPendingKind(tab, params) !== 'none'
+    ) {
+      this.askLeave(() => this.navigate(tab, params, { ...options, force: true }), {
+        scope: 'navigation',
+      });
       return;
     }
     navigate(tab, params, options);
@@ -184,8 +244,11 @@ class StudioStore {
         this.templateSubTab = 'node_groups';
       }
     } else if (tab === 'sources') {
-      this.selectedSourceId = params.id || null;
-      this.sourceSubTab = params.subtab || null;
+      const nextSourceId = params.id || null;
+      if (nextSourceId !== this.selectedSourceId) {
+        this.sourceSaveError = '';
+      }
+      this.selectedSourceId = nextSourceId;
     } else if (tab === 'profiles') {
       const creating = params.subtab === 'new' && !params.id;
       const nextId = params.id || null;
@@ -204,6 +267,7 @@ class StudioStore {
     this.authPhase = AUTH_REQUIRED;
     this.authStatusMessage = message;
     this.templatesLoaded = false;
+    this.sourcesLoaded = false;
     this.studioStatus = null;
   }
 
@@ -260,6 +324,10 @@ class StudioStore {
       this.authStatusMessage = CANNOT_EXIT;
       return false;
     }
+    this.templateSession = createTemplateSession();
+    this.sourceSession = createSourceSession();
+    this.profileDraft = null;
+    this.creatingProfile = false;
     this.markUnauthenticated('');
     this.statusError = '';
     return true;
@@ -280,6 +348,7 @@ class StudioStore {
     this.templates = JSON.parse(JSON.stringify(initialTemplates));
     this.sources = JSON.parse(JSON.stringify(initialSources));
     this.selectedTemplateId = null;
+    this.selectedSourceId = null;
   }
 
   touchTemplate(tplId) {
@@ -364,6 +433,19 @@ class StudioStore {
       return '保存模板失败: ' + (result.error?.message || result.error || '网络错误');
     }
     return '保存模板失败: ' + (result?.errorMessage || `HTTP ${result?.status || ''}`);
+  }
+
+  sourceSaveFailureMessage(result) {
+    if (result?.status === 404) {
+      return '节点源已不在服务器上。可以放弃草稿返回列表。';
+    }
+    if (result?.blocker) {
+      return result.blocker;
+    }
+    if (result?.status === 0) {
+      return '保存节点源失败: ' + (result.error?.message || result.error || '网络错误');
+    }
+    return '保存节点源失败: ' + (result?.errorMessage || `HTTP ${result?.status || ''}`);
   }
 
   async saveTemplate(id, { force = false } = {}) {
@@ -566,6 +648,128 @@ class StudioStore {
     }
   }
 
+  getSourceDraft(id) {
+    const src = this.sources.find((s) => s.id === id) || null;
+    return readSourceDraft(this.sourceSession, src);
+  }
+
+  editSourceDraft(id, patch) {
+    const src = this.sources.find((s) => s.id === id);
+    if (!src) return;
+    if (!this.isAuthenticated) {
+      const idx = this.sources.findIndex((s) => s.id === id);
+      if (idx !== -1) {
+        this.sources[idx] = { ...this.sources[idx], ...patch };
+        this.sources = [...this.sources];
+      }
+      return;
+    }
+    this.sourceSaveError = '';
+    this.sourceSession = updateSourceDraft(this.sourceSession, src, patch);
+    this.draftEpoch += 1;
+  }
+
+  isSourceDirty(id) {
+    return (
+      this.isAuthenticated && this.draftEpoch >= 0 && isSourceDraftDirty(this.sourceSession, id)
+    );
+  }
+
+  isSourceMissing(id) {
+    return (
+      this.isAuthenticated && this.draftEpoch >= 0 && readSourceMissing(this.sourceSession, id)
+    );
+  }
+
+  canSaveSource(id) {
+    return (
+      this.isAuthenticated && this.draftEpoch >= 0 && canSaveSourceDraft(this.sourceSession, id)
+    );
+  }
+
+  async saveSourceDraft(id) {
+    if (!this.isAuthenticated || !id) return false;
+    const result = await commitSourceSave({
+      fetchImpl: (url, init) => this.templateFetch(url, init),
+      session: this.sourceSession,
+      sources: this.sources,
+      id,
+    });
+    this.sourceSession = result.session;
+    this.sources = result.sources;
+    if (result.ok) {
+      this.sourceSaveError = '';
+      this.draftEpoch += 1;
+      return true;
+    }
+    if (result.status === 401) this.noteUnauthorized();
+    this.sourceSaveError = this.sourceSaveFailureMessage(result);
+    this.draftEpoch += 1;
+    return false;
+  }
+
+  async saveAllSourceDrafts() {
+    if (!this.isAuthenticated) return true;
+    const result = await commitAllSourceDrafts({
+      fetchImpl: (url, init) => this.templateFetch(url, init),
+      session: this.sourceSession,
+      sources: this.sources,
+    });
+    this.sourceSession = result.session;
+    this.sources = result.sources;
+    this.draftEpoch += 1;
+    if (!result.ok) {
+      const failed = result.results.find((item) => !item.ok);
+      if (failed?.status === 401) this.noteUnauthorized();
+      this.sourceSaveError = this.sourceSaveFailureMessage(failed);
+      return false;
+    }
+    this.sourceSaveError = '';
+    return true;
+  }
+
+  async discardSourceDraft(id) {
+    if (!this.isAuthenticated || !id) return false;
+    const applied = await discardSourceRemote({
+      fetchImpl: (url, init) => this.templateFetch(url, init),
+      session: this.sourceSession,
+      sources: this.sources,
+      id,
+    });
+    if (!applied.ok) {
+      if (applied.status === 401) this.noteUnauthorized();
+      const detail = applied.error?.message || applied.errorMessage || '网络错误';
+      this.sourceSaveError = '放弃失败: ' + detail;
+      this.draftEpoch += 1;
+      return false;
+    }
+    this.sourceSession = applied.session;
+    this.sources = applied.sources;
+    if (this.selectedSourceId && !this.sources.some((s) => s.id === this.selectedSourceId)) {
+      this.selectedSourceId = null;
+    }
+    this.sourceSaveError = '';
+    this.draftEpoch += 1;
+    return true;
+  }
+
+  discardAllSourceDrafts() {
+    let session = this.sourceSession;
+    let sources = this.sources;
+    for (const id of dirtySourceIds(session, sources)) {
+      const applied = discardSourceLocal(session, sources, id);
+      session = applied.session;
+      sources = applied.sources;
+    }
+    this.sourceSession = session;
+    this.sources = sources;
+    if (this.selectedSourceId && !this.sources.some((s) => s.id === this.selectedSourceId)) {
+      this.selectedSourceId = null;
+    }
+    this.sourceSaveError = '';
+    this.draftEpoch += 1;
+  }
+
   async loadSources() {
     try {
       const res = await fetch('/api/sources', {
@@ -577,7 +781,12 @@ class StudioStore {
         return false;
       }
       const data = await res.json();
-      this.sources = Array.isArray(data) ? data : [];
+      const serverSources = Array.isArray(data) ? data : [];
+      const merged = mergeSourceList(this.sourceSession, this.sources, serverSources);
+      this.sourceSession = merged.session;
+      this.sources = merged.sources;
+      this.sourcesLoaded = true;
+      this.draftEpoch += 1;
       return true;
     } catch {
       return false;
@@ -610,41 +819,20 @@ class StudioStore {
       this.addSource(local);
       return local;
     }
-    const res = await fetch('/api/sources', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: this.authHeaders(),
-      body: JSON.stringify(payload),
+    const result = await createSourceRequest({
+      fetchImpl: (url, init) => this.templateFetch(url, init),
+      session: this.sourceSession,
+      sources: this.sources,
+      draft: payload,
     });
-    if (!res.ok) {
-      throw new Error(await this.apiError(res));
+    if (!result.ok) {
+      if (result.status === 401) this.noteUnauthorized();
+      throw new Error(result.errorMessage || result.error?.message || '创建节点源失败');
     }
-    const created = await res.json();
-    await this.loadSources();
-    return created;
-  }
-
-  async updateSource(id, payload) {
-    if (!this.isAuthenticated) {
-      const idx = this.sources.findIndex((s) => s.id === id);
-      if (idx !== -1) {
-        this.sources[idx] = { ...this.sources[idx], ...payload };
-        this.sources = [...this.sources];
-      }
-      return this.sources.find((s) => s.id === id);
-    }
-    const res = await fetch(`/api/sources/${id}`, {
-      method: 'PUT',
-      credentials: 'same-origin',
-      headers: this.authHeaders(),
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      throw new Error(await this.apiError(res));
-    }
-    const updated = await res.json();
-    await this.loadSources();
-    return updated;
+    this.sourceSession = result.session;
+    this.sources = result.sources;
+    this.draftEpoch += 1;
+    return result.created;
   }
 
   async refreshSource(sourceId) {
@@ -686,11 +874,21 @@ class StudioStore {
       if (!res.ok && res.status !== 204) {
         throw new Error(await this.apiError(res));
       }
+      this.sourceSession = forgetSource(this.sourceSession, sourceId);
+      this.sources = this.sources.filter((s) => s.id !== sourceId);
+      if (this.selectedSourceId === sourceId) {
+        this.selectedSourceId = null;
+      }
+      this.sourceSaveError = '';
+      this.draftEpoch += 1;
       await this.loadSources();
       await this.loadProfiles();
       return;
     }
     this.deleteSource(sourceId);
+    if (this.selectedSourceId === sourceId) {
+      this.selectedSourceId = null;
+    }
   }
 
   addProfile(newProfile) {

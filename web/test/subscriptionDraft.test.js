@@ -64,11 +64,25 @@ test('navigation reads the pending kind that the store exposes', () => {
 
 test('leave copy names whichever drafts are actually unsaved', () => {
   assert.equal(unsavedKind({ subscription: true }), 'subscription');
+  assert.equal(unsavedKind({ source: true }), 'source');
   assert.equal(leavePrompt('subscription').title, '还有未保存的订阅');
   assert.equal(leavePrompt('template').title, '还有未保存的配置模板');
+  assert.equal(leavePrompt('source').title, '还有未保存的节点源');
   assert.equal(leavePrompt('both').title, '还有未保存的修改');
   assert.match(leavePrompt('both').body, /订阅/);
   assert.match(leavePrompt('both').body, /配置模板/);
+
+  const tplAndSource = unsavedKind({ template: true, source: true });
+  assert.equal(leavePrompt(tplAndSource).title, '还有未保存的修改');
+  assert.match(leavePrompt(tplAndSource).body, /配置模板/);
+  assert.match(leavePrompt(tplAndSource).body, /节点源/);
+
+  const allThree = unsavedKind({ subscription: true, template: true, source: true });
+  assert.equal(leavePrompt(allThree).title, '还有未保存的修改');
+  assert.match(leavePrompt(allThree).body, /订阅/);
+  assert.match(leavePrompt(allThree).body, /配置模板/);
+  assert.match(leavePrompt(allThree).body, /节点源/);
+
   assert.equal(leavePrompt('none').title, '');
   assert.equal(leavePrompt('none').body, '');
 });

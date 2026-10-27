@@ -359,7 +359,7 @@
                 </div>
                 <button
                   type="button"
-                  onclick={() => store.navigate('sources', { id: src.id, subtab: 'inspect' })}
+                  onclick={() => store.navigate('sources', { id: src.id })}
                   class="btn btn-secondary text-xs px-2 py-1"
                   title="查看此源解析出来的所有节点"
                 >
