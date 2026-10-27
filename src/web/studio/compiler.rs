@@ -87,7 +87,7 @@ impl ProfileCompiler {
             let Some(source) = self.sources.get(source_id).await else {
                 continue;
             };
-            nodes.extend(source.nodes);
+            nodes.extend(source.effective_nodes());
         }
 
         let expansion = expand_profile(&template.content, &nodes);
@@ -208,6 +208,9 @@ mod tests {
             last_error: None,
             node_count: 0,
             nodes: Vec::new(),
+            exclude_protocols: Vec::new(),
+            include_pattern: None,
+            exclude_pattern: None,
         };
         source.mark_active(vec![
             json!({ "type": "vless", "tag": "HK-Node", "server": "1.1.1.1" }),
@@ -288,6 +291,9 @@ mod tests {
             last_error: None,
             node_count: 0,
             nodes: Vec::new(),
+            exclude_protocols: Vec::new(),
+            include_pattern: None,
+            exclude_pattern: None,
         };
         sources.insert(source).await.unwrap();
 
@@ -332,5 +338,97 @@ mod tests {
         let compiler = ProfileCompiler::new(templates, sources, profiles);
         let token = compiler.allocate_unique_token().await.unwrap();
         assert!(token.starts_with("tok_"));
+    }
+
+    #[tokio::test]
+    async fn test_compile_profile_consumes_only_effective_nodes_and_falls_back_when_all_filtered() {
+        let dir = test_dir("compile_filtered");
+        let templates = Arc::new(TemplateStore::empty(&dir));
+        let sources = Arc::new(SourceStore::empty(&dir));
+        let profiles = Arc::new(ProfileStore::empty(&dir));
+
+        let template = Template {
+            id: "tpl_main".to_string(),
+            name: "Main Template".to_string(),
+            description: "Test".to_string(),
+            updated_at: None,
+            content: json!({
+                "policy_groups": [
+                    { "type": "selector", "tag": "all", "outbounds": ["hk_group"] }
+                ],
+                "node_groups": [
+                    { "type": "urltest", "tag": "hk_group", "outbounds": ["{(?i)hk}"] }
+                ],
+                "outbounds": [
+                    { "type": "direct", "tag": "直连" }
+                ]
+            }),
+        };
+        templates.insert(template).await.unwrap();
+
+        let mut source = NodeSource {
+            id: "src_filtered".to_string(),
+            name: "Filtered Source".to_string(),
+            kind: SourceKind::Manual,
+            url: None,
+            content: None,
+            status: Default::default(),
+            last_updated: None,
+            last_error: None,
+            node_count: 0,
+            nodes: Vec::new(),
+            exclude_protocols: vec!["vmess".to_string()],
+            include_pattern: Some("(?i)hk".to_string()),
+            exclude_pattern: Some("(?i)官网".to_string()),
+        };
+        source.mark_active(vec![
+            json!({ "type": "vless", "tag": "HK-Node-01", "server": "1.1.1.1" }),
+            json!({ "type": "vmess", "tag": "HK-Node-02", "server": "2.2.2.2" }), // filtered by protocol
+            json!({ "type": "vless", "tag": "JP-Node-01", "server": "3.3.3.3" }), // filtered by include
+            json!({ "type": "vless", "tag": "HK-官网-03", "server": "4.4.4.4" }), // filtered by exclude
+        ]);
+        sources.insert(source.clone()).await.unwrap();
+
+        let profile = Profile {
+            id: "prof_test".to_string(),
+            name: "Profile".to_string(),
+            description: "".to_string(),
+            template_id: "tpl_main".to_string(),
+            source_ids: vec!["src_filtered".to_string()],
+            token: "tok_filter_test".to_string(),
+            updated_at: None,
+            public_url: None,
+        };
+        profiles.insert(profile.clone()).await.unwrap();
+
+        let compiler = ProfileCompiler::new(templates, Arc::clone(&sources), profiles);
+
+        // 1. Only effective node HK-Node-01 is compiled
+        let compiled = compiler.compile(&profile).await.unwrap();
+        assert_eq!(compiled.total_nodes, 1);
+        assert_eq!(compiled.used_count, 1);
+        let outbounds = compiled.config["outbounds"].as_array().unwrap();
+        // The compiled outbounds must include HK-Node-01 and NOT HK-Node-02, JP-Node-01, HK-官网-03
+        assert!(outbounds.iter().any(|o| o["tag"] == "HK-Node-01"));
+        assert!(!outbounds.iter().any(|o| o["tag"] == "HK-Node-02"));
+        assert!(!outbounds.iter().any(|o| o["tag"] == "JP-Node-01"));
+        assert!(!outbounds.iter().any(|o| o["tag"] == "HK-官网-03"));
+
+        // 2. When all nodes are filtered (e.g. exclude vless too)
+        source.exclude_protocols = vec!["vless".to_string(), "vmess".to_string()];
+        sources.replace(source).await.unwrap();
+
+        let compiled_all_filtered = compiler.compile(&profile).await.unwrap();
+        assert_eq!(compiled_all_filtered.total_nodes, 0);
+        assert_eq!(compiled_all_filtered.used_count, 0);
+        // Safely falls back to direct outbound
+        let outbounds_fallback = compiled_all_filtered.config["outbounds"]
+            .as_array()
+            .unwrap();
+        let hk_group = outbounds_fallback
+            .iter()
+            .find(|o| o["tag"] == "hk_group")
+            .unwrap();
+        assert_eq!(hk_group["outbounds"], json!(["直连"]));
     }
 }

@@ -693,6 +693,9 @@ mod tests {
             last_error: None,
             node_count: 0,
             nodes: vec![json!({"type":"vless","tag":"n","server":"example.com","server_port":443})],
+            exclude_protocols: Vec::new(),
+            include_pattern: None,
+            exclude_pattern: None,
         };
         source.sync_counts();
         source

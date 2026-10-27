@@ -36,6 +36,7 @@ import {
   discardSourceLocal,
   discardSourceRemote,
   forgetSource,
+  getEffectiveNodes,
   getSourceDraft as readSourceDraft,
   isSourceDraftDirty,
   isSourceMissing as readSourceMissing,
@@ -111,7 +112,7 @@ class StudioStore {
       subscriptionDirty(this.profileDraft, this.creatingProfile ? null : this.selectedProfile),
   );
 
-  totalNodesCount = $derived(this.sources.reduce((sum, s) => sum + (s.nodes?.length || 0), 0));
+  totalNodesCount = $derived(this.sources.reduce((sum, s) => sum + getEffectiveNodes(s).length, 0));
 
   hasDirtyTemplates = $derived(
     this.isAuthenticated &&

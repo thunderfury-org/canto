@@ -3,11 +3,16 @@
   import { store } from '../data/store.svelte.js';
   import {
     canSaveSource,
+    classifyNodes,
+    collectAvailableProtocols,
     emptySourceDraft,
     filterSourceNodes,
     findProfilesUsingSource,
+    formatNodeCount,
+    getEffectiveNodes,
     isSourceDirty,
     sourceSaveBlocker,
+    validateFilterRegex,
   } from '../data/sourceDraft.js';
   import AlertCircle from 'lucide-svelte/icons/alert-circle';
   import ArrowLeft from 'lucide-svelte/icons/arrow-left';
@@ -73,6 +78,7 @@
     if (id !== trackedSourceId) {
       trackedSourceId = id;
       nodeSearch = '';
+      nodeTab = 'all';
       actionError = '';
       if (id && createDrawerOpen) {
         createDrawerOpen = false;
@@ -343,7 +349,7 @@
                   {src.status === 'error' ? 'error' : src.status || 'active'}
                 </span>
                 <span class="text-xs text-slate-400 font-mono">
-                  {src.nodes?.length || 0} 个节点
+                  {formatNodeCount(getEffectiveNodes(src).length, src.nodes?.length || 0)}
                 </span>
                 <span class="text-[11px] text-slate-500">
                   更新于 {formatTime(src.lastUpdated)}
@@ -495,7 +501,7 @@
               {activeSource.status === 'error' ? 'error' : activeSource.status || 'active'}
             </span>
             <span class="text-xs text-slate-400 font-mono">
-              {rawNodes.length} 个原始节点
+              {formatNodeCount(detailEffectiveCount, rawNodes.length)}
             </span>
             <span class="text-[11px] text-slate-500">
               更新于 {formatTime(activeSource.lastUpdated)}
@@ -643,19 +649,153 @@
           </span>
         </div>
       {/if}
+
+      <!-- Non-Destructive Filtering Section -->
+      <div class="border-t border-slate-800/80 pt-4 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+          <div>
+            <h3 class="text-xs font-semibold text-slate-200">非破坏性过滤规则</h3>
+            <span class="text-[11px] text-slate-500">
+              三项交集规则动态区分生效与已过滤节点；未通过节点完整保留并标注拦截原因。
+            </span>
+          </div>
+        </div>
+
+        <!-- Protocol Blacklist Multi-select -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-300 font-medium">协议类型黑名单</span>
+            <span class="text-[11px] text-slate-500">
+              勾选即拉黑排除，未勾选默认放行（常驻 5 种常用协议并自动识别源内协议）
+            </span>
+          </div>
+          <div class="flex flex-wrap gap-1.5 pt-0.5">
+            {#each availableProtocols as proto}
+              {@const isBlacklisted = (activeDraft.excludeProtocols || []).includes(proto)}
+              <button
+                type="button"
+                onclick={() => toggleProtocolBlacklist(proto)}
+                class="px-2.5 py-1 rounded text-xs font-mono transition-colors cursor-pointer border flex items-center gap-1.5 {isBlacklisted
+                  ? 'bg-rose-950/70 border-rose-800/80 text-rose-200 font-medium'
+                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'}"
+                aria-pressed={isBlacklisted}
+              >
+                <span>{proto}</span>
+                {#if isBlacklisted}
+                  <span class="text-[10px] text-rose-300 font-sans">已拉黑</span>
+                {/if}
+              </button>
+            {/each}
+          </div>
+        </div>
+
+        <!-- Include & Exclude Patterns Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label for="detail-src-include" class="text-slate-300 font-medium"> 包含正则 </label>
+              <span class="text-[11px] text-slate-500">默认忽略大小写</span>
+            </div>
+            <input
+              id="detail-src-include"
+              type="text"
+              value={activeDraft.includePattern}
+              oninput={(event) => patchActiveDraft({ includePattern: event.currentTarget.value })}
+              placeholder="例如：(?i)(港|hk|香港)（留空放行全部）"
+              class="field w-full px-3 py-1.5 text-xs font-mono {includeRegexError
+                ? 'border-rose-600 focus-visible:outline-rose-500'
+                : ''}"
+            />
+            {#if includeRegexError}
+              <span class="text-[11px] text-rose-400 block">{includeRegexError}</span>
+            {:else}
+              <span class="text-[11px] text-slate-500 block">
+                仅保留原始标签命中该正则的节点；留空则不限制。
+              </span>
+            {/if}
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label for="detail-src-exclude" class="text-slate-300 font-medium"> 排除正则 </label>
+              <span class="text-[11px] text-slate-500">默认忽略大小写</span>
+            </div>
+            <input
+              id="detail-src-exclude"
+              type="text"
+              value={activeDraft.excludePattern}
+              oninput={(event) => patchActiveDraft({ excludePattern: event.currentTarget.value })}
+              placeholder="例如：(?i)(官网|到期|剩余|traffic)（留空不排除）"
+              class="field w-full px-3 py-1.5 text-xs font-mono {excludeRegexError
+                ? 'border-rose-600 focus-visible:outline-rose-500'
+                : ''}"
+            />
+            {#if excludeRegexError}
+              <span class="text-[11px] text-rose-400 block">{excludeRegexError}</span>
+            {:else}
+              <span class="text-[11px] text-slate-500 block">
+                筛除原始标签命中该正则的节点（如流量、到期、广告提示项）。
+              </span>
+            {/if}
+          </div>
+        </div>
+
+        {#if rawNodes.length > 0 && detailEffectiveCount === 0}
+          <div
+            class="p-2.5 rounded bg-amber-950/40 border border-amber-800/50 text-amber-300 text-xs flex items-center gap-2"
+          >
+            <AlertCircle size={14} class="shrink-0" />
+            <span
+              >当前过滤规则已过滤全部节点（生效节点数为 0）。保存后下游配置编译将安全回退直连出站。</span
+            >
+          </div>
+        {/if}
+      </div>
     </section>
 
-    <!-- Raw Nodes Table Panel -->
+    <!-- Nodes Table Panel -->
     <section class="bg-slate-900/80 border border-slate-800 rounded-lg overflow-hidden">
       <div
         class="px-4 py-3 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
       >
-        <div class="flex items-center gap-2">
-          <Server size={15} class="text-slate-400 shrink-0" />
-          <h2 class="text-sm font-semibold text-slate-100">原始节点</h2>
-          <span class="text-xs font-mono text-slate-400">
-            ({filteredNodes.length} / {rawNodes.length})
-          </span>
+        <div class="flex items-center gap-3 flex-wrap">
+          <div class="flex items-center gap-1.5">
+            <Server size={15} class="text-slate-400 shrink-0" />
+            <h2 class="text-sm font-semibold text-slate-100">节点列表</h2>
+          </div>
+
+          <!-- Tab Switcher: 全部 / 生效 / 已过滤 -->
+          <div
+            class="flex items-center gap-1 bg-slate-950 p-0.5 rounded border border-slate-800 text-xs"
+          >
+            <button
+              type="button"
+              onclick={() => (nodeTab = 'all')}
+              class="px-2.5 py-1 rounded transition-colors cursor-pointer {nodeTab === 'all'
+                ? 'bg-slate-800 text-slate-100 font-medium shadow-xs'
+                : 'text-slate-400 hover:text-slate-200'}"
+            >
+              全部 ({rawNodes.length})
+            </button>
+            <button
+              type="button"
+              onclick={() => (nodeTab = 'effective')}
+              class="px-2.5 py-1 rounded transition-colors cursor-pointer {nodeTab === 'effective'
+                ? 'bg-slate-800 text-slate-100 font-medium shadow-xs'
+                : 'text-slate-400 hover:text-slate-200'}"
+            >
+              生效 ({detailEffectiveCount})
+            </button>
+            <button
+              type="button"
+              onclick={() => (nodeTab = 'filtered')}
+              class="px-2.5 py-1 rounded transition-colors cursor-pointer {nodeTab === 'filtered'
+                ? 'bg-slate-800 text-slate-100 font-medium shadow-xs'
+                : 'text-slate-400 hover:text-slate-200'}"
+            >
+              已过滤 ({detailFilteredCount})
+            </button>
+          </div>
         </div>
 
         <div
@@ -681,11 +821,17 @@
         </div>
       </div>
 
-      {#if filteredNodes.length === 0}
+      {#if displayNodes.length === 0}
         <div class="py-14 text-center text-xs text-slate-500 font-mono">
-          {nodeSearch
-            ? '未匹配到符合搜索关键字的原始节点'
-            : '该节点源尚未包含任何原始节点，请尝试点击顶栏「刷新」'}
+          {#if nodeSearch}
+            未匹配到符合搜索关键字的节点
+          {:else if nodeTab === 'effective'}
+            当前规则下暂无生效节点
+          {:else if nodeTab === 'filtered'}
+            当前暂无已过滤节点
+          {:else}
+            该节点源尚未包含任何原始节点，请尝试点击顶栏「刷新」
+          {/if}
         </div>
       {:else}
         <div class="overflow-x-auto">
@@ -696,15 +842,22 @@
               <tr>
                 <th class="py-2.5 px-4">节点标签 (Tag)</th>
                 <th class="py-2.5 px-3">协议</th>
+                <th class="py-2.5 px-3">状态 / 过滤原因</th>
                 <th class="py-2.5 px-3">服务器与端口</th>
                 <th class="py-2.5 px-3">特性</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-800/40 font-mono text-[11px]">
-              {#each filteredNodes as node}
-                <tr class="hover:bg-slate-900/60 transition-colors">
+              {#each displayNodes as { node, effective, reason }}
+                <tr
+                  class="transition-colors {effective
+                    ? 'hover:bg-slate-900/60'
+                    : 'opacity-60 bg-slate-950/40 hover:opacity-80 hover:bg-slate-900/40'}"
+                >
                   <td
-                    class="py-2.5 px-4 font-sans font-medium text-slate-100 flex items-center gap-1.5"
+                    class="py-2.5 px-4 font-sans font-medium flex items-center gap-1.5 {effective
+                      ? 'text-slate-100'
+                      : 'text-slate-400'}"
                   >
                     <Server size={11} class="text-slate-500 shrink-0" />
                     <span class="break-all">{node.tag}</span>
@@ -715,6 +868,33 @@
                     >
                       {node.type}
                     </span>
+                  </td>
+                  <td class="py-2.5 px-3">
+                    {#if effective}
+                      <span
+                        class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-950/60 border border-emerald-800/60 text-emerald-300"
+                      >
+                        生效
+                      </span>
+                    {:else if reason === '协议黑名单'}
+                      <span
+                        class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-rose-950/70 border border-rose-800/60 text-rose-300"
+                      >
+                        协议黑名单
+                      </span>
+                    {:else if reason === '未命中包含'}
+                      <span
+                        class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-950/70 border border-amber-800/60 text-amber-300"
+                      >
+                        未命中包含
+                      </span>
+                    {:else if reason === '命中排除'}
+                      <span
+                        class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-purple-950/70 border border-purple-800/60 text-purple-300"
+                      >
+                        命中排除
+                      </span>
+                    {/if}
                   </td>
                   <td class="py-2.5 px-3 text-slate-300">
                     <span class="break-all">{node.server}:{node.server_port}</span>

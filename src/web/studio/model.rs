@@ -41,6 +41,86 @@ pub struct NodeSource {
     pub node_count: usize,
     #[serde(default)]
     pub nodes: Vec<Value>,
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "exclude_protocols"
+    )]
+    pub exclude_protocols: Vec<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "include_pattern"
+    )]
+    pub include_pattern: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "exclude_pattern"
+    )]
+    pub exclude_pattern: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FilterReason {
+    #[serde(rename = "协议黑名单")]
+    ProtocolBlacklisted,
+    #[serde(rename = "未命中包含")]
+    UnmatchedInclude,
+    #[serde(rename = "命中排除")]
+    MatchedExclude,
+}
+
+impl FilterReason {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::ProtocolBlacklisted => "协议黑名单",
+            Self::UnmatchedInclude => "未命中包含",
+            Self::MatchedExclude => "命中排除",
+        }
+    }
+}
+
+pub fn strip_leading_case_flag(mut s: &str) -> &str {
+    s = s.trim();
+    while s.starts_with("(?i)") {
+        s = s[4..].trim();
+    }
+    s
+}
+
+pub fn validate_filter_regex(pattern: &str) -> std::result::Result<(), String> {
+    let p = strip_leading_case_flag(pattern);
+    if p.is_empty() {
+        return Ok(());
+    }
+    regex::RegexBuilder::new(p)
+        .case_insensitive(true)
+        .build()
+        .map(|_| ())
+        .map_err(|err| err.to_string())
+}
+
+pub fn normalize_pattern(val: Option<String>) -> Option<String> {
+    val.and_then(|raw| {
+        let stripped = strip_leading_case_flag(&raw);
+        if stripped.is_empty() {
+            None
+        } else {
+            Some(stripped.to_string())
+        }
+    })
+}
+
+pub fn normalize_protocols(protocols: Vec<String>) -> Vec<String> {
+    let mut out = Vec::new();
+    for p in protocols {
+        let trimmed = p.trim().to_ascii_lowercase();
+        if !trimmed.is_empty() && !out.contains(&trimmed) {
+            out.push(trimmed);
+        }
+    }
+    out
 }
 
 impl NodeSource {
@@ -60,6 +140,65 @@ impl NodeSource {
         self.status = SourceStatus::Error;
         self.last_error = Some(error);
         self.sync_counts();
+    }
+
+    pub fn classify_node(&self, node: &Value) -> Option<FilterReason> {
+        let exclude_protocols: std::collections::HashSet<String> = self
+            .exclude_protocols
+            .iter()
+            .map(|p| p.trim().to_ascii_lowercase())
+            .filter(|p| !p.is_empty())
+            .collect();
+
+        let typ = node
+            .get("type")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if exclude_protocols.contains(&typ) {
+            return Some(FilterReason::ProtocolBlacklisted);
+        }
+
+        let tag = node.get("tag").and_then(Value::as_str).unwrap_or("");
+
+        if let Some(p) = self.include_pattern.as_deref() {
+            let stripped = strip_leading_case_flag(p);
+            if !stripped.is_empty()
+                && let Ok(re) = regex::RegexBuilder::new(stripped)
+                    .case_insensitive(true)
+                    .build()
+                && !re.is_match(tag)
+            {
+                return Some(FilterReason::UnmatchedInclude);
+            }
+        }
+
+        if let Some(p) = self.exclude_pattern.as_deref() {
+            let stripped = strip_leading_case_flag(p);
+            if !stripped.is_empty()
+                && let Ok(re) = regex::RegexBuilder::new(stripped)
+                    .case_insensitive(true)
+                    .build()
+                && re.is_match(tag)
+            {
+                return Some(FilterReason::MatchedExclude);
+            }
+        }
+
+        None
+    }
+
+    pub fn effective_nodes(&self) -> Vec<Value> {
+        self.nodes
+            .iter()
+            .filter(|node| self.classify_node(node).is_none())
+            .cloned()
+            .collect()
+    }
+
+    pub fn effective_node_count(&self) -> usize {
+        self.effective_nodes().len()
     }
 }
 
@@ -766,5 +905,84 @@ mod tests {
 
         assert!(!is_safe_id("../etc/passwd"));
         assert!(is_safe_id("tpl_abc-1"));
+    }
+
+    #[test]
+    fn test_node_source_backward_compatibility() {
+        let raw_json = r#"{
+            "id": "src_legacy",
+            "name": "Legacy Source",
+            "type": "subscription",
+            "url": "https://example.com/sub",
+            "status": "active",
+            "nodeCount": 2,
+            "nodes": [
+                { "tag": "HK-01", "type": "vless" },
+                { "tag": "JP-01", "type": "vmess" }
+            ]
+        }"#;
+        let source: NodeSource = serde_json::from_str(raw_json).unwrap();
+        assert!(source.exclude_protocols.is_empty());
+        assert!(source.include_pattern.is_none());
+        assert!(source.exclude_pattern.is_none());
+        assert_eq!(source.effective_nodes().len(), 2);
+    }
+
+    #[test]
+    fn test_validate_filter_regex() {
+        assert!(validate_filter_regex("").is_ok());
+        assert!(validate_filter_regex("(?i)(港|hk)").is_ok());
+        assert!(validate_filter_regex("(hk").is_err());
+        // Lookaround rejected
+        assert!(validate_filter_regex("^(?!.*(官网)).*").is_err());
+        assert!(validate_filter_regex("(?=.*hk)").is_err());
+        // Backreference rejected
+        assert!(validate_filter_regex(r"(a)\1").is_err());
+    }
+
+    #[test]
+    fn test_node_filtering_priority() {
+        let source = NodeSource {
+            id: "src_test".to_string(),
+            name: "Test".to_string(),
+            kind: SourceKind::Manual,
+            url: None,
+            content: None,
+            status: Default::default(),
+            last_updated: None,
+            last_error: None,
+            node_count: 4,
+            nodes: vec![
+                serde_json::json!({ "tag": "HK-01 [官网]", "type": "vmess" }),
+                serde_json::json!({ "tag": "JP-01", "type": "trojan" }),
+                serde_json::json!({ "tag": "HK-02 [官网]", "type": "vless" }),
+                serde_json::json!({ "tag": "HK-03 专线", "type": "vless" }),
+            ],
+            exclude_protocols: vec!["vmess".to_string()],
+            include_pattern: Some("(?i)hk".to_string()),
+            exclude_pattern: Some("(?i)官网".to_string()),
+        };
+        // 1. HK-01 [官网] (vmess): matches exclude_pattern AND matches include, but vmess is blacklisted!
+        assert_eq!(
+            source.classify_node(&source.nodes[0]),
+            Some(FilterReason::ProtocolBlacklisted)
+        );
+        // 2. JP-01 (trojan): not in blacklist, but tag doesn't match "hk"
+        assert_eq!(
+            source.classify_node(&source.nodes[1]),
+            Some(FilterReason::UnmatchedInclude)
+        );
+        // 3. HK-02 [官网] (vless): matches "hk", but contains "官网"
+        assert_eq!(
+            source.classify_node(&source.nodes[2]),
+            Some(FilterReason::MatchedExclude)
+        );
+        // 4. HK-03 专线 (vless): passes all
+        assert_eq!(source.classify_node(&source.nodes[3]), None);
+
+        let effective = source.effective_nodes();
+        assert_eq!(effective.len(), 1);
+        assert_eq!(effective[0]["tag"], "HK-03 专线");
+        assert_eq!(source.effective_node_count(), 1);
     }
 }
