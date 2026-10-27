@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { store } from '../data/store.svelte.js';
   import { copyTextToClipboard } from '../data/clipboard.js';
+  import { formatNodeCount, getEffectiveNodes } from '../data/sourceDraft.js';
   import Boxes from 'lucide-svelte/icons/boxes';
   import FileCode2 from 'lucide-svelte/icons/file-code-2';
   import Network from 'lucide-svelte/icons/network';
@@ -338,7 +339,7 @@
               <div class="min-w-0 flex-1">
                 <div class="font-medium text-slate-200 truncate">{src.name}</div>
                 <div class="text-slate-500 mt-0.5 text-[11px] font-mono">
-                  {src.nodeCount ?? src.nodes?.length ?? 0} 个节点
+                  {formatNodeCount(getEffectiveNodes(src).length, src.nodes?.length || 0)}
                   {#if src.lastError}
                     <span class="text-rose-400 font-sans"> · {src.lastError}</span>
                   {/if}

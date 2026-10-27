@@ -3,7 +3,8 @@ use crate::web::studio::compiler::CompileError;
 use crate::web::studio::manager::is_http_url;
 use crate::web::studio::model::{
     NodeSource, Profile, SourceKind, Template, new_profile_id, new_source_id, new_template_id,
-    now_rfc3339, validate_template_content,
+    normalize_pattern, normalize_protocols, now_rfc3339, validate_filter_regex,
+    validate_template_content,
 };
 use crate::web::studio::store::TemplateWrite;
 use axum::Json;
@@ -23,6 +24,12 @@ pub struct CreateSourceRequest {
     pub url: Option<String>,
     pub content: Option<String>,
     pub nodes: Option<Vec<Value>>,
+    #[serde(default, alias = "exclude_protocols")]
+    pub exclude_protocols: Vec<String>,
+    #[serde(default, alias = "include_pattern")]
+    pub include_pattern: Option<String>,
+    #[serde(default, alias = "exclude_pattern")]
+    pub exclude_pattern: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,6 +41,12 @@ pub struct UpdateSourceRequest {
     pub url: Option<String>,
     pub content: Option<String>,
     pub nodes: Option<Vec<Value>>,
+    #[serde(default, alias = "exclude_protocols")]
+    pub exclude_protocols: Option<Vec<String>>,
+    #[serde(default, alias = "include_pattern")]
+    pub include_pattern: Option<String>,
+    #[serde(default, alias = "exclude_pattern")]
+    pub exclude_pattern: Option<String>,
 }
 
 pub async fn list_sources(State(state): State<WebState>) -> Response {
@@ -56,6 +69,23 @@ pub async fn create_source(
         return json_error(StatusCode::BAD_REQUEST, "name is required");
     }
 
+    if let Some(inc) = req.include_pattern.as_deref()
+        && let Err(err) = validate_filter_regex(inc)
+    {
+        return json_error(
+            StatusCode::BAD_REQUEST,
+            &format!("invalid include regex: {err}"),
+        );
+    }
+    if let Some(exc) = req.exclude_pattern.as_deref()
+        && let Err(err) = validate_filter_regex(exc)
+    {
+        return json_error(
+            StatusCode::BAD_REQUEST,
+            &format!("invalid exclude regex: {err}"),
+        );
+    }
+
     let (url, content) = match req.kind {
         SourceKind::Subscription => (normalize_optional(req.url), None),
         SourceKind::Manual => (None, normalize_optional(req.content)),
@@ -71,6 +101,9 @@ pub async fn create_source(
         last_error: None,
         node_count: 0,
         nodes: Vec::new(),
+        exclude_protocols: normalize_protocols(req.exclude_protocols),
+        include_pattern: normalize_pattern(req.include_pattern),
+        exclude_pattern: normalize_pattern(req.exclude_pattern),
     };
 
     if let Some(nodes) = req.nodes.filter(|nodes| !nodes.is_empty()) {
@@ -94,6 +127,23 @@ pub async fn update_source(
         return json_error(StatusCode::NOT_FOUND, "source not found");
     };
 
+    if let Some(inc) = req.include_pattern.as_deref()
+        && let Err(err) = validate_filter_regex(inc)
+    {
+        return json_error(
+            StatusCode::BAD_REQUEST,
+            &format!("invalid include regex: {err}"),
+        );
+    }
+    if let Some(exc) = req.exclude_pattern.as_deref()
+        && let Err(err) = validate_filter_regex(exc)
+    {
+        return json_error(
+            StatusCode::BAD_REQUEST,
+            &format!("invalid exclude regex: {err}"),
+        );
+    }
+
     let prev_kind = source.kind.clone();
     let prev_url = normalize_optional(source.url.clone());
     let prev_content = normalize_optional(source.content.clone());
@@ -113,6 +163,15 @@ pub async fn update_source(
     }
     if let Some(content) = req.content {
         source.content = normalize_optional(Some(content));
+    }
+    if let Some(protocols) = req.exclude_protocols {
+        source.exclude_protocols = normalize_protocols(protocols);
+    }
+    if let Some(pattern) = req.include_pattern {
+        source.include_pattern = normalize_pattern(Some(pattern));
+    }
+    if let Some(pattern) = req.exclude_pattern {
+        source.exclude_pattern = normalize_pattern(Some(pattern));
     }
     match source.kind {
         SourceKind::Subscription => source.content = None,

@@ -2276,3 +2276,345 @@ async fn test_update_source_manual_only_reparses_when_content_changes() {
     assert_eq!(fetched["name"], "自建专线-改内容");
     assert_eq!(fetched["nodes"][0]["tag"], "SG-Trojan");
 }
+
+#[tokio::test]
+async fn test_source_filtering_rules_crud_and_remote_fetch_decoupling() {
+    let raw_nodes_feed = json!([
+        { "type": "vless", "tag": "HK-01", "server": "hk1.example.com", "server_port": 443, "uuid": "u1" },
+        { "type": "vmess", "tag": "HK-02", "server": "hk2.example.com", "server_port": 443, "uuid": "u2" },
+        { "type": "vless", "tag": "JP-01", "server": "jp.example.com", "server_port": 443, "uuid": "u3" },
+    ])
+    .to_string();
+    let (url, feed) = spawn_feed_server(&raw_nodes_feed).await;
+    let (state, _dir) = test_state(test_settings());
+    let app = create_app(state);
+
+    // 1. Create source
+    let create_body = json!({
+        "name": "主力机场",
+        "type": "subscription",
+        "url": url,
+    });
+    let (status, created) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/sources",
+                Body::from(create_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(feed.hit_count(), 1);
+    let id = created["id"].as_str().unwrap().to_string();
+    assert_eq!(created["nodes"].as_array().unwrap().len(), 3);
+
+    // 2. Updating filter rules must not trigger remote fetch
+    let update_rules = json!({
+        "name": "主力机场",
+        "type": "subscription",
+        "url": url,
+        "excludeProtocols": ["vmess"],
+        "includePattern": "(?i)hk",
+        "excludePattern": "(?i)01",
+    });
+    let (status, updated) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/sources/{id}"),
+                Body::from(update_rules.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{updated}");
+    assert_eq!(
+        feed.hit_count(),
+        1,
+        "saving filter rules must not refetch upstream URL"
+    );
+    assert_eq!(
+        updated["nodes"].as_array().unwrap().len(),
+        3,
+        "raw nodes must remain intact"
+    );
+    assert_eq!(updated["excludeProtocols"], json!(["vmess"]));
+    assert_eq!(updated["includePattern"], "hk");
+    assert_eq!(updated["excludePattern"], "01");
+
+    // 3. GET /api/sources/{id} returns complete raw nodes and filter fields
+    let (status, fetched) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "GET",
+                &format!("/api/sources/{id}"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(fetched["nodes"].as_array().unwrap().len(), 3);
+    assert_eq!(fetched["excludeProtocols"], json!(["vmess"]));
+    assert_eq!(fetched["includePattern"], "hk");
+
+    // 4. Updating with invalid regex returns 400 and preserves existing saved rules
+    let bad_regex = json!({
+        "includePattern": "(?i)(hk",
+    });
+    let (status, err_resp) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/sources/{id}"),
+                Body::from(bad_regex.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        err_resp["error"]
+            .as_str()
+            .unwrap()
+            .contains("invalid include regex")
+    );
+
+    // Unsupported lookahead regex also returns 400
+    let lookahead_regex = json!({
+        "excludePattern": "^(?!.*(官网)).*",
+    });
+    let (status, err_resp2) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/sources/{id}"),
+                Body::from(lookahead_regex.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        err_resp2["error"]
+            .as_str()
+            .unwrap()
+            .contains("invalid exclude regex")
+    );
+
+    // Unsupported backreference regex also returns 400
+    let backref_regex = json!({
+        "includePattern": r"(a)\1",
+    });
+    let (status, err_resp3) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/sources/{id}"),
+                Body::from(backref_regex.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        err_resp3["error"]
+            .as_str()
+            .unwrap()
+            .contains("invalid include regex")
+    );
+
+    // Verify saved data was not polluted
+    let (status, unpolluted) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "GET",
+                &format!("/api/sources/{id}"),
+                Body::empty(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(unpolluted["includePattern"], "hk");
+
+    // 5. Filtering all nodes (effective count = 0) is allowed to save
+    let filter_all = json!({
+        "excludeProtocols": ["vless", "vmess"],
+    });
+    let (status, saved_all_filtered) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/sources/{id}"),
+                Body::from(filter_all.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{saved_all_filtered}");
+    assert_eq!(
+        saved_all_filtered["excludeProtocols"],
+        json!(["vless", "vmess"])
+    );
+}
+
+#[tokio::test]
+async fn test_subscription_compilation_consumes_only_effective_nodes_and_falls_back() {
+    let (state, _dir) = test_state(test_settings());
+    let app = create_app(state);
+
+    // 1. Create template
+    let template_body = json!({
+        "name": "模板",
+        "content": {
+            "policy_groups": [
+                { "type": "selector", "tag": "默认策略", "outbounds": ["香港节点", "直连"] }
+            ],
+            "node_groups": [
+                { "type": "urltest", "tag": "香港节点", "outbounds": ["{(?i)hk}"] }
+            ],
+            "outbounds": [
+                { "type": "direct", "tag": "直连" }
+            ]
+        }
+    });
+    let (status, tpl) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/templates",
+                Body::from(template_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let tpl_id = tpl["id"].as_str().unwrap().to_string();
+
+    // 2. Create source with raw nodes and filtering rules
+    let source_body = json!({
+        "name": "节点源",
+        "type": "manual",
+        "nodes": [
+            { "type": "vmess", "tag": "HK-01 [官网]", "server": "1.1.1.1", "server_port": 443 },
+            { "type": "vless", "tag": "JP-01", "server": "2.2.2.2", "server_port": 443 },
+            { "type": "vless", "tag": "HK-02 [官网]", "server": "3.3.3.3", "server_port": 443 },
+            { "type": "vless", "tag": "HK-03 专线", "server": "4.4.4.4", "server_port": 443 }
+        ],
+        "excludeProtocols": ["vmess"],
+        "includePattern": "(?i)hk",
+        "excludePattern": "(?i)官网",
+    });
+    let (status, src) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/sources",
+                Body::from(source_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let src_id = src["id"].as_str().unwrap().to_string();
+
+    // 3. Create profile
+    let profile_body = json!({
+        "name": "订阅",
+        "templateId": tpl_id,
+        "sourceIds": [src_id],
+    });
+    let (status, prof) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "POST",
+                "/api/profiles",
+                Body::from(profile_body.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let token = prof["token"].as_str().unwrap().to_string();
+
+    // 4. Request /sub/:token
+    let resp = app
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method("GET")
+                .uri(format!("/sub/{token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let compiled: Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let outbounds = compiled["outbounds"].as_array().unwrap();
+
+    // Only HK-03 专线 is present among the nodes
+    assert!(outbounds.iter().any(|o| o["tag"] == "HK-03 专线"));
+    assert!(!outbounds.iter().any(|o| o["tag"] == "HK-01 [官网]"));
+    assert!(!outbounds.iter().any(|o| o["tag"] == "JP-01"));
+    assert!(!outbounds.iter().any(|o| o["tag"] == "HK-02 [官网]"));
+
+    // 5. Update source to filter ALL nodes
+    let filter_all = json!({
+        "excludeProtocols": ["vless", "vmess"],
+    });
+    let (status, _) = json_body(
+        app.clone()
+            .oneshot(auth_req(
+                "PUT",
+                &format!("/api/sources/{src_id}"),
+                Body::from(filter_all.to_string()),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // 6. Request /sub/:token again -> falls back to direct
+    let resp2 = app
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method("GET")
+                .uri(format!("/sub/{token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp2.status(), StatusCode::OK);
+    let compiled2: Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp2.into_body(), 1024 * 1024)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let outbounds2 = compiled2["outbounds"].as_array().unwrap();
+    let hk_group = outbounds2.iter().find(|o| o["tag"] == "香港节点").unwrap();
+    assert_eq!(hk_group["outbounds"], json!(["直连"]));
+}

@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { store } from '../data/store.svelte.js';
+  import { getEffectiveNodes } from '../data/sourceDraft.js';
   import {
     collidingRuleTags,
     definedRuleTags,
@@ -129,7 +130,9 @@
   }
 
   // Collect all available node tags from all sources for live regex matching preview
-  let allAvailableTags = $derived(store.sources.flatMap((s) => (s.nodes || []).map((n) => n.tag)));
+  let allAvailableTags = $derived(
+    store.sources.flatMap((s) => getEffectiveNodes(s).map((n) => n.tag)),
+  );
 
   // Collect node group tags
   let availableNodeGroupTags = $derived(

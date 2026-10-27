@@ -23,6 +23,15 @@ import {
   saveAllSourceDrafts,
   sourceSaveBlocker,
   updateSourceDraft,
+  DEFAULT_RESIDENT_PROTOCOLS,
+  FILTER_REASONS,
+  classifyNode,
+  classifyNodes,
+  collectAvailableProtocols,
+  formatNodeCount,
+  getEffectiveNodes,
+  normalizeRegexPattern,
+  validateFilterRegex,
 } from '../src/data/sourceDraft.js';
 
 test('emptySourceDraft returns default structure', () => {
@@ -32,6 +41,9 @@ test('emptySourceDraft returns default structure', () => {
     type: 'subscription',
     url: '',
     content: '',
+    excludeProtocols: [],
+    includePattern: '',
+    excludePattern: '',
   });
 });
 
@@ -112,6 +124,9 @@ test('cleanSourcePayload trims and isolates payload according to type', () => {
     type: 'subscription',
     url: 'https://sub.com',
     content: '',
+    excludeProtocols: [],
+    includePattern: '',
+    excludePattern: '',
   });
 
   const manDraft = {
@@ -125,6 +140,9 @@ test('cleanSourcePayload trims and isolates payload according to type', () => {
     type: 'manual',
     url: '',
     content: 'vless://...',
+    excludeProtocols: [],
+    includePattern: '',
+    excludePattern: '',
   });
 });
 
@@ -229,6 +247,9 @@ test('commitSourceSave sends click-time payload, updates saved source, and keeps
     type: 'subscription',
     url: 'https://a.example.com/sub',
     content: '',
+    excludeProtocols: [],
+    includePattern: '',
+    excludePattern: '',
   });
   assert.equal(saved.sources[0].name, '机场A-新名');
   assert.equal(isSourceDraftDirty(saved.session, 'src_1'), false);
@@ -400,4 +421,154 @@ test('findProfilesUsingSource locates bound subscriptions', () => {
     ['家庭网关'],
   );
   assert.deepEqual(findProfilesUsingSource('src_9', profiles), []);
+});
+
+test('validateFilterRegex checks syntax, lookaround, and backreferences', () => {
+  assert.equal(validateFilterRegex(''), '');
+  assert.equal(validateFilterRegex('   '), '');
+  assert.equal(validateFilterRegex('(?i)(港|hk)'), '');
+  assert.equal(validateFilterRegex('(港|hk)'), '');
+  assert.equal(validateFilterRegex('hk.*'), '');
+
+  // Unclosed paren
+  assert.match(validateFilterRegex('(?i)(hk'), /正则表达式语法错误/);
+
+  // Lookaround (lookahead / lookbehind)
+  assert.equal(
+    validateFilterRegex('^(?!.*(官网|到期)).*'),
+    '不支持先行/后行断言语法（如 (?=...) 或 (?!...)）',
+  );
+  assert.equal(validateFilterRegex('(?=.*hk)'), '不支持先行/后行断言语法（如 (?=...) 或 (?!...)）');
+  assert.equal(
+    validateFilterRegex('(?<=prefix)'),
+    '不支持先行/后行断言语法（如 (?=...) 或 (?!...)）',
+  );
+  assert.equal(
+    validateFilterRegex('(?<!prefix)'),
+    '不支持先行/后行断言语法（如 (?=...) 或 (?!...)）',
+  );
+
+  // Backreference
+  assert.equal(validateFilterRegex('(a)\\1'), '不支持反向引用语法（如 \\1）');
+  assert.equal(validateFilterRegex('(group)\\2'), '不支持反向引用语法（如 \\1）');
+});
+
+test('classifyNode applies protocol blacklist, include regex, and exclude regex in fixed priority order', () => {
+  const vlessNode = { tag: '香港 01', type: 'vless' };
+  const vmessNode = { tag: '香港 02 [官网]', type: 'vmess' };
+  const trojanNode = { tag: '日本 01', type: 'trojan' };
+  const ssNode = { tag: '剩余流量 100G', type: 'shadowsocks' };
+
+  // 1. All pass when no rules
+  assert.deepEqual(classifyNode(vlessNode), { effective: true, reason: null, node: vlessNode });
+
+  // 2. Protocol blacklist
+  const blacklistRes = classifyNode(vmessNode, {
+    excludeProtocols: ['vmess'],
+    includePattern: '香港',
+    excludePattern: '官网',
+  });
+  // Blacklist has priority over include/exclude
+  assert.equal(blacklistRes.effective, false);
+  assert.equal(blacklistRes.reason, FILTER_REASONS.PROTOCOL_BLACKLIST);
+
+  // 3. Unmatched include
+  const includeRes = classifyNode(trojanNode, {
+    excludeProtocols: ['vmess'],
+    includePattern: '(?i)(香港|hk)',
+    excludePattern: '01',
+  });
+  // Unmatched include has priority over matched exclude
+  assert.equal(includeRes.effective, false);
+  assert.equal(includeRes.reason, FILTER_REASONS.UNMATCHED_INCLUDE);
+
+  // 4. Matched exclude
+  const excludeRes = classifyNode(vlessNode, {
+    excludeProtocols: [],
+    includePattern: '(?i)香港',
+    excludePattern: '(?i)01',
+  });
+  assert.equal(excludeRes.effective, false);
+  assert.equal(excludeRes.reason, FILTER_REASONS.MATCHED_EXCLUDE);
+
+  // 5. Effective when passes all
+  const passRes = classifyNode(vlessNode, {
+    excludeProtocols: ['vmess'],
+    includePattern: '(?i)香港',
+    excludePattern: '(?i)官网',
+  });
+  assert.equal(passRes.effective, true);
+  assert.equal(passRes.reason, null);
+});
+
+test('collectAvailableProtocols merges resident protocols, saved blacklist, and dynamic raw node protocols', () => {
+  const nodes = [{ type: 'vless' }, { type: 'hysteria2' }, { type: 'wireguard' }, { type: 'TUIC' }];
+  const protocols = collectAvailableProtocols(nodes, ['trojan', 'custom_proto']);
+  assert.deepEqual(protocols, [
+    'vless',
+    'vmess',
+    'trojan',
+    'shadowsocks',
+    'hysteria2',
+    'custom_proto',
+    'wireguard',
+    'tuic',
+  ]);
+});
+
+test('formatNodeCount and getEffectiveNodes calculate counts correctly', () => {
+  assert.equal(formatNodeCount(0, 0), '0 个节点');
+  assert.equal(formatNodeCount(10, 10), '10 个节点');
+  assert.equal(formatNodeCount(8, 10), '8 / 10 个节点');
+  assert.equal(formatNodeCount(0, 5), '0 / 5 个节点');
+
+  const source = {
+    nodes: [
+      { tag: 'HK-01', type: 'vless' },
+      { tag: 'HK-02', type: 'vmess' },
+      { tag: 'JP-01', type: 'vless' },
+      { tag: 'HK-03 [官网]', type: 'vless' },
+    ],
+    excludeProtocols: ['vmess'],
+    includePattern: '(?i)hk',
+    excludePattern: '(?i)官网',
+  };
+  const effective = getEffectiveNodes(source);
+  assert.deepEqual(
+    effective.map((n) => n.tag),
+    ['HK-01'],
+  );
+});
+
+test('source draft handles filter rules in dirty detection and save blocking', () => {
+  const draft = {
+    ...emptySourceDraft(),
+    name: '节点源',
+    url: 'https://example.com/sub',
+    includePattern: '(?i)(港|hk',
+  };
+  assert.match(sourceSaveBlocker(draft), /包含正则非法/);
+  assert.equal(canSaveSource(draft), false);
+
+  const validDraft = {
+    ...draft,
+    includePattern: '(?i)(港|hk)',
+    excludeProtocols: ['vmess'],
+  };
+  assert.equal(sourceSaveBlocker(validDraft), '');
+  assert.equal(canSaveSource(validDraft), true);
+
+  const payload = cleanSourcePayload(validDraft);
+  assert.deepEqual(payload.excludeProtocols, ['vmess']);
+  assert.equal(payload.includePattern, '(?i)(港|hk)');
+
+  const original = {
+    name: '节点源',
+    type: 'subscription',
+    url: 'https://example.com/sub',
+    excludeProtocols: [],
+    includePattern: '',
+    excludePattern: '',
+  };
+  assert.equal(isSourceDirty(validDraft, original), true);
 });

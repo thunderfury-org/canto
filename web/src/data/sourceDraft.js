@@ -1,9 +1,143 @@
+export const DEFAULT_RESIDENT_PROTOCOLS = ['vless', 'vmess', 'trojan', 'shadowsocks', 'hysteria2'];
+
+export const FILTER_REASONS = {
+  PROTOCOL_BLACKLIST: '协议黑名单',
+  UNMATCHED_INCLUDE: '未命中包含',
+  MATCHED_EXCLUDE: '命中排除',
+};
+
+export function normalizeRegexPattern(raw) {
+  let s = typeof raw === 'string' ? raw.trim() : '';
+  while (s.startsWith('(?i)')) {
+    s = s.slice(4).trim();
+  }
+  return s;
+}
+
+export function validateFilterRegex(raw) {
+  const s = normalizeRegexPattern(raw);
+  if (!s) return '';
+  if (/\(\?(?:[!=]|<=|<!)/.test(s)) {
+    return '不支持先行/后行断言语法（如 (?=...) 或 (?!...)）';
+  }
+  if (/\\[1-9]/.test(s)) {
+    return '不支持反向引用语法（如 \\1）';
+  }
+  try {
+    new RegExp(s, 'i');
+    return '';
+  } catch (err) {
+    return `正则表达式语法错误: ${err.message}`;
+  }
+}
+
+export function classifyNode(
+  node,
+  { excludeProtocols = [], includePattern = '', excludePattern = '' } = {},
+) {
+  const nodeType = (typeof node?.type === 'string' ? node.type.trim() : '').toLowerCase();
+  const nodeTag = typeof node?.tag === 'string' ? node.tag : '';
+
+  // 1. Protocol blacklist check
+  const blacklisted = (excludeProtocols || []).some(
+    (p) => typeof p === 'string' && p.trim().toLowerCase() === nodeType,
+  );
+  if (blacklisted) {
+    return {
+      effective: false,
+      reason: FILTER_REASONS.PROTOCOL_BLACKLIST,
+      node,
+    };
+  }
+
+  // 2. Include regex check
+  const inc = normalizeRegexPattern(includePattern);
+  if (inc) {
+    let incRe = null;
+    try {
+      incRe = new RegExp(inc, 'i');
+    } catch {
+      // Ignored here; handled by validateFilterRegex
+    }
+    if (incRe && !incRe.test(nodeTag)) {
+      return {
+        effective: false,
+        reason: FILTER_REASONS.UNMATCHED_INCLUDE,
+        node,
+      };
+    }
+  }
+
+  // 3. Exclude regex check
+  const exc = normalizeRegexPattern(excludePattern);
+  if (exc) {
+    let excRe = null;
+    try {
+      excRe = new RegExp(exc, 'i');
+    } catch {
+      // Ignored here
+    }
+    if (excRe && excRe.test(nodeTag)) {
+      return {
+        effective: false,
+        reason: FILTER_REASONS.MATCHED_EXCLUDE,
+        node,
+      };
+    }
+  }
+
+  return {
+    effective: true,
+    reason: null,
+    node,
+  };
+}
+
+export function classifyNodes(nodes, filterRules) {
+  const list = Array.isArray(nodes) ? nodes : [];
+  return list.map((node) => classifyNode(node, filterRules));
+}
+
+export function collectAvailableProtocols(rawNodes = [], excludeProtocols = []) {
+  const set = new Set(DEFAULT_RESIDENT_PROTOCOLS);
+  for (const p of excludeProtocols || []) {
+    if (typeof p === 'string' && p.trim()) {
+      set.add(p.trim().toLowerCase());
+    }
+  }
+  for (const node of rawNodes || []) {
+    if (typeof node?.type === 'string' && node.type.trim()) {
+      set.add(node.type.trim().toLowerCase());
+    }
+  }
+  return Array.from(set);
+}
+
+export function getEffectiveNodes(source) {
+  if (!source || !Array.isArray(source.nodes)) return [];
+  const rules = {
+    excludeProtocols: source.excludeProtocols ?? source.exclude_protocols ?? [],
+    includePattern: source.includePattern ?? source.include_pattern ?? '',
+    excludePattern: source.excludePattern ?? source.exclude_pattern ?? '',
+  };
+  return source.nodes.filter((node) => classifyNode(node, rules).effective);
+}
+
+export function formatNodeCount(effectiveCount, totalCount) {
+  if (totalCount === 0) return '0 个节点';
+  if (effectiveCount === totalCount) return `${totalCount} 个节点`;
+  return `${effectiveCount} / ${totalCount} 个节点`;
+}
+
 export function emptySourceDraft() {
   return {
     name: '',
     type: 'subscription',
     url: '',
     content: '',
+    excludeProtocols: [],
+    includePattern: '',
+    excludePattern: '',
   };
 }
 
@@ -16,6 +150,23 @@ export function createSourceDraft(source) {
     type: source.type === 'manual' ? 'manual' : 'subscription',
     url: typeof source.url === 'string' ? source.url : '',
     content: typeof source.content === 'string' ? source.content : '',
+    excludeProtocols: Array.isArray(source.excludeProtocols)
+      ? [...source.excludeProtocols]
+      : Array.isArray(source.exclude_protocols)
+        ? [...source.exclude_protocols]
+        : [],
+    includePattern:
+      typeof source.includePattern === 'string'
+        ? source.includePattern
+        : typeof source.include_pattern === 'string'
+          ? source.include_pattern
+          : '',
+    excludePattern:
+      typeof source.excludePattern === 'string'
+        ? source.excludePattern
+        : typeof source.exclude_pattern === 'string'
+          ? source.exclude_pattern
+          : '',
   };
 }
 
@@ -41,6 +192,16 @@ export function sourceSaveBlocker(draft) {
       return '请填写自建节点配置或链接';
     }
   }
+
+  const incErr = validateFilterRegex(draft.includePattern);
+  if (incErr) {
+    return `包含正则非法: ${incErr}`;
+  }
+  const excErr = validateFilterRegex(draft.excludePattern);
+  if (excErr) {
+    return `排除正则非法: ${excErr}`;
+  }
+
   return '';
 }
 
@@ -51,11 +212,25 @@ export function canSaveSource(draft) {
 export function cleanSourcePayload(draft) {
   const name = typeof draft?.name === 'string' ? draft.name.trim() : '';
   const type = draft?.type === 'manual' ? 'manual' : 'subscription';
+  const excludeProtocols = Array.isArray(draft?.excludeProtocols)
+    ? draft.excludeProtocols
+        .map((p) => (typeof p === 'string' ? p.trim().toLowerCase() : ''))
+        .filter(Boolean)
+    : [];
+  const dedupedProtocols = Array.from(new Set(excludeProtocols));
+  const includePattern =
+    typeof draft?.includePattern === 'string' ? draft.includePattern.trim() : '';
+  const excludePattern =
+    typeof draft?.excludePattern === 'string' ? draft.excludePattern.trim() : '';
+
   return {
     name,
     type,
     url: type === 'subscription' && typeof draft?.url === 'string' ? draft.url.trim() : '',
     content: type === 'manual' && typeof draft?.content === 'string' ? draft.content.trim() : '',
+    excludeProtocols: dedupedProtocols,
+    includePattern,
+    excludePattern,
   };
 }
 
@@ -66,7 +241,10 @@ export function isSourceDirty(draft, original) {
       (draft.name && draft.name.trim()) ||
       (draft.url && draft.url.trim()) ||
       (draft.content && draft.content.trim()) ||
-      draft.type !== 'subscription',
+      draft.type !== 'subscription' ||
+      (draft.excludeProtocols && draft.excludeProtocols.length > 0) ||
+      (draft.includePattern && draft.includePattern.trim()) ||
+      (draft.excludePattern && draft.excludePattern.trim()),
     );
   }
   const left = cleanSourcePayload(draft);
@@ -403,12 +581,22 @@ function putEntry(session, id, entry) {
 }
 
 function samePayload(left, right) {
-  return (
-    left.name === right.name &&
-    left.type === right.type &&
-    left.url === right.url &&
-    left.content === right.content
-  );
+  if (
+    left.name !== right.name ||
+    left.type !== right.type ||
+    left.url !== right.url ||
+    left.content !== right.content ||
+    left.includePattern !== right.includePattern ||
+    left.excludePattern !== right.excludePattern
+  ) {
+    return false;
+  }
+  const lp = left.excludeProtocols || [];
+  const rp = right.excludeProtocols || [];
+  if (lp.length !== rp.length) return false;
+  const leftSorted = [...lp].sort();
+  const rightSorted = [...rp].sort();
+  return leftSorted.every((val, idx) => val === rightSorted[idx]);
 }
 
 async function readError(res) {

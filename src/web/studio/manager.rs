@@ -179,6 +179,9 @@ mod tests {
             last_error: None,
             node_count: 0,
             nodes: Vec::new(),
+            exclude_protocols: Vec::new(),
+            include_pattern: None,
+            exclude_pattern: None,
         };
 
         manager.ingest(&mut source).await.unwrap();
@@ -206,6 +209,9 @@ mod tests {
             last_error: None,
             node_count: 0,
             nodes: Vec::new(),
+            exclude_protocols: Vec::new(),
+            include_pattern: None,
+            exclude_pattern: None,
         };
 
         let err = manager.ingest(&mut source).await.unwrap_err();
@@ -231,6 +237,9 @@ mod tests {
             last_error: None,
             node_count: 0,
             nodes: Vec::new(),
+            exclude_protocols: Vec::new(),
+            include_pattern: None,
+            exclude_pattern: None,
         };
 
         let err = manager.ingest(&mut source).await.unwrap_err();
@@ -256,6 +265,9 @@ mod tests {
             last_error: None,
             node_count: 0,
             nodes: Vec::new(),
+            exclude_protocols: Vec::new(),
+            include_pattern: None,
+            exclude_pattern: None,
         };
         store.insert(source).await.unwrap();
 

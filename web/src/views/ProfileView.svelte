@@ -2,6 +2,7 @@
   import { store } from '../data/store.svelte.js';
   import { canSave, isDirty, saveBlocker, viewOf } from '../data/subscriptionDraft.js';
   import { copyTextToClipboard } from '../data/clipboard.js';
+  import { formatNodeCount, getEffectiveNodes } from '../data/sourceDraft.js';
   import Plus from 'lucide-svelte/icons/plus';
   import RefreshCw from 'lucide-svelte/icons/refresh-cw';
   import Pencil from 'lucide-svelte/icons/pencil';
@@ -357,7 +358,10 @@
                   <span class="min-w-0">
                     <span class="block text-sm text-slate-100">{item.name}</span>
                     <span class="block text-xs text-slate-400 mt-0.5"
-                      >{item.nodes?.length || 0} 个节点</span
+                      >{formatNodeCount(
+                        getEffectiveNodes(item).length,
+                        item.nodes?.length || 0,
+                      )}</span
                     >
                   </span>
                 </span>
