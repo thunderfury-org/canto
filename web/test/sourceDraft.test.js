@@ -35,6 +35,8 @@ import {
   validateRenameRegex,
   moveRenameRule,
   deriveSourceNodes,
+  detectStaleCustomTags,
+  pruneStaleCustomTags,
 } from '../src/data/sourceDraft.js';
 
 test('emptySourceDraft returns default structure', () => {
@@ -49,6 +51,7 @@ test('emptySourceDraft returns default structure', () => {
     excludePattern: '',
     renameRules: [],
     prefix: '',
+    customTags: {},
   });
 });
 
@@ -134,6 +137,7 @@ test('cleanSourcePayload trims and isolates payload according to type', () => {
     excludePattern: '',
     renameRules: [],
     prefix: '',
+    customTags: {},
   });
 
   const manDraft = {
@@ -152,6 +156,7 @@ test('cleanSourcePayload trims and isolates payload according to type', () => {
     excludePattern: '',
     renameRules: [],
     prefix: '',
+    customTags: {},
   });
 });
 
@@ -261,6 +266,7 @@ test('commitSourceSave sends click-time payload, updates saved source, and keeps
     excludePattern: '',
     renameRules: [],
     prefix: '',
+    customTags: {},
   });
   assert.equal(saved.sources[0].name, '机场A-新名');
   assert.equal(isSourceDraftDirty(saved.session, 'src_1'), false);
@@ -758,4 +764,78 @@ test('sourceSaveBlocker and dirty detection validate renameRules and prefix', ()
   const clean = cleanSourcePayload(draft);
   assert.equal(clean.prefix, '[主力] ');
   assert.equal(clean.renameRules[0].pattern, 'good');
+});
+
+test('deriveSourceNodes applies single-node custom rename over batch regex with fallback and prefix', () => {
+  const rawNodes = [
+    { tag: 'HK-01', type: 'vless' },
+    { tag: 'HK-02', type: 'vless' },
+    { tag: 'HK-03', type: 'vless' },
+    { tag: 'HK-04', type: 'vless' },
+  ];
+  const rules = {
+    renameRules: [{ pattern: '(?i)hk-(\\d+)', replacement: '香港 $1' }],
+    prefix: '[主力] ',
+    customTags: {
+      'HK-01': '香港专线 A',
+      'HK-02': '   ', // blank -> fallback to batch regex
+      'HK-03': '香港 04', // custom name creating collision with HK-04
+    },
+  };
+  const processed = deriveSourceNodes(rawNodes, rules);
+  assert.equal(processed.length, 4);
+  // HK-01 custom override beats batch replacement, then prefix
+  assert.equal(processed[0].finalTag, '[主力] 香港专线 A');
+  // HK-02 blank custom falls back to batch replacement, then prefix
+  assert.equal(processed[1].finalTag, '[主力] 香港 02');
+  // HK-03 custom rename to "香港 04", prefix -> "[主力] 香港 04"
+  assert.equal(processed[2].finalTag, '[主力] 香港 04');
+  // HK-04 batch replacement to "香港 04", prefix -> duplicate collision disambiguated to -2
+  assert.equal(processed[3].finalTag, '[主力] 香港 04-2');
+});
+
+test('detectStaleCustomTags and pruneStaleCustomTags identify and clean invalid mappings', () => {
+  const rawNodes = [
+    { tag: 'HK-01', type: 'vless' },
+    { tag: 'HK-02', type: 'vless' },
+  ];
+  const customTags = {
+    'HK-01': '香港 01',
+    'HK-Deleted': '旧节点',
+    'JP-Old': '已下线',
+  };
+  const stale = detectStaleCustomTags(rawNodes, customTags);
+  assert.equal(stale.length, 2);
+  assert.deepEqual(stale.map((s) => s.originalTag).sort(), ['HK-Deleted', 'JP-Old']);
+
+  const pruned = pruneStaleCustomTags(rawNodes, customTags);
+  assert.deepEqual(pruned, { 'HK-01': '香港 01' });
+});
+
+test('source draft handles customTags in dirty detection and payload cleaning', () => {
+  const draft = {
+    ...emptySourceDraft(),
+    name: '测试源',
+    url: 'https://example.com/sub',
+    customTags: {
+      'HK-01': ' 香港主力 ',
+      'HK-02': '   ', // blank value should be omitted in payload
+    },
+  };
+  const cleaned = cleanSourcePayload(draft);
+  assert.deepEqual(cleaned.customTags, { 'HK-01': '香港主力' });
+
+  const original = {
+    name: '测试源',
+    type: 'subscription',
+    url: 'https://example.com/sub',
+    customTags: {},
+  };
+  assert.equal(isSourceDirty(draft, original), true);
+
+  const cleanOriginal = {
+    ...original,
+    customTags: { 'HK-01': '香港主力' },
+  };
+  assert.equal(isSourceDirty(draft, cleanOriginal), false);
 });

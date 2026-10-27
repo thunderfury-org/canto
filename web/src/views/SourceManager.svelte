@@ -3,6 +3,8 @@
   import { store } from '../data/store.svelte.js';
   import {
     canSaveSource,
+    detectStaleCustomTags,
+    pruneStaleCustomTags,
     classifyNodes,
     collectAvailableProtocols,
     deriveSourceNodes,
@@ -30,6 +32,7 @@
   import Server from 'lucide-svelte/icons/server';
   import Trash2 from 'lucide-svelte/icons/trash-2';
   import X from 'lucide-svelte/icons/x';
+  import NodeDetailDrawer from '../components/NodeDetailDrawer.svelte';
 
   let createDrawerOpen = $state(false);
   let createDraft = $state(emptySourceDraft());
@@ -270,6 +273,29 @@
   });
 
   let displayNodes = $derived(filterSourceNodes(tabFilteredNodes, nodeSearch));
+
+  let selectedOriginalTag = $state(null);
+  let selectedNodeItem = $derived.by(() => {
+    if (!selectedOriginalTag) return null;
+    return processedNodes.find((n) => n.originalTag === selectedOriginalTag) || null;
+  });
+
+  let staleCustomTags = $derived(detectStaleCustomTags(rawNodes, activeDraft.customTags || {}));
+
+  function handleCustomNameChange(originalTag, val) {
+    const customTags = { ...(activeDraft.customTags || {}) };
+    if (!val || !val.trim()) {
+      delete customTags[originalTag];
+    } else {
+      customTags[originalTag] = val;
+    }
+    patchActiveDraft({ customTags });
+  }
+
+  function handlePruneStaleMappings() {
+    const pruned = pruneStaleCustomTags(rawNodes, activeDraft.customTags || {});
+    patchActiveDraft({ customTags: pruned });
+  }
 </script>
 
 <svelte:window onkeydown={onKeydown} />
@@ -944,6 +970,28 @@
       </div>
     </section>
 
+    <!-- Stale Custom Renames Banner -->
+    {#if staleCustomTags.length > 0}
+      <div
+        class="p-3 rounded-lg border border-amber-800/60 bg-amber-950/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+      >
+        <div class="flex items-center gap-2 min-w-0">
+          <AlertCircle size={15} class="text-amber-400 shrink-0" />
+          <span class="text-xs text-amber-200">
+            检测到 {staleCustomTags.length} 条已失效的单节点改名映射（对应原始节点已不存在）
+          </span>
+        </div>
+        <button
+          type="button"
+          onclick={handlePruneStaleMappings}
+          class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5 shrink-0"
+        >
+          <Trash2 size={12} />
+          <span>一键清理失效映射</span>
+        </button>
+      </div>
+    {/if}
+
     <!-- Nodes Table Panel -->
     <section class="bg-slate-900/80 border border-slate-800 rounded-lg overflow-hidden">
       <div
@@ -1041,9 +1089,10 @@
             <tbody class="divide-y divide-slate-800/40 font-mono text-[11px]">
               {#each displayNodes as { node, originalTag, finalTag, effective, reason }}
                 <tr
-                  class="transition-colors {effective
+                  class="transition-colors cursor-pointer {effective
                     ? 'hover:bg-slate-900/60'
                     : 'opacity-60 bg-slate-950/40 hover:opacity-80 hover:bg-slate-900/40'}"
+                  onclick={() => (selectedOriginalTag = originalTag)}
                 >
                   <td
                     class="py-2.5 px-4 font-sans font-medium flex items-center gap-1.5 {effective
@@ -1068,6 +1117,14 @@
                         </div>
                       {/if}
                     </div>
+                    {#if activeDraft.customTags?.[originalTag]}
+                      <span
+                        class="ml-1.5 px-1 py-0.2 rounded text-[10px] font-mono bg-amber-950/60 border border-amber-800/60 text-amber-300 shrink-0"
+                        title="已配置单节点自定义名称"
+                      >
+                        手动改名
+                      </span>
+                    {/if}
                   </td>
                   <td class="py-2.5 px-3">
                     <span
@@ -1258,4 +1315,17 @@
       </button>
     </div>
   </aside>
+{/if}
+
+{#if selectedNodeItem}
+  <NodeDetailDrawer
+    node={selectedNodeItem.node}
+    effective={selectedNodeItem.effective}
+    originalTag={selectedNodeItem.originalTag}
+    finalTag={selectedNodeItem.finalTag}
+    reason={selectedNodeItem.reason}
+    customName={activeDraft.customTags?.[selectedNodeItem.originalTag] || ''}
+    oncustomnamechange={handleCustomNameChange}
+    onclose={() => (selectedOriginalTag = null)}
+  />
 {/if}
