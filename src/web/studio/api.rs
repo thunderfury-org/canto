@@ -1,5 +1,6 @@
 use crate::web::state::WebState;
 use crate::web::studio::compiler::CompileError;
+use crate::web::studio::manager::is_http_url;
 use crate::web::studio::model::{
     NodeSource, Profile, SourceKind, Template, new_profile_id, new_source_id, new_template_id,
     now_rfc3339, validate_template_content,
@@ -55,12 +56,16 @@ pub async fn create_source(
         return json_error(StatusCode::BAD_REQUEST, "name is required");
     }
 
+    let (url, content) = match req.kind {
+        SourceKind::Subscription => (normalize_optional(req.url), None),
+        SourceKind::Manual => (None, normalize_optional(req.content)),
+    };
     let mut source = NodeSource {
         id: new_source_id(),
         name: name.to_string(),
         kind: req.kind,
-        url: normalize_optional(req.url),
-        content: normalize_optional(req.content),
+        url,
+        content,
         status: Default::default(),
         last_updated: None,
         last_error: None,
@@ -89,6 +94,10 @@ pub async fn update_source(
         return json_error(StatusCode::NOT_FOUND, "source not found");
     };
 
+    let prev_kind = source.kind.clone();
+    let prev_url = normalize_optional(source.url.clone());
+    let prev_content = normalize_optional(source.content.clone());
+
     if let Some(name) = req.name {
         let name = name.trim();
         if name.is_empty() {
@@ -102,17 +111,57 @@ pub async fn update_source(
     if let Some(url) = req.url {
         source.url = normalize_optional(Some(url));
     }
-    let content_updated = req.content.is_some();
     if let Some(content) = req.content {
         source.content = normalize_optional(Some(content));
+    }
+    match source.kind {
+        SourceKind::Subscription => source.content = None,
+        SourceKind::Manual => source.url = None,
     }
 
     if let Some(nodes) = req.nodes {
         source.mark_active(nodes);
-    } else if (content_updated || source.kind == SourceKind::Subscription)
-        && let Err(err) = state.source_manager.ingest(&mut source).await
-    {
-        return json_error(StatusCode::BAD_REQUEST, &err);
+    } else {
+        match source.kind {
+            SourceKind::Subscription => {
+                let Some(url) = source.url.as_deref() else {
+                    return json_error(
+                        StatusCode::BAD_REQUEST,
+                        "subscription source requires a url",
+                    );
+                };
+                if !is_http_url(url) {
+                    return json_error(
+                        StatusCode::BAD_REQUEST,
+                        "subscription url must start with http:// or https://",
+                    );
+                }
+                let should_fetch = prev_kind != SourceKind::Subscription || source.url != prev_url;
+                if should_fetch && let Err(err) = state.source_manager.ingest(&mut source).await {
+                    return json_error(StatusCode::BAD_REQUEST, &err);
+                }
+            }
+            SourceKind::Manual => {
+                let should_parse =
+                    prev_kind != SourceKind::Manual || source.content != prev_content;
+                if should_parse {
+                    if source.content.is_none() {
+                        return json_error(
+                            StatusCode::BAD_REQUEST,
+                            "manual source requires content or nodes",
+                        );
+                    }
+                    if let Err(err) = state.source_manager.ingest(&mut source).await {
+                        return json_error(StatusCode::BAD_REQUEST, &err);
+                    }
+                } else if source.content.is_none() && source.nodes.is_empty() {
+                    return json_error(
+                        StatusCode::BAD_REQUEST,
+                        "manual source requires content or nodes",
+                    );
+                }
+            }
+        }
     }
 
     match state.sources.replace(source).await {

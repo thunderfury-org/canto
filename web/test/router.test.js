@@ -79,30 +79,30 @@ test('buildHash formats hash strings accurately', () => {
   assert.equal(buildHash({ tab: 'profiles' }), '#/profiles');
   assert.equal(buildHash({ tab: 'profiles', subtab: 'new' }), '#/profiles?new=1');
   assert.equal(buildHash({ tab: 'profiles', id: 'prof_1', subtab: 'new' }), '#/profiles?id=prof_1');
-  assert.equal(
-    buildHash({ tab: 'sources', id: 'src_1', subtab: 'inspect' }),
-    '#/sources?id=src_1&action=inspect',
-  );
-  assert.equal(
-    buildHash({ tab: 'sources', id: 'src_1', subtab: 'edit' }),
-    '#/sources?id=src_1&action=edit',
-  );
   assert.equal(buildHash({ tab: 'sources' }), '#/sources');
+  assert.equal(buildHash({ tab: 'sources', id: null }), '#/sources');
+  assert.equal(buildHash({ tab: 'sources', id: 'src_1' }), '#/sources?id=src_1');
+  assert.equal(buildHash({ tab: 'sources', id: 'src_1', subtab: 'edit' }), '#/sources?id=src_1');
 });
 
-test('parseRoute extracts id and action for sources', () => {
-  const inspect = parseRoute('#/sources?id=src_1&action=inspect');
-  assert.equal(inspect.tab, 'sources');
-  assert.equal(inspect.id, 'src_1');
-  assert.equal(inspect.subtab, 'inspect');
+test('parseRoute encodes and decodes bare list and detail workbench routes for sources', () => {
+  const list = parseRoute('#/sources');
+  assert.equal(list.tab, 'sources');
+  assert.equal(list.id, null);
+  assert.equal(list.subtab, null);
 
-  const edit = parseRoute('#/sources?id=src_2&action=edit');
-  assert.equal(edit.tab, 'sources');
-  assert.equal(edit.id, 'src_2');
-  assert.equal(edit.subtab, 'edit');
+  const detail = parseRoute('#/sources?id=src_1');
+  assert.equal(detail.tab, 'sources');
+  assert.equal(detail.id, 'src_1');
+  assert.equal(detail.subtab, null);
 
-  const fallback = parseRoute('#/sources?id=src_3');
-  assert.equal(fallback.tab, 'sources');
-  assert.equal(fallback.id, 'src_3');
-  assert.equal(fallback.subtab, 'inspect');
+  const legacyAction = parseRoute('#/sources?id=src_2&action=edit');
+  assert.equal(legacyAction.tab, 'sources');
+  assert.equal(legacyAction.id, 'src_2');
+  assert.equal(legacyAction.subtab, null);
+
+  const pathFallback = parseRoute('', '/sources');
+  assert.equal(pathFallback.tab, 'sources');
+  assert.equal(pathFallback.id, null);
+  assert.equal(pathFallback.subtab, null);
 });

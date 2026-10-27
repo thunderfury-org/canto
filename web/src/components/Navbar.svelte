@@ -77,7 +77,7 @@
         href="#/sources"
         onclick={(e) => {
           e.preventDefault();
-          store.navigate('sources');
+          store.navigate('sources', {});
         }}
         class="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md transition-all font-medium whitespace-nowrap shrink-0 flex-1 sm:flex-initial {store.currentTab ===
         'sources'
@@ -159,9 +159,9 @@
         {leavePrompt(store.pendingKind())?.title || ''}
       </h3>
       <p class="mt-2 text-xs text-slate-400">{leavePrompt(store.pendingKind())?.body || ''}</p>
-      {#if store.profileSaveError || store.templateSaveError}
+      {#if store.profileSaveError || store.templateSaveError || store.sourceSaveError}
         <p class="mt-3 text-xs text-rose-400">
-          {store.profileSaveError || store.templateSaveError}
+          {store.profileSaveError || store.templateSaveError || store.sourceSaveError}
         </p>
       {/if}
       <div class="mt-4 flex flex-wrap justify-end gap-2">

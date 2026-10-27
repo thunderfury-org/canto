@@ -51,10 +51,14 @@ export function canSave(draft, published) {
   return isDirty(draft, published) && !saveBlocker(draft);
 }
 
-export function unsavedKind({ subscription = false, template = false } = {}) {
+export function unsavedKind({ subscription = false, template = false, source = false } = {}) {
+  if (subscription && template && source) return 'all';
   if (subscription && template) return 'both';
+  if (subscription && source) return 'subscription+source';
+  if (template && source) return 'template+source';
   if (subscription) return 'subscription';
   if (template) return 'template';
+  if (source) return 'source';
   return 'none';
 }
 
@@ -71,10 +75,34 @@ export function leavePrompt(kind) {
       body: '保存会尝试保存每一份草稿。某一份失败时不会离开。基准已旧的草稿不会被强行保存。',
     };
   }
+  if (kind === 'source') {
+    return {
+      title: '还有未保存的节点源',
+      body: '保存会尝试保存每一份节点源草稿。某一份校验或保存失败时不会离开。放弃会丢掉这些修改。',
+    };
+  }
   if (kind === 'both') {
     return {
       title: '还有未保存的修改',
       body: '包括订阅和配置模板。保存会一起保存，某一份失败时不会离开。',
+    };
+  }
+  if (kind === 'subscription+source') {
+    return {
+      title: '还有未保存的修改',
+      body: '包括订阅和节点源。保存会一起保存，某一份失败时不会离开。',
+    };
+  }
+  if (kind === 'template+source') {
+    return {
+      title: '还有未保存的修改',
+      body: '包括配置模板和节点源。保存会一起保存，某一份失败时不会离开。',
+    };
+  }
+  if (kind === 'all') {
+    return {
+      title: '还有未保存的修改',
+      body: '包括订阅、配置模板和节点源。保存会一起保存，某一份失败时不会离开。',
     };
   }
   return { title: '', body: '' };

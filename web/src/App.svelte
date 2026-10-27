@@ -13,7 +13,7 @@
   onMount(() => {
     const cleanup = initRouter(store);
     const onBeforeUnload = (event) => {
-      if (!store.hasDirtyTemplates && !store.hasDirtySubscription) return;
+      if (!store.hasDirtyTemplates && !store.hasDirtySources && !store.hasDirtySubscription) return;
       event.preventDefault();
       event.returnValue = '';
     };
@@ -32,10 +32,17 @@
     const tplId = store.selectedTemplateId;
     const subTab = store.templateSubTab;
     const profId = store.selectedProfileId;
+    const srcId = store.selectedSourceId;
 
     if (tab === 'templates') {
       if (tplId) {
         syncHash({ tab, id: tplId, subtab: subTab });
+      } else {
+        syncHash({ tab });
+      }
+    } else if (tab === 'sources') {
+      if (srcId) {
+        syncHash({ tab, id: srcId });
       } else {
         syncHash({ tab });
       }
