@@ -14,6 +14,40 @@ export function normalizeRegexPattern(raw) {
   return s;
 }
 
+export function validateRenameRegex(raw) {
+  const s = normalizeRegexPattern(raw);
+  if (!s) return '匹配正则不能为空';
+  if (/\(\?(?:[!=]|<=|<!)/.test(s)) {
+    return '不支持先行/后行断言语法（如 (?=...) 或 (?!...)）';
+  }
+  if (/\\[1-9]/.test(s)) {
+    return '不支持反向引用语法（如 \\1）';
+  }
+  try {
+    new RegExp(s, 'i');
+    return '';
+  } catch (err) {
+    return `正则表达式语法错误: ${err.message}`;
+  }
+}
+
+export function moveRenameRule(rules, fromIndex, toIndex) {
+  if (!Array.isArray(rules)) return [];
+  if (
+    fromIndex < 0 ||
+    fromIndex >= rules.length ||
+    toIndex < 0 ||
+    toIndex >= rules.length ||
+    fromIndex === toIndex
+  ) {
+    return [...rules];
+  }
+  const next = [...rules];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  return next;
+}
+
 export function validateFilterRegex(raw) {
   const s = normalizeRegexPattern(raw);
   if (!s) return '';
@@ -113,14 +147,116 @@ export function collectAvailableProtocols(rawNodes = [], excludeProtocols = []) 
   return Array.from(set);
 }
 
+export function deriveSourceNodes(
+  rawNodes,
+  {
+    excludeProtocols = [],
+    includePattern = '',
+    excludePattern = '',
+    renameRules = [],
+    prefix = '',
+  } = {},
+) {
+  const nodes = Array.isArray(rawNodes) ? rawNodes : [];
+
+  // Step 0: Classify each node against filter rules based on its raw properties
+  const classified = nodes.map((node) => {
+    const classification = classifyNode(node, {
+      excludeProtocols,
+      includePattern,
+      excludePattern,
+    });
+    const originalTag = typeof node?.tag === 'string' ? node.tag : '';
+    return {
+      node,
+      originalTag,
+      currentTag: originalTag,
+      effective: classification.effective,
+      reason: classification.reason,
+    };
+  });
+
+  // Step 1: Precompile valid rename rules
+  const effectiveItems = classified.filter((item) => item.effective);
+  const compiledRules = (renameRules || [])
+    .map((rule) => {
+      const p = normalizeRegexPattern(rule?.pattern);
+      if (!p) return null;
+      try {
+        return {
+          re: new RegExp(p, 'gi'),
+          replacement: typeof rule?.replacement === 'string' ? rule.replacement : '',
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+
+  // Step 1 & 2: Sequential regex replacement & prefix prepending
+  for (const item of effectiveItems) {
+    let tag = item.originalTag;
+    for (const { re, replacement } of compiledRules) {
+      const replaced = tag.replace(re, replacement);
+      if (replaced.trim() !== '') {
+        tag = replaced;
+      }
+    }
+    if (typeof prefix === 'string' && prefix !== '') {
+      tag = prefix + tag;
+    }
+    item.currentTag = tag;
+  }
+
+  // Step 3: Intra-source duplicate disambiguation in original node order
+  const seenCounts = new Map();
+  const usedTags = new Set();
+  for (const item of effectiveItems) {
+    const baseTag = item.currentTag;
+    const count = (seenCounts.get(baseTag) || 0) + 1;
+    seenCounts.set(baseTag, count);
+
+    let finalTag;
+    if (count === 1 && !usedTags.has(baseTag)) {
+      usedTags.add(baseTag);
+      finalTag = baseTag;
+    } else {
+      let suffixIdx = count === 1 ? 2 : count;
+      while (true) {
+        const candidate = `${baseTag}-${suffixIdx}`;
+        if (!usedTags.has(candidate)) {
+          usedTags.add(candidate);
+          finalTag = candidate;
+          break;
+        }
+        suffixIdx++;
+      }
+    }
+    item.finalTag = finalTag;
+    item.node = { ...item.node, tag: finalTag };
+  }
+
+  for (const item of classified) {
+    if (!item.effective) {
+      item.finalTag = item.originalTag;
+    }
+  }
+
+  return classified;
+}
+
 export function getEffectiveNodes(source) {
   if (!source || !Array.isArray(source.nodes)) return [];
   const rules = {
     excludeProtocols: source.excludeProtocols ?? source.exclude_protocols ?? [],
     includePattern: source.includePattern ?? source.include_pattern ?? '',
     excludePattern: source.excludePattern ?? source.exclude_pattern ?? '',
+    renameRules: source.renameRules ?? source.rename_rules ?? [],
+    prefix: source.prefix ?? '',
   };
-  return source.nodes.filter((node) => classifyNode(node, rules).effective);
+  return deriveSourceNodes(source.nodes, rules)
+    .filter((item) => item.effective)
+    .map((item) => item.node);
 }
 
 export function formatNodeCount(effectiveCount, totalCount) {
@@ -138,6 +274,8 @@ export function emptySourceDraft() {
     excludeProtocols: [],
     includePattern: '',
     excludePattern: '',
+    renameRules: [],
+    prefix: '',
   };
 }
 
@@ -145,6 +283,14 @@ export function createSourceDraft(source) {
   if (!source || typeof source !== 'object') {
     return emptySourceDraft();
   }
+  const rawRules = source.renameRules ?? source.rename_rules ?? [];
+  const renameRules = Array.isArray(rawRules)
+    ? rawRules.map((r) => ({
+        pattern: typeof r?.pattern === 'string' ? r.pattern : '',
+        replacement: typeof r?.replacement === 'string' ? r.replacement : '',
+      }))
+    : [];
+
   return {
     name: typeof source.name === 'string' ? source.name : '',
     type: source.type === 'manual' ? 'manual' : 'subscription',
@@ -167,6 +313,8 @@ export function createSourceDraft(source) {
         : typeof source.exclude_pattern === 'string'
           ? source.exclude_pattern
           : '',
+    renameRules,
+    prefix: typeof source.prefix === 'string' ? source.prefix : '',
   };
 }
 
@@ -202,6 +350,20 @@ export function sourceSaveBlocker(draft) {
     return `排除正则非法: ${excErr}`;
   }
 
+  if (Array.isArray(draft.renameRules)) {
+    for (let i = 0; i < draft.renameRules.length; i++) {
+      const rule = draft.renameRules[i];
+      const p = normalizeRegexPattern(rule?.pattern);
+      if (!p) {
+        return `第 ${i + 1} 条重命名规则的匹配正则不能为空`;
+      }
+      const ruleErr = validateRenameRegex(rule.pattern);
+      if (ruleErr) {
+        return `第 ${i + 1} 条重命名正则非法: ${ruleErr}`;
+      }
+    }
+  }
+
   return '';
 }
 
@@ -223,6 +385,14 @@ export function cleanSourcePayload(draft) {
   const excludePattern =
     typeof draft?.excludePattern === 'string' ? draft.excludePattern.trim() : '';
 
+  const renameRules = Array.isArray(draft?.renameRules)
+    ? draft.renameRules.map((r) => ({
+        pattern: typeof r?.pattern === 'string' ? normalizeRegexPattern(r.pattern) : '',
+        replacement: typeof r?.replacement === 'string' ? r.replacement : '',
+      }))
+    : [];
+  const prefix = typeof draft?.prefix === 'string' ? draft.prefix : '';
+
   return {
     name,
     type,
@@ -231,6 +401,8 @@ export function cleanSourcePayload(draft) {
     excludeProtocols: dedupedProtocols,
     includePattern,
     excludePattern,
+    renameRules,
+    prefix,
   };
 }
 
@@ -244,7 +416,9 @@ export function isSourceDirty(draft, original) {
       draft.type !== 'subscription' ||
       (draft.excludeProtocols && draft.excludeProtocols.length > 0) ||
       (draft.includePattern && draft.includePattern.trim()) ||
-      (draft.excludePattern && draft.excludePattern.trim()),
+      (draft.excludePattern && draft.excludePattern.trim()) ||
+      (draft.renameRules && draft.renameRules.length > 0) ||
+      (draft.prefix && draft.prefix.length > 0),
     );
   }
   const left = cleanSourcePayload(draft);
@@ -540,18 +714,33 @@ export async function createSourceRequest({ fetchImpl, session, sources, draft }
   };
 }
 
-export function filterSourceNodes(nodes, keyword) {
-  const list = Array.isArray(nodes) ? nodes : [];
+export function filterSourceNodes(items, keyword) {
+  const list = Array.isArray(items) ? items : [];
   const q = typeof keyword === 'string' ? keyword.trim().toLowerCase() : '';
   if (!q) return list;
-  return list.filter((node) => {
-    const tag = typeof node?.tag === 'string' ? node.tag.toLowerCase() : '';
-    const type = typeof node?.type === 'string' ? node.type.toLowerCase() : '';
-    const server = typeof node?.server === 'string' ? node.server.toLowerCase() : '';
+  return list.filter((item) => {
+    const node = item?.node ?? item;
+    const originalTag = (
+      typeof item?.originalTag === 'string'
+        ? item.originalTag
+        : typeof node?.tag === 'string'
+          ? node.tag
+          : ''
+    ).toLowerCase();
+    const finalTag = (
+      typeof item?.finalTag === 'string'
+        ? item.finalTag
+        : typeof node?.tag === 'string'
+          ? node.tag
+          : ''
+    ).toLowerCase();
+    const type = (typeof node?.type === 'string' ? node.type : '').toLowerCase();
+    const server = (typeof node?.server === 'string' ? node.server : '').toLowerCase();
     const port = node?.server_port != null ? String(node.server_port) : '';
     const endpoint = server && port ? `${server}:${port}` : '';
     return (
-      tag.includes(q) ||
+      originalTag.includes(q) ||
+      finalTag.includes(q) ||
       type.includes(q) ||
       server.includes(q) ||
       port.includes(q) ||
@@ -587,7 +776,8 @@ function samePayload(left, right) {
     left.url !== right.url ||
     left.content !== right.content ||
     left.includePattern !== right.includePattern ||
-    left.excludePattern !== right.excludePattern
+    left.excludePattern !== right.excludePattern ||
+    left.prefix !== right.prefix
   ) {
     return false;
   }
@@ -596,7 +786,16 @@ function samePayload(left, right) {
   if (lp.length !== rp.length) return false;
   const leftSorted = [...lp].sort();
   const rightSorted = [...rp].sort();
-  return leftSorted.every((val, idx) => val === rightSorted[idx]);
+  if (!leftSorted.every((val, idx) => val === rightSorted[idx])) {
+    return false;
+  }
+
+  const lr = left.renameRules || [];
+  const rr = right.renameRules || [];
+  if (lr.length !== rr.length) return false;
+  return lr.every(
+    (rule, idx) => rule.pattern === rr[idx].pattern && rule.replacement === rr[idx].replacement,
+  );
 }
 
 async function readError(res) {

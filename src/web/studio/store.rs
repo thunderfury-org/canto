@@ -696,6 +696,8 @@ mod tests {
             exclude_protocols: Vec::new(),
             include_pattern: None,
             exclude_pattern: None,
+            rename_rules: Vec::new(),
+            prefix: None,
         };
         source.sync_counts();
         source

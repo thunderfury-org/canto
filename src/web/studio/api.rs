@@ -2,8 +2,9 @@ use crate::web::state::WebState;
 use crate::web::studio::compiler::CompileError;
 use crate::web::studio::manager::is_http_url;
 use crate::web::studio::model::{
-    NodeSource, Profile, SourceKind, Template, new_profile_id, new_source_id, new_template_id,
-    normalize_pattern, normalize_protocols, now_rfc3339, validate_filter_regex,
+    NodeSource, Profile, RenameRule, SourceKind, Template, new_profile_id, new_source_id,
+    new_template_id, normalize_pattern, normalize_prefix, normalize_protocols,
+    normalize_rename_rules, now_rfc3339, validate_filter_regex, validate_rename_regex,
     validate_template_content,
 };
 use crate::web::studio::store::TemplateWrite;
@@ -30,6 +31,10 @@ pub struct CreateSourceRequest {
     pub include_pattern: Option<String>,
     #[serde(default, alias = "exclude_pattern")]
     pub exclude_pattern: Option<String>,
+    #[serde(default, alias = "rename_rules")]
+    pub rename_rules: Vec<RenameRule>,
+    #[serde(default, alias = "prefix")]
+    pub prefix: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -47,6 +52,10 @@ pub struct UpdateSourceRequest {
     pub include_pattern: Option<String>,
     #[serde(default, alias = "exclude_pattern")]
     pub exclude_pattern: Option<String>,
+    #[serde(default, alias = "rename_rules")]
+    pub rename_rules: Option<Vec<RenameRule>>,
+    #[serde(default, alias = "prefix")]
+    pub prefix: Option<String>,
 }
 
 pub async fn list_sources(State(state): State<WebState>) -> Response {
@@ -86,6 +95,15 @@ pub async fn create_source(
         );
     }
 
+    for rule in &req.rename_rules {
+        if let Err(err) = validate_rename_regex(&rule.pattern) {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                &format!("invalid rename regex: {err}"),
+            );
+        }
+    }
+
     let (url, content) = match req.kind {
         SourceKind::Subscription => (normalize_optional(req.url), None),
         SourceKind::Manual => (None, normalize_optional(req.content)),
@@ -104,6 +122,8 @@ pub async fn create_source(
         exclude_protocols: normalize_protocols(req.exclude_protocols),
         include_pattern: normalize_pattern(req.include_pattern),
         exclude_pattern: normalize_pattern(req.exclude_pattern),
+        rename_rules: normalize_rename_rules(req.rename_rules),
+        prefix: normalize_prefix(req.prefix),
     };
 
     if let Some(nodes) = req.nodes.filter(|nodes| !nodes.is_empty()) {
@@ -144,6 +164,17 @@ pub async fn update_source(
         );
     }
 
+    if let Some(rules) = req.rename_rules.as_ref() {
+        for rule in rules {
+            if let Err(err) = validate_rename_regex(&rule.pattern) {
+                return json_error(
+                    StatusCode::BAD_REQUEST,
+                    &format!("invalid rename regex: {err}"),
+                );
+            }
+        }
+    }
+
     let prev_kind = source.kind.clone();
     let prev_url = normalize_optional(source.url.clone());
     let prev_content = normalize_optional(source.content.clone());
@@ -172,6 +203,12 @@ pub async fn update_source(
     }
     if let Some(pattern) = req.exclude_pattern {
         source.exclude_pattern = normalize_pattern(Some(pattern));
+    }
+    if let Some(rules) = req.rename_rules {
+        source.rename_rules = normalize_rename_rules(rules);
+    }
+    if let Some(prefix) = req.prefix {
+        source.prefix = normalize_prefix(Some(prefix));
     }
     match source.kind {
         SourceKind::Subscription => source.content = None,

@@ -182,6 +182,8 @@ mod tests {
             exclude_protocols: Vec::new(),
             include_pattern: None,
             exclude_pattern: None,
+            rename_rules: Vec::new(),
+            prefix: None,
         };
 
         manager.ingest(&mut source).await.unwrap();
@@ -212,6 +214,8 @@ mod tests {
             exclude_protocols: Vec::new(),
             include_pattern: None,
             exclude_pattern: None,
+            rename_rules: Vec::new(),
+            prefix: None,
         };
 
         let err = manager.ingest(&mut source).await.unwrap_err();
@@ -240,6 +244,8 @@ mod tests {
             exclude_protocols: Vec::new(),
             include_pattern: None,
             exclude_pattern: None,
+            rename_rules: Vec::new(),
+            prefix: None,
         };
 
         let err = manager.ingest(&mut source).await.unwrap_err();
@@ -268,6 +274,8 @@ mod tests {
             exclude_protocols: Vec::new(),
             include_pattern: None,
             exclude_pattern: None,
+            rename_rules: Vec::new(),
+            prefix: None,
         };
         store.insert(source).await.unwrap();
 

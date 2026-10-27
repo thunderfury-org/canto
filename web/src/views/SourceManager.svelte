@@ -5,17 +5,22 @@
     canSaveSource,
     classifyNodes,
     collectAvailableProtocols,
+    deriveSourceNodes,
     emptySourceDraft,
     filterSourceNodes,
     findProfilesUsingSource,
     formatNodeCount,
     getEffectiveNodes,
     isSourceDirty,
+    moveRenameRule,
     sourceSaveBlocker,
     validateFilterRegex,
+    validateRenameRegex,
   } from '../data/sourceDraft.js';
   import AlertCircle from 'lucide-svelte/icons/alert-circle';
+  import ArrowDown from 'lucide-svelte/icons/arrow-down';
   import ArrowLeft from 'lucide-svelte/icons/arrow-left';
+  import ArrowUp from 'lucide-svelte/icons/arrow-up';
   import Boxes from 'lucide-svelte/icons/boxes';
   import Network from 'lucide-svelte/icons/network';
   import Pencil from 'lucide-svelte/icons/pencil';
@@ -218,8 +223,53 @@
     );
   });
 
+  let nodeTab = $state('all');
+  let includeRegexError = $derived(validateFilterRegex(activeDraft.includePattern));
+  let excludeRegexError = $derived(validateFilterRegex(activeDraft.excludePattern));
+  let availableProtocols = $derived(
+    collectAvailableProtocols(rawNodes, activeDraft.excludeProtocols),
+  );
+
+  function toggleProtocolBlacklist(proto) {
+    const list = activeDraft.excludeProtocols || [];
+    const next = list.includes(proto) ? list.filter((p) => p !== proto) : [...list, proto];
+    patchActiveDraft({ excludeProtocols: next });
+  }
+
+  function handleAddRenameRule() {
+    const rules = activeDraft.renameRules || [];
+    patchActiveDraft({ renameRules: [...rules, { pattern: '', replacement: '' }] });
+  }
+
+  function handleUpdateRenameRule(idx, patch) {
+    const rules = (activeDraft.renameRules || []).map((r, i) =>
+      i === idx ? { ...r, ...patch } : r,
+    );
+    patchActiveDraft({ renameRules: rules });
+  }
+
+  function handleMoveRenameRule(fromIdx, toIdx) {
+    const rules = moveRenameRule(activeDraft.renameRules || [], fromIdx, toIdx);
+    patchActiveDraft({ renameRules: rules });
+  }
+
+  function handleRemoveRenameRule(idx) {
+    const rules = (activeDraft.renameRules || []).filter((_, i) => i !== idx);
+    patchActiveDraft({ renameRules: rules });
+  }
+
   let rawNodes = $derived(activeSource?.nodes || []);
-  let filteredNodes = $derived(filterSourceNodes(rawNodes, nodeSearch));
+  let processedNodes = $derived(deriveSourceNodes(rawNodes, activeDraft));
+  let detailEffectiveCount = $derived(processedNodes.filter((n) => n.effective).length);
+  let detailFilteredCount = $derived(processedNodes.filter((n) => !n.effective).length);
+
+  let tabFilteredNodes = $derived.by(() => {
+    if (nodeTab === 'effective') return processedNodes.filter((n) => n.effective);
+    if (nodeTab === 'filtered') return processedNodes.filter((n) => !n.effective);
+    return processedNodes;
+  });
+
+  let displayNodes = $derived(filterSourceNodes(tabFilteredNodes, nodeSearch));
 </script>
 
 <svelte:window onkeydown={onKeydown} />
@@ -751,6 +801,147 @@
           </div>
         {/if}
       </div>
+
+      <!-- Batch Rename & Prefix Section -->
+      <div class="border-t border-slate-800/80 pt-4 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+          <div>
+            <h3 class="text-xs font-semibold text-slate-200">批量重命名与前缀拼接</h3>
+            <span class="text-[11px] text-slate-500">
+              对通过过滤的生效节点按顺序执行正则替换并拼接前缀；源内同名节点自动追加 -2、-3
+              等递增后缀消歧。
+            </span>
+          </div>
+        </div>
+
+        <!-- Source Prefix Input -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label for="detail-src-prefix" class="text-slate-300 font-medium"> 节点源前缀 </label>
+            <span class="text-[11px] text-slate-500"
+              >原样拼接在生效节点标签最前方（保留尾部空格，留空不拼接）</span
+            >
+          </div>
+          <input
+            id="detail-src-prefix"
+            type="text"
+            value={activeDraft.prefix}
+            oninput={(event) => patchActiveDraft({ prefix: event.currentTarget.value })}
+            placeholder="例如：[主力] 或 香港专线- （支持保留尾部空格）"
+            class="field w-full px-3 py-1.5 text-xs font-mono"
+          />
+        </div>
+
+        <!-- Batch Rename Rules List -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-300 font-medium">批量正则替换规则</span>
+            <button
+              type="button"
+              onclick={handleAddRenameRule}
+              class="btn btn-secondary text-xs px-2.5 py-1 flex items-center gap-1.5"
+            >
+              <Plus size={13} />
+              <span>添加规则</span>
+            </button>
+          </div>
+          <span class="text-[11px] text-slate-500 block">
+            按列表顺序依次全局替换；支持 $1 等捕获组与
+            (?i)；若替换后为空白字符则自动回退替换前标签。
+          </span>
+
+          {#if (activeDraft.renameRules || []).length === 0}
+            <div
+              class="p-4 rounded border border-dashed border-slate-800 text-center text-xs text-slate-500 font-mono"
+            >
+              暂无批量重命名规则，点击上方「添加规则」新增
+            </div>
+          {:else}
+            <div class="space-y-2">
+              {#each activeDraft.renameRules as rule, idx (idx)}
+                {@const ruleErr = validateRenameRegex(rule.pattern)}
+                <div class="p-3 rounded-lg border border-slate-800 bg-slate-950/60 space-y-2">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-xs font-mono font-semibold text-slate-400"
+                      >规则 #{idx + 1}</span
+                    >
+                    <div class="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={idx === 0}
+                        onclick={() => handleMoveRenameRule(idx, idx - 1)}
+                        class="btn btn-secondary text-xs px-2 py-0.5 flex items-center gap-1"
+                        title="上移此规则"
+                        aria-label="上移规则 {idx + 1}"
+                      >
+                        <ArrowUp size={12} />
+                        <span>上移</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={idx === activeDraft.renameRules.length - 1}
+                        onclick={() => handleMoveRenameRule(idx, idx + 1)}
+                        class="btn btn-secondary text-xs px-2 py-0.5 flex items-center gap-1"
+                        title="下移此规则"
+                        aria-label="下移规则 {idx + 1}"
+                      >
+                        <ArrowDown size={12} />
+                        <span>下移</span>
+                      </button>
+                      <button
+                        type="button"
+                        onclick={() => handleRemoveRenameRule(idx)}
+                        class="btn btn-secondary btn-danger text-xs px-2 py-0.5 flex items-center gap-1"
+                        title="删除此规则"
+                        aria-label="删除规则 {idx + 1}"
+                      >
+                        <Trash2 size={12} />
+                        <span>删除</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div class="space-y-1">
+                      <label for="detail-rename-pat-{idx}" class="text-[11px] text-slate-400">
+                        匹配正则 (默认忽略大小写)
+                      </label>
+                      <input
+                        id="detail-rename-pat-{idx}"
+                        type="text"
+                        value={rule.pattern}
+                        oninput={(e) =>
+                          handleUpdateRenameRule(idx, { pattern: e.currentTarget.value })}
+                        placeholder="例如：(?i)hk-(\\d+) 或 专线"
+                        class="field w-full px-2.5 py-1 text-xs font-mono {ruleErr
+                          ? 'border-rose-600 focus-visible:outline-rose-500'
+                          : ''}"
+                      />
+                      {#if ruleErr}
+                        <span class="text-[10px] text-rose-400 block">{ruleErr}</span>
+                      {/if}
+                    </div>
+                    <div class="space-y-1">
+                      <label for="detail-rename-rep-{idx}" class="text-[11px] text-slate-400">
+                        替换文本 (支持 $1 等捕获组)
+                      </label>
+                      <input
+                        id="detail-rename-rep-{idx}"
+                        type="text"
+                        value={rule.replacement}
+                        oninput={(e) =>
+                          handleUpdateRenameRule(idx, { replacement: e.currentTarget.value })}
+                        placeholder="例如：香港 $1"
+                        class="field w-full px-2.5 py-1 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      </div>
     </section>
 
     <!-- Nodes Table Panel -->
@@ -848,7 +1039,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-800/40 font-mono text-[11px]">
-              {#each displayNodes as { node, effective, reason }}
+              {#each displayNodes as { node, originalTag, finalTag, effective, reason }}
                 <tr
                   class="transition-colors {effective
                     ? 'hover:bg-slate-900/60'
@@ -860,7 +1051,23 @@
                       : 'text-slate-400'}"
                   >
                     <Server size={11} class="text-slate-500 shrink-0" />
-                    <span class="break-all">{node.tag}</span>
+                    <div class="min-w-0">
+                      <span
+                        class="break-all {effective
+                          ? 'text-slate-100 font-semibold'
+                          : 'text-slate-400'}"
+                      >
+                        {finalTag}
+                      </span>
+                      {#if effective && originalTag !== finalTag}
+                        <div
+                          class="text-[10px] text-slate-500 font-mono truncate"
+                          title="原始标签: {originalTag}"
+                        >
+                          原始: {originalTag}
+                        </div>
+                      {/if}
+                    </div>
                   </td>
                   <td class="py-2.5 px-3">
                     <span
