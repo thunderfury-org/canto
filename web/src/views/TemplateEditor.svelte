@@ -122,7 +122,13 @@
   }
 
   async function handleForceSave() {
-    if (!confirm('服务器上的模板已更新。用当前草稿强制保存？')) return;
+    const ok = await store.confirm({
+      title: '强制保存配置模板',
+      message: '服务器上的模板已更新。用当前草稿强制保存？',
+      tone: 'warning',
+      confirmText: '强制保存',
+    });
+    if (!ok) return;
     saving = true;
     saveError = '';
     await store.saveTemplate(store.selectedTemplateId, { force: true });
@@ -241,15 +247,22 @@
 
   async function handleDeleteTemplate(id, name) {
     const boundProfiles = findProfilesUsingTemplate(id, store.profiles);
-    const warning =
+    const impacts =
       boundProfiles.length > 0
-        ? `\n\n⚠️ 警告：该模板正被以下 ${boundProfiles.length} 个订阅引用：\n${boundProfiles
-            .map((p) => `· ${p.name}`)
-            .join('\n')}\n删除后这些订阅将失去模板配置！`
-        : '';
-    if (!confirm(`确定删除配置模板「${name || '此模板'}」吗？${warning}\n此操作不可撤销。`)) {
-      return;
-    }
+        ? {
+            title: `被以下 ${boundProfiles.length} 个订阅引用`,
+            items: boundProfiles.map((p) => p.name),
+            warning: '删除后这些订阅将失去模板配置！',
+          }
+        : null;
+    const ok = await store.confirm({
+      title: '删除配置模板',
+      message: `确定删除配置模板「${name || '此模板'}」吗？此操作不可撤销。`,
+      impacts,
+      tone: 'danger',
+      confirmText: '删除',
+    });
+    if (!ok) return;
     saveError = '';
     try {
       await store.removeTemplate(id);
@@ -294,16 +307,25 @@
     triggerUpdate();
   }
 
-  function removePolicyGroup(targetPg) {
+  async function removePolicyGroup(targetPg) {
     const tpl = store.selectedTemplate;
     const refs = findRulesUsingPolicyGroup(targetPg?.tag, tpl?.content);
-    const warning =
+    const impacts =
       refs.length > 0
-        ? `\n\n⚠️ 警告：该出站策略组正被以下规则/链路引用：\n${refs
-            .map((r) => `· ${r}`)
-            .join('\n')}\n删除后可能导致这些分流规则失效！`
-        : '';
-    if (!confirm(`确定删除出站策略组「${targetPg?.tag || '此策略组'}」吗？${warning}`)) return;
+        ? {
+            title: '正被以下规则/链路引用',
+            items: refs,
+            warning: '删除后可能导致这些分流规则失效！',
+          }
+        : null;
+    const ok = await store.confirm({
+      title: '删除出站策略组',
+      message: `确定删除出站策略组「${targetPg?.tag || '此策略组'}」吗？`,
+      impacts,
+      tone: 'danger',
+      confirmText: '删除',
+    });
+    if (!ok) return;
     if (tpl.content.policy_groups) {
       const idx = tpl.content.policy_groups.indexOf(targetPg);
       if (idx !== -1) {
@@ -415,17 +437,26 @@
     triggerUpdate();
   }
 
-  function removeNodeGroup(idx) {
+  async function removeNodeGroup(idx) {
     const tpl = store.selectedTemplate;
     const group = tpl?.content?.node_groups?.[idx];
     const parentGroups = findPolicyGroupsUsingNodeGroup(group?.tag, tpl?.content);
-    const warning =
+    const impacts =
       parentGroups.length > 0
-        ? `\n\n⚠️ 警告：以下 ${parentGroups.length} 个出站策略组正包含此节点分组：\n${parentGroups
-            .map((g) => `· ${g}`)
-            .join('\n')}\n删除后这些策略组中将失去该节点分组！`
-        : '';
-    if (!confirm(`确定删除节点分组「${group?.tag || '此分组'}」吗？${warning}`)) return;
+        ? {
+            title: `被以下 ${parentGroups.length} 个出站策略组包含`,
+            items: parentGroups,
+            warning: '删除后这些策略组中将失去该节点分组！',
+          }
+        : null;
+    const ok = await store.confirm({
+      title: '删除节点分组',
+      message: `确定删除节点分组「${group?.tag || '此分组'}」吗？`,
+      impacts,
+      tone: 'danger',
+      confirmText: '删除',
+    });
+    if (!ok) return;
     if (tpl.content.node_groups) {
       tpl.content.node_groups.splice(idx, 1);
       triggerUpdate();

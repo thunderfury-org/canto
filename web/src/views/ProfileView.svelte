@@ -96,7 +96,14 @@
   async function resetLink() {
     if (!published || dirty) return;
     const name = published.name || '这条订阅';
-    if (!confirm(`重置「${name}」的链接？旧链接立刻失效。`)) return;
+    const ok = await store.confirm({
+      title: '重置订阅链接',
+      message: `重置「${name}」的链接？旧链接立刻失效。`,
+      tone: 'warning',
+      confirmText: '重置',
+      cancelText: '取消',
+    });
+    if (!ok) return;
     store.profileSaveError = '';
     try {
       const updated = await store.rotateProfileToken(published.id);
@@ -110,7 +117,13 @@
     const p = target || published;
     if (!p) return;
     const name = p.name || '这条订阅';
-    if (!confirm(`确定删除订阅「${name}」吗？这条链接会立刻失效。\n此操作不可撤销。`)) return;
+    const ok = await store.confirm({
+      title: '删除订阅',
+      message: `确定删除订阅「${name}」吗？这条链接会立刻失效，此操作不可撤销。`,
+      tone: 'danger',
+      confirmText: '删除',
+    });
+    if (!ok) return;
     store.profileSaveError = '';
     try {
       await store.removeProfile(p.id);
@@ -123,7 +136,8 @@
   }
 
   function onKeydown(event) {
-    if (event.key === 'Escape' && drawerOpen && !store.leaveOpen) closeDrawer();
+    if (event.key === 'Escape' && drawerOpen && !store.leaveOpen && !store.confirmState.open)
+      closeDrawer();
   }
 
   $effect(() => {

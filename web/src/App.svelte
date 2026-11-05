@@ -9,6 +9,7 @@
   import TemplateEditor from './views/TemplateEditor.svelte';
   import SourceManager from './views/SourceManager.svelte';
   import ProfileView from './views/ProfileView.svelte';
+  import ConfirmModal from './components/ConfirmModal.svelte';
 
   onMount(() => {
     const cleanup = initRouter(store);
@@ -83,4 +84,5 @@
       {/if}
     </main>
   {/if}
+  <ConfirmModal />
 </div>

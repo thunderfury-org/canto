@@ -122,9 +122,18 @@
     createError = '';
   }
 
-  function closeCreateDrawer() {
+  async function closeCreateDrawer() {
     if (creating) return;
-    if (createDirty && !confirm('当前有未保存的新建内容，确定放弃吗？')) return;
+    if (createDirty) {
+      const ok = await store.confirm({
+        title: '放弃未保存的内容？',
+        message: '当前有未保存的新建内容，确定放弃吗？',
+        tone: 'warning',
+        confirmText: '放弃',
+        cancelText: '继续编辑',
+      });
+      if (!ok) return;
+    }
     forceCloseCreateDrawer();
   }
 
@@ -188,15 +197,22 @@
   async function handleDeleteSource(src) {
     if (!src) return;
     const boundProfiles = findProfilesUsingSource(src.id, store.profiles);
-    const warning =
+    const impacts =
       boundProfiles.length > 0
-        ? `\n\n⚠️ 警告：该节点源正被以下 ${boundProfiles.length} 个订阅引用：\n${boundProfiles
-            .map((p) => `· ${p.name}`)
-            .join('\n')}\n删除后这些订阅将失去该节点源的节点！`
-        : '';
-    if (!confirm(`确定删除节点源「${src.name}」吗？${warning}\n此操作不可撤销。`)) {
-      return;
-    }
+        ? {
+            title: `被以下 ${boundProfiles.length} 个订阅引用`,
+            items: boundProfiles.map((p) => p.name),
+            warning: '删除后这些订阅将失去该节点源的节点！',
+          }
+        : null;
+    const ok = await store.confirm({
+      title: '删除节点源',
+      message: `确定删除节点源「${src.name}」吗？此操作不可撤销。`,
+      impacts,
+      tone: 'danger',
+      confirmText: '删除',
+    });
+    if (!ok) return;
     actionError = '';
     const wasSelected = store.selectedSourceId === src.id;
     try {
@@ -210,7 +226,13 @@
   }
 
   function onKeydown(e) {
-    if (e.key === 'Escape' && !store.leaveOpen && createDrawerOpen && !creating) {
+    if (
+      e.key === 'Escape' &&
+      !store.leaveOpen &&
+      !store.confirmState.open &&
+      createDrawerOpen &&
+      !creating
+    ) {
       closeCreateDrawer();
     }
   }

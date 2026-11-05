@@ -44,6 +44,7 @@ import {
   saveAllSourceDrafts as commitAllSourceDrafts,
   updateSourceDraft,
 } from './sourceDraft.js';
+import { createConfirmState, openConfirm, closeConfirm } from './confirm.js';
 import {
   createDraft,
   emptyDraft,
@@ -89,6 +90,7 @@ class StudioStore {
   leaveAction = null;
   studioStatus = $state(null);
   statusError = $state('');
+  confirmState = $state(createConfirmState());
 
   // Computed
   selectedTemplate = $derived(
@@ -210,6 +212,23 @@ class StudioStore {
     this.cancelLeave();
     action?.();
     return true;
+  }
+
+  confirm(options = {}) {
+    return new Promise((resolve) => {
+      if (this.confirmState.open && typeof this.confirmState.resolve === 'function') {
+        this.confirmState.resolve(false);
+      }
+      this.confirmState = openConfirm(this.confirmState, options, resolve);
+    });
+  }
+
+  resolveConfirm(result) {
+    const resolve = this.confirmState.resolve;
+    this.confirmState = closeConfirm(this.confirmState);
+    if (typeof resolve === 'function') {
+      resolve(Boolean(result));
+    }
   }
 
   confirmLeaveDiscard() {

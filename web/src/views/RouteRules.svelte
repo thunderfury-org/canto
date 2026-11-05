@@ -27,6 +27,7 @@
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
   import RuleConditionsEditor from '../components/RuleConditionsEditor.svelte';
+  import { store } from '../data/store.svelte.js';
   import Drawer from '../components/Drawer.svelte';
   import Layers from 'lucide-svelte/icons/layers';
   import Globe from 'lucide-svelte/icons/globe';
@@ -49,7 +50,7 @@
   let drawer = $state(null);
   let dragFrom = $state(-1);
   let dragOver = $state(-1);
-  let initialDraftJson = '';
+  let initialDraftJson = $state('');
 
   const TONE_CLASS = {
     direct: 'text-slate-400 bg-slate-900/80 border-slate-800',
@@ -136,12 +137,6 @@
   }
 
   function cancelDrawer() {
-    if (drawer) {
-      const isDirty = initialDraftJson !== JSON.stringify(drawer.draft);
-      if (isDirty && !confirm('当前抽屉有未保存的修改，确定放弃吗？')) {
-        return;
-      }
-    }
     forceCancelDrawer();
   }
 
@@ -173,8 +168,14 @@
     commitRules(moveRule([...rules], index, direction));
   }
 
-  function removeAt(index) {
-    if (!confirm(`确定删除第 ${index + 1} 条路由分流规则吗？`)) return;
+  async function removeAt(index) {
+    const ok = await store.confirm({
+      title: '删除路由分流规则',
+      message: `确定删除第 ${index + 1} 条路由分流规则吗？`,
+      tone: 'danger',
+      confirmText: '删除',
+    });
+    if (!ok) return;
     commitRules(removeRule([...rules], index));
     if (drawer?.mode === 'edit') forceCancelDrawer();
   }
@@ -503,6 +504,7 @@
     title={drawerTitle}
     problem={drawerProblem}
     hint={drawerHint}
+    dirty={drawer ? initialDraftJson !== JSON.stringify(drawer.draft) : false}
     onclose={cancelDrawer}
     onconfirm={finishDrawer}
   >

@@ -1,4 +1,5 @@
 <script>
+  import { store } from '../data/store.svelte.js';
   import X from 'lucide-svelte/icons/x';
 
   let {
@@ -10,17 +11,35 @@
     confirmText = '确定',
     cancelText = '取消',
     confirmDisabled = false,
+    dirty = false,
+    discardTitle = '放弃未保存的修改？',
+    discardMessage = '当前抽屉有未保存的修改，确定放弃吗？',
     onclose = () => {},
     onconfirm = null,
     children,
     footer,
   } = $props();
 
+  async function requestClose() {
+    if (dirty) {
+      const ok = await store.confirm({
+        title: discardTitle,
+        message: discardMessage,
+        tone: 'warning',
+        confirmText: '放弃',
+        cancelText: '继续编辑',
+      });
+      if (!ok) return;
+    }
+    onclose();
+  }
+
   $effect(() => {
     const onKey = (event) => {
       if (event.key === 'Escape') {
+        if (store.confirmState.open) return;
         event.preventDefault();
-        onclose();
+        void requestClose();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -33,7 +52,7 @@
     type="button"
     class="absolute inset-0 bg-slate-950/70 cursor-default"
     aria-label="取消"
-    onclick={onclose}
+    onclick={requestClose}
   ></button>
   <div
     class="absolute inset-y-0 right-0 z-10 {widthClass} bg-slate-900 border-l border-slate-800 shadow-xl flex flex-col"
@@ -48,7 +67,7 @@
         type="button"
         title="取消"
         aria-label="取消"
-        onclick={onclose}
+        onclick={requestClose}
         class="btn btn-ghost btn-icon"
       >
         <X size={16} />
@@ -71,7 +90,7 @@
           {/if}
         </div>
         <div class="flex items-center gap-2 shrink-0">
-          <button type="button" onclick={onclose} class="btn btn-secondary">
+          <button type="button" onclick={requestClose} class="btn btn-secondary">
             {cancelText}
           </button>
           <button

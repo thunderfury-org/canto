@@ -44,6 +44,7 @@
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
   import RuleConditionsEditor from '../components/RuleConditionsEditor.svelte';
+  import { store } from '../data/store.svelte.js';
   import Drawer from '../components/Drawer.svelte';
   import Radio from 'lucide-svelte/icons/radio';
   import Plus from 'lucide-svelte/icons/plus';
@@ -57,7 +58,7 @@
   let drawer = $state(null);
   let dragFrom = $state(-1);
   let dragOver = $state(-1);
-  let initialDraftJson = '';
+  let initialDraftJson = $state('');
 
   const TONE_CLASS = {
     server: 'text-slate-200 font-medium bg-slate-800 border-slate-600',
@@ -193,12 +194,6 @@
   }
 
   function cancelDrawer() {
-    if (drawer) {
-      const isDirty = initialDraftJson !== JSON.stringify(drawer.draft);
-      if (isDirty && !confirm('当前抽屉有未保存的修改，确定放弃吗？')) {
-        return;
-      }
-    }
     forceCancelDrawer();
   }
 
@@ -233,15 +228,26 @@
     onCommit(withDnsRules(baseDns(), next));
   }
 
-  function removeServer(index) {
+  async function removeServer(index) {
     const server = servers[index];
     const serverTag = server?.tag || '';
     const refs = findRulesUsingDnsServer(serverTag, baseDns());
-    const warning =
+    const impacts =
       refs.length > 0
-        ? `\n\n⚠️ 警告：该服务器正被以下 DNS 项引用：\n${refs.map((r) => `· ${r}`).join('\n')}\n删除后可能导致 DNS 查询失败！`
-        : '';
-    if (!confirm(`确定删除 DNS 服务器「${serverTag || '此服务器'}」吗？${warning}`)) return;
+        ? {
+            title: '受影响的 DNS 项',
+            items: refs,
+            warning: '删除后可能导致 DNS 查询失败！',
+          }
+        : null;
+    const ok = await store.confirm({
+      title: '删除 DNS 服务器',
+      message: `确定删除 DNS 服务器「${serverTag || '此服务器'}」吗？`,
+      impacts,
+      tone: 'danger',
+      confirmText: '删除',
+    });
+    if (!ok) return;
     onCommit(withDnsServers(baseDns(), removeRule(servers, index)));
     if (drawer?.kind === 'server' && drawer.mode === 'edit') forceCancelDrawer();
   }
@@ -254,8 +260,14 @@
     commitRules(moveRule([...rules], index, direction));
   }
 
-  function removeAt(index) {
-    if (!confirm(`确定删除第 ${index + 1} 条 DNS 分流规则吗？`)) return;
+  async function removeAt(index) {
+    const ok = await store.confirm({
+      title: '删除 DNS 分流规则',
+      message: `确定删除第 ${index + 1} 条 DNS 分流规则吗？`,
+      tone: 'danger',
+      confirmText: '删除',
+    });
+    if (!ok) return;
     commitRules(removeRule([...rules], index));
     if (drawer?.kind === 'rule' && drawer.mode === 'edit') forceCancelDrawer();
   }
@@ -629,6 +641,7 @@
     problem={drawerProblem}
     hint={drawerHint}
     confirmText="完成"
+    dirty={drawer ? initialDraftJson !== JSON.stringify(drawer.draft) : false}
     onclose={cancelDrawer}
     onconfirm={finishDrawer}
   >
