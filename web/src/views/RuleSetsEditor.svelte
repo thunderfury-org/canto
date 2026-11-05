@@ -276,12 +276,17 @@
     inspectProvider(newIdx);
   }
 
-  function removeProvider(pIdx) {
+  async function removeProvider(pIdx) {
     applyLegacyRuleSetMigration();
     if (!content?.rule_sets) return;
-    if (!confirm(`确定删除规则源「${content.rule_sets[pIdx]?.name || '此规则源'}」吗？`)) {
-      return;
-    }
+    const providerName = content.rule_sets[pIdx]?.name || '此规则源';
+    const ok = await store.confirm({
+      title: '删除规则源',
+      message: `确定删除规则源「${providerName}」吗？`,
+      tone: 'danger',
+      confirmText: '删除',
+    });
+    if (!ok) return;
     content.rule_sets.splice(pIdx, 1);
     expandedProviderIndices.delete(pIdx);
     expandedProviderIndices = new Set(expandedProviderIndices);
@@ -309,17 +314,17 @@
     commitRuleSourceEdit(toggleRuleSourceTag(content, pIdx, rawTag));
   }
 
-  function removeProviderTag(pIdx, storedTag) {
+  async function removeProviderTag(pIdx, storedTag) {
     applyLegacyRuleSetMigration();
     if (!content) return;
     if (referencedRuleTagSet.has(storedTag)) {
-      if (
-        !confirm(
-          `规则集「${storedTag}」正被路由或 DNS 分流规则引用，移除可能导致分流匹配失效。确定移除吗？`,
-        )
-      ) {
-        return;
-      }
+      const ok = await store.confirm({
+        title: '移除规则集',
+        message: `规则集「${storedTag}」正被路由或 DNS 分流规则引用，移除可能导致分流匹配失效。确定移除吗？`,
+        tone: 'warning',
+        confirmText: '移除',
+      });
+      if (!ok) return;
     }
     commitRuleSourceEdit(removeRuleSourceTag(content, pIdx, storedTag));
   }

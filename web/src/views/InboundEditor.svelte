@@ -35,7 +35,7 @@
   } = $props();
 
   let drawer = $state(null);
-  let initialDraftJson = '';
+  let initialDraftJson = $state('');
 
   let inboundItems = $derived(Array.isArray(inbounds) ? inbounds : []);
   let endpointItems = $derived(Array.isArray(endpoints) ? endpoints : []);
@@ -119,12 +119,6 @@
   }
 
   function cancelDrawer() {
-    if (drawer) {
-      const isDirty = initialDraftJson !== JSON.stringify(drawer.draft);
-      if (isDirty && !confirm('当前抽屉有未保存的修改，确定放弃吗？')) {
-        return;
-      }
-    }
     forceCancelDrawer();
   }
 
@@ -152,23 +146,40 @@
     }
   }
 
-  function removeInbound(index) {
+  async function removeInbound(index) {
     const inbound = inboundItems[index];
     const tag = inbound?.tag || '';
     const refs = findRulesUsingInbound(tag, store.selectedTemplate?.content);
-    const warning =
+    const impacts =
       refs.length > 0
-        ? `\n\n⚠️ 警告：该入站正被以下分流规则引用：\n${refs.map((r) => `· ${r}`).join('\n')}\n删除后可能导致这些分流规则失效！`
-        : '';
-    if (!confirm(`确定删除入站「${tag || '此入站'}」吗？${warning}`)) return;
+        ? {
+            title: '受影响的分流规则',
+            items: refs,
+            warning: '删除后可能导致这些分流规则失效！',
+          }
+        : null;
+    const ok = await store.confirm({
+      title: '删除入站',
+      message: `确定删除入站「${tag || '此入站'}」吗？`,
+      impacts,
+      tone: 'danger',
+      confirmText: '删除',
+    });
+    if (!ok) return;
     onCommitInbounds(inboundItems.filter((_, itemIndex) => itemIndex !== index));
     if (drawer?.kind === 'inbound' && drawer.mode === 'edit') forceCancelDrawer();
   }
 
-  function removeEndpoint(index) {
+  async function removeEndpoint(index) {
     const ep = endpointItems[index];
     const tag = ep?.tag || '';
-    if (!confirm(`确定删除端点「${tag || '此端点'}」吗？`)) return;
+    const ok = await store.confirm({
+      title: '删除端点',
+      message: `确定删除端点「${tag || '此端点'}」吗？`,
+      tone: 'danger',
+      confirmText: '删除',
+    });
+    if (!ok) return;
     onCommitEndpoints(endpointItems.filter((_, itemIndex) => itemIndex !== index));
     if (drawer?.kind === 'endpoint' && drawer.mode === 'edit') forceCancelDrawer();
   }
@@ -333,6 +344,7 @@
     title={drawerTitle}
     problem={drawerProblem}
     hint={drawerHint}
+    dirty={drawer ? initialDraftJson !== JSON.stringify(drawer.draft) : false}
     onclose={cancelDrawer}
     onconfirm={finishDrawer}
     bodyClass="space-y-4"
